@@ -121,5 +121,16 @@ this formula is the entire product.
 ## Fields deliberately not parsed yet
 
 `toolUseResult` (the structured mirror of a tool result), `gitBranch`,
-`version`, `requestId`, and the file-snapshot entries. The `version` field is
-the obvious input to `session_env.claude_version` in M2.5.
+`requestId`, and the file-snapshot entries. `version` is read, but it is not a
+`call` column: it goes to `session_env.claude_version`.
+
+## Configuration captured alongside the transcript
+
+`session_env` is filled from the filesystem, not from the transcript, on first
+sight of a session: `mcpServers` names from `~/.claude.json`, `settings.json`,
+`.mcp.json` and the project's `.claude/settings*.json`; skill directory names
+that contain a `SKILL.md`; and `CLAUDE.md` from user memory plus every level
+from the outermost project directory down to the cwd, with `@path` imports
+expanded inline (depth-bounded, cycle-safe). A line is treated as an import only
+when it is exactly `@path` — an email address or a mention inside prose is left
+alone.

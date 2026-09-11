@@ -4,13 +4,20 @@ import UllageCore
 // Debug CLI for the collector (plan §10, M2). No UI: a menu bar showing a wrong
 // number is harder to debug than a CLI printing one.
 
+// Line-buffered so `ullage watch | tee` shows turns as they happen rather than
+// in 4KB bursts.
+setvbuf(stdout, nil, _IOLBF, 0)
+
 let usage = """
 ullage — Claude Code telemetry collector (debug CLI)
 
 USAGE
   ullage ingest [path ...]   Ingest transcripts (default: ~/.claude/projects)
+  ullage backfill [path ...] Ingest everything and report what is still missing
+  ullage watch [path ...]    Tail transcripts live, printing the menu bar title
   ullage sessions            Per-session totals from the database
   ullage latest              The single row that drives the menu bar
+  ullage env <session>       The configuration snapshot for a session
   ullage info                Resolved paths and row counts
 
 OPTIONS
@@ -61,9 +68,10 @@ func thousands(_ value: Int) -> String {
     return formatter.string(from: NSNumber(value: value)) ?? String(value)
 }
 
+/// Same rounding as the menu bar: floored, so 99.6% never reads as full.
 func percent(_ fraction: Double?) -> String {
-    guard let fraction else { return "  ?%" }
-    return String(format: "%3.0f%%", fraction * 100)
+    guard let fraction else { return "?%" }
+    return MenuBarFormatter.percentage(fraction)
 }
 
 /// Human-scale age. 30 minutes is the idle threshold the menu bar will use, so
@@ -92,6 +100,14 @@ func padLeft(_ text: String, _ width: Int) -> String {
     return String(repeating: " ", count: width - text.count) + text
 }
 
+func transcriptPaths(under url: URL) -> [String] {
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return [] }
+    guard isDirectory.boolValue else { return url.pathExtension == "jsonl" ? [url.path] : [] }
+    guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil) else { return [] }
+    return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }.map(\.path)
+}
+
 func report(_ stats: IngestStats) {
     print("""
     files      \(stats.filesScanned) scanned, \(stats.filesSkipped) skipped, \(stats.restartedFromZero) re-read from zero
@@ -100,6 +116,7 @@ func report(_ stats: IngestStats) {
     calls      \(stats.callsUpserted) upserted
     tools      \(stats.toolCallsUpserted) invocations, \(stats.toolResultsMatched) results joined, \(stats.toolResultsOrphaned) unmatched
     events     \(stats.eventsInserted) inserted
+    sessions   \(stats.sessionEnvSnapshots) environment snapshots captured
     """)
 }
 
@@ -151,6 +168,45 @@ func printLatest(_ store: Store) throws {
     """)
 }
 
+func warnAboutRetention() {
+    guard let warning = Retention.warning(for: Retention.status()) else { return }
+    FileHandle.standardError.write(Data("warning: \(warning)\n".utf8))
+}
+
+func targetURLs(_ options: Options) -> [URL] {
+    options.paths.isEmpty
+        ? ClaudePaths.projectsDirectories()
+        : options.paths.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+}
+
+func ingest(_ ingestor: Ingestor, targets: [URL]) throws -> IngestStats {
+    var stats = IngestStats()
+    for target in targets {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory) else {
+            FileHandle.standardError.write(Data("warning: no such path: \(target.path)\n".utf8))
+            continue
+        }
+        stats = stats + (isDirectory.boolValue
+            ? try ingestor.ingestDirectory(at: target)
+            : try ingestor.ingestFile(at: target))
+    }
+    return stats
+}
+
+/// What the menu bar would be showing right now.
+func menuBarLine(_ store: Store) throws -> String {
+    let state = MenuBarFormatter.state(for: try store.latestCall())
+    let detail = [
+        state.project,
+        state.contextTokens.map { "\(thousands($0)) ctx" },
+        state.contextDelta.map { ($0 >= 0 ? "+" : "") + thousands($0) },
+        state.sessionId.map { String($0.prefix(8)) },
+    ].compactMap { $0 }.joined(separator: "  ")
+    let title = state.isIdle ? "\(state.title) idle" : state.title
+    return "[\(Timestamps.now())] \(pad(title, 10)) \(detail)"
+}
+
 let options = parseArguments(Array(CommandLine.arguments.dropFirst()))
 
 do {
@@ -159,25 +215,80 @@ do {
         let store = try Store(path: options.databasePath)
         let ingestor = Ingestor(store: store)
         if options.verbose { ingestor.onWarning = { FileHandle.standardError.write(Data(("warning: " + $0 + "\n").utf8)) } }
-
-        let targets: [URL] = options.paths.isEmpty
-            ? ClaudePaths.projectsDirectories()
-            : options.paths.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
-
-        var stats = IngestStats()
-        for target in targets {
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory) else {
-                FileHandle.standardError.write(Data("warning: no such path: \(target.path)\n".utf8))
-                continue
-            }
-            stats = stats + (isDirectory.boolValue
-                ? try ingestor.ingestDirectory(at: target)
-                : try ingestor.ingestFile(at: target))
-        }
-        report(stats)
+        report(try ingest(ingestor, targets: targetURLs(options)))
         print("")
         try printSessions(store)
+
+    case "backfill":
+        // Time-sensitive: every day without this is a day of history that has
+        // already aged out of ~/.claude and cannot be recovered.
+        warnAboutRetention()
+        let store = try Store(path: options.databasePath)
+        let ingestor = Ingestor(store: store)
+        if options.verbose { ingestor.onWarning = { FileHandle.standardError.write(Data(("warning: " + $0 + "\n").utf8)) } }
+        let targets = targetURLs(options)
+        report(try ingest(ingestor, targets: targets))
+
+        let transcripts = targets.flatMap { transcriptPaths(under: $0) }
+        let ingested = try store.database.query("SELECT COUNT(DISTINCT source_file) FROM call;") { $0.int(0) }.first ?? 0
+        let missingEnv = try store.sessionsMissingEnv()
+        print("")
+        print("""
+        transcripts on disk       \(transcripts.count)
+        transcripts with rows     \(ingested)
+        sessions in database      \(try store.sessionTotals().count)
+        environment snapshots     \(try store.sessionEnvCount())\(missingEnv.isEmpty ? "" : "  (\(missingEnv.count) sessions without one)")
+        """)
+        if transcripts.count != ingested {
+            print("")
+            print("Transcripts without rows are normal: a file with no assistant entries has")
+            print("nothing to record. Re-run with --verbose to see anything that failed to parse.")
+        }
+
+    case "watch":
+        warnAboutRetention()
+        let store = try Store(path: options.databasePath)
+        let ingestor = Ingestor(store: store)
+        if options.verbose { ingestor.onWarning = { FileHandle.standardError.write(Data(("warning: " + $0 + "\n").utf8)) } }
+        let readStore = try Store(path: options.databasePath)   // WAL: writer plus reader
+        let tailer = SessionTailer(ingestor: ingestor)
+        let targets = targetURLs(options)
+        tailer.onError = { FileHandle.standardError.write(Data("error: \($0)\n".utf8)) }
+        tailer.onIngest = { stats in
+            guard stats.callsUpserted > 0 else { return }
+            if let line = try? menuBarLine(readStore) { print(line) }
+        }
+        try tailer.start(roots: targets)
+        print("watching \(targets.map(\.path).joined(separator: ", "))  (ctrl-c to stop)")
+        print(try menuBarLine(readStore))
+        // dispatchMain() never returns, so nothing here is "used" again and ARC
+        // would be within its rights to tear the tailer down — which stops the
+        // watch without stopping the process.
+        withExtendedLifetime((tailer, readStore)) { dispatchMain() }
+
+    case "env":
+        let store = try Store(path: options.databasePath)
+        guard let needle = options.paths.first else {
+            print("usage: ullage env <session-id or prefix>")
+            break
+        }
+        let sessions = try store.sessionTotals().map(\.sessionId).filter { $0.hasPrefix(needle) }
+        guard let sessionId = sessions.first else {
+            print("no session starting with \(needle)")
+            break
+        }
+        guard let env = try store.sessionEnv(sessionId: sessionId) else {
+            print("no environment snapshot for \(sessionId)")
+            break
+        }
+        print("""
+        session        \(env.sessionId)
+        captured at    \(env.capturedAt)
+        claude version \(env.claudeVersion ?? "—")
+        mcp servers    \(env.mcpServers ?? "—")
+        skills         \(env.skills ?? "—")
+        CLAUDE.md      \(env.claudeMdBytes.map { "\(thousands($0)) bytes" } ?? "—")  \(env.claudeMdHash?.prefix(12) ?? "")
+        """)
 
     case "sessions":
         try printSessions(Store(path: options.databasePath))
@@ -191,8 +302,11 @@ do {
         database   \(options.databasePath)
         projects   \(ClaudePaths.projectsDirectories().map(\.path).joined(separator: ", "))
         parser     v\(ClaudeCodeParser.version)
-        rows       \(try store.callCount()) calls, \(try store.toolCallCount()) tool calls, \(try store.eventCount()) events
+        retention  \(Retention.status())
+        rows       \(try store.callCount()) calls, \(try store.toolCallCount()) tool calls, \(try store.eventCount()) events, \(try store.sessionEnvCount()) env snapshots
+        menu bar   \(try menuBarLine(store))
         """)
+        warnAboutRetention()
 
     default:
         print(usage)
