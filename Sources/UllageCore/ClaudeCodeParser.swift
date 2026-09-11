@@ -19,6 +19,9 @@ public struct LineContext {
 public struct ParsedCall: Equatable {
     public var call: CallRow
     public var toolCalls: [ToolCallRow]
+    /// Claude Code's own version string, carried on the entry. Not a `call`
+    /// column — it belongs to the session snapshot (`session_env`).
+    public var claudeVersion: String?
 }
 
 /// A `tool_result` block seen on a later `type: "user"` line, to be joined back
@@ -144,7 +147,11 @@ public enum ClaudeCodeParser {
             sessionId: sessionId,
             ts: ts
         )
-        return ParsedCall(call: call, toolCalls: toolCalls)
+        return ParsedCall(
+            call: call,
+            toolCalls: toolCalls,
+            claudeVersion: JSONAccess.string(entry, "version")
+        )
     }
 
     static func parseToolUses(

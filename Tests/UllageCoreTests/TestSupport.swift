@@ -27,12 +27,13 @@ final class TempWorkspace {
     let store: Store
     let ingestor: Ingestor
 
-    init() throws {
+    init(environmentProvider: SessionEnvironmentProviding? = nil) throws {
         root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("ullage-tests-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         store = try Store(path: root.appendingPathComponent("telemetry.db").path)
-        ingestor = Ingestor(store: store)
+        // Tests never read the real ~/.claude unless they ask for it.
+        ingestor = Ingestor(store: store, environmentProvider: environmentProvider)
     }
 
     deinit { try? FileManager.default.removeItem(at: root) }

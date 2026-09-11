@@ -267,6 +267,80 @@ public final class Store {
         return changes > 0
     }
 
+    /// Snapshot on first sight of a session. Last write wins: a later ingest of
+    /// the same session refreshes the capture rather than keeping a stale one.
+    public func upsert(sessionEnv: SessionEnvRow) throws {
+        try database.run(
+            """
+            INSERT INTO session_env (
+              session_id, captured_at, claude_version, mcp_servers, skills,
+              claude_md_hash, claude_md_bytes, claude_md_body
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+            ON CONFLICT(session_id) DO UPDATE SET
+              captured_at = excluded.captured_at,
+              claude_version = COALESCE(excluded.claude_version, session_env.claude_version),
+              mcp_servers = excluded.mcp_servers,
+              skills = excluded.skills,
+              claude_md_hash = excluded.claude_md_hash,
+              claude_md_bytes = excluded.claude_md_bytes,
+              claude_md_body = excluded.claude_md_body;
+            """,
+            [
+                .text(sessionEnv.sessionId),
+                .text(sessionEnv.capturedAt),
+                .string(sessionEnv.claudeVersion),
+                .string(sessionEnv.mcpServers),
+                .string(sessionEnv.skills),
+                .string(sessionEnv.claudeMdHash),
+                .int(sessionEnv.claudeMdBytes),
+                .string(sessionEnv.claudeMdBody),
+            ]
+        )
+    }
+
+    public func sessionEnv(sessionId: String) throws -> SessionEnvRow? {
+        try database.query(
+            """
+            SELECT session_id, captured_at, claude_version, mcp_servers, skills,
+                   claude_md_hash, claude_md_bytes, claude_md_body
+            FROM session_env WHERE session_id = ?1;
+            """,
+            [.text(sessionId)]
+        ) { row in
+            SessionEnvRow(
+                sessionId: row.text(0),
+                capturedAt: row.text(1),
+                claudeVersion: row.optionalText(2),
+                mcpServers: row.optionalText(3),
+                skills: row.optionalText(4),
+                claudeMdHash: row.optionalText(5),
+                claudeMdBytes: row.optionalInt(6),
+                claudeMdBody: row.optionalText(7)
+            )
+        }.first
+    }
+
+    public func hasSessionEnv(sessionId: String) throws -> Bool {
+        try database.query(
+            "SELECT 1 FROM session_env WHERE session_id = ?1;", [.text(sessionId)]
+        ) { _ in true }.first ?? false
+    }
+
+    public func sessionEnvCount() throws -> Int {
+        try database.query("SELECT COUNT(*) FROM session_env;") { $0.int(0) }.first ?? 0
+    }
+
+    /// Sessions with rows but no environment snapshot — what a backfill still owes.
+    public func sessionsMissingEnv() throws -> [String] {
+        try database.query(
+            """
+            SELECT DISTINCT c.session_id FROM call c
+            LEFT JOIN session_env e ON e.session_id = c.session_id
+            WHERE e.session_id IS NULL;
+            """
+        ) { $0.text(0) }
+    }
+
     public func upsert(cursor: FileCursor) throws {
         try database.run(
             """

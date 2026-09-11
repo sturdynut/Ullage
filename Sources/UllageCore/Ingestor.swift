@@ -12,6 +12,7 @@ public struct IngestStats: Equatable {
     public var toolResultsMatched = 0
     public var toolResultsOrphaned = 0
     public var eventsInserted = 0
+    public var sessionEnvSnapshots = 0
     /// A trailing partial line is normal — Claude Code is mid-write.
     public var partialTailBytes = 0
     public var restartedFromZero = 0
@@ -31,6 +32,7 @@ public struct IngestStats: Equatable {
         result.toolResultsMatched += rhs.toolResultsMatched
         result.toolResultsOrphaned += rhs.toolResultsOrphaned
         result.eventsInserted += rhs.eventsInserted
+        result.sessionEnvSnapshots += rhs.sessionEnvSnapshots
         result.partialTailBytes += rhs.partialTailBytes
         result.restartedFromZero += rhs.restartedFromZero
         return result
@@ -45,6 +47,9 @@ public final class Ingestor {
     public let store: Store
     /// Log sink for lines we could not parse. Defaults to silence.
     public var onWarning: ((String) -> Void)?
+    /// Captures the configuration a session ran under, on first sight of that
+    /// session. Set to nil to ingest without touching the rest of the disk.
+    public var environmentProvider: SessionEnvironmentProviding?
 
     /// Per-session bookkeeping carried across files within one process.
     private struct SessionState {
@@ -56,9 +61,16 @@ public final class Ingestor {
     }
 
     private var sessions: [String: SessionState] = [:]
+    /// Sessions this process has already considered for a snapshot, so the
+    /// existence check is one query per session per run rather than per turn.
+    private var snapshottedSessions = Set<String>()
 
-    public init(store: Store) {
+    public init(
+        store: Store,
+        environmentProvider: SessionEnvironmentProviding? = SessionEnvironmentProvider()
+    ) {
         self.store = store
+        self.environmentProvider = environmentProvider
     }
 
     // MARK: - Directory
@@ -219,6 +231,7 @@ public final class Ingestor {
             call.contextDelta = delta
             try store.upsert(call: call)
             stats.callsUpserted += 1
+            if try snapshotEnvironmentIfNeeded(for: parsedCall) { stats.sessionEnvSnapshots += 1 }
             for toolCall in parsedCall.toolCalls {
                 try store.upsert(toolCall: toolCall)
                 stats.toolCallsUpserted += 1
@@ -242,6 +255,24 @@ public final class Ingestor {
                 sessions[event.sessionId, default: SessionState(nextTurnIndex: 0)].compactionPending = true
             }
         }
+    }
+
+    /// Nothing on disk records the configuration a session ran under, and that
+    /// state leaves no history: if we do not capture it on first sight, the
+    /// answer to "why was this session heavy?" is gone for good.
+    private func snapshotEnvironmentIfNeeded(for parsed: ParsedCall) throws -> Bool {
+        guard let environmentProvider else { return false }
+        let sessionId = parsed.call.sessionId
+        guard !snapshottedSessions.contains(sessionId) else { return false }
+        snapshottedSessions.insert(sessionId)
+        guard try !store.hasSessionEnv(sessionId: sessionId) else { return false }
+        let snapshot = environmentProvider.snapshot(
+            sessionId: sessionId,
+            cwd: parsed.call.cwd,
+            claudeVersion: parsed.claudeVersion
+        )
+        try store.upsert(sessionEnv: snapshot)
+        return true
     }
 
     /// Turn index is ours, not the transcript's. It must be stable across
