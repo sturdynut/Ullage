@@ -45,7 +45,7 @@ public enum ParsedLine: Equatable {
 public enum ClaudeCodeParser {
     /// Bump on every parser change. Tells you which rows to distrust after an
     /// upstream format shift.
-    public static let version = 1
+    public static let version = 2
 
     public static func parse(line: Data, context: LineContext) -> ParsedLine? {
         guard !line.isEmpty else { return nil }
@@ -127,7 +127,9 @@ public enum ClaudeCodeParser {
             // Anthropic usage does not break thinking out today; the column is
             // here for vendors that do. Never estimate into it.
             reasoning: JSONAccess.int(usage, "thinking_tokens")
-                ?? JSONAccess.int(usage, "reasoning_output_tokens"),
+                ?? JSONAccess.int(usage, "reasoning_output_tokens")
+                // Observed 2026-09-12: Claude Code 2.1.270 nests it here.
+                ?? JSONAccess.int(JSONAccess.dict(usage, "output_tokens_details"), "thinking_tokens"),
             webSearch: webSearch,
             contextTokens: contextTokens,
             windowLimit: WindowLimits.limit(for: model),

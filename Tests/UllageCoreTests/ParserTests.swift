@@ -165,6 +165,18 @@ final class WindowLimitTests: XCTestCase {
         XCTAssertTrue(WindowLimits.isKnown("claude-sonnet-4-5-20250929"))
     }
 
+    func testClaude5FamilyIsOneMillionWithoutASuffix() {
+        // docs/OBSERVED-FORMAT.md, "Window limits": plain ids ran past 200k on disk.
+        for model in ["claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-fable-5-1", "claude-opus-4-8"] {
+            XCTAssertEqual(WindowLimits.limit(for: model), 1_000_000, model)
+            XCTAssertTrue(WindowLimits.isKnown(model), model)
+        }
+        // Longest prefix: fable-5-1 must not fall through to fable-5's entry by
+        // accident, and haiku stays at 200k.
+        XCTAssertEqual(WindowLimits.limit(for: "claude-fable-5-1"), 1_000_000)
+        XCTAssertEqual(WindowLimits.limit(for: "claude-haiku-4-5-20251001"), 200_000)
+    }
+
     func testBracketedWindowSuffixWins() {
         XCTAssertEqual(WindowLimits.limit(for: "claude-sonnet-4-5-20250929[1m]"), 1_000_000)
         XCTAssertEqual(WindowLimits.limit(for: "claude-sonnet-4-5-20250929[200k]"), 200_000)

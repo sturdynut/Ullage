@@ -88,7 +88,9 @@ func relative(_ seconds: TimeInterval) -> String {
 /// Left-aligned, truncated with a marker so a clipped name never reads as a
 /// complete one.
 func pad(_ text: String, _ width: Int) -> String {
-    if text.count > width { return String(text.prefix(width - 1)) + "…" }
+    // `>=` and a trailing space: a value that exactly fills the column, or is
+    // clipped to fill it, would otherwise run straight into the next column.
+    if text.count >= width { return String(text.prefix(width - 2)) + "… " }
     return text + String(repeating: " ", count: width - text.count)
 }
 
