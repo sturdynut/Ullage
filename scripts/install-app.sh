@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Build the menu bar app, wrap it in a .app bundle, and install it.
+#
+#   scripts/install-app.sh            -> /Applications/Ullage.app
+#   scripts/install-app.sh ~/Applications
+#
+# SwiftPM produces a bare executable; macOS needs a bundle for a menu bar item
+# (LSUIElement hides the Dock icon) and for the bundle identifier the collector
+# already keys its Application Support directory on. The signature is ad hoc:
+# this is a local build of an unsandboxed tool, not a distributed app.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+DEST_DIR="${1:-/Applications}"
+APP="$DEST_DIR/Ullage.app"
+VERSION="$(git describe --tags --always 2>/dev/null || echo dev)"
+
+swift build -c release --product UllageApp
+
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$STAGE/Ullage.app/Contents/MacOS"
+cp .build/release/UllageApp "$STAGE/Ullage.app/Contents/MacOS/UllageApp"
+cat > "$STAGE/Ullage.app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>            <string>Ullage</string>
+  <key>CFBundleDisplayName</key>     <string>Ullage</string>
+  <key>CFBundleIdentifier</key>      <string>com.sturdynut.ullage</string>
+  <key>CFBundleExecutable</key>      <string>UllageApp</string>
+  <key>CFBundlePackageType</key>     <string>APPL</string>
+  <key>CFBundleShortVersionString</key> <string>${VERSION}</string>
+  <key>CFBundleVersion</key>         <string>${VERSION}</string>
+  <key>LSMinimumSystemVersion</key>  <string>14.0</string>
+  <key>LSUIElement</key>             <true/>
+  <key>NSHumanReadableCopyright</key> <string></string>
+</dict>
+</plist>
+PLIST
+codesign --force --sign - "$STAGE/Ullage.app" >/dev/null
+
+# Quit a running copy so the new one is what launches next.
+osascript -e 'tell application id "com.sturdynut.ullage" to quit' >/dev/null 2>&1 || true
+rm -rf "$APP"
+mkdir -p "$DEST_DIR"
+cp -R "$STAGE/Ullage.app" "$APP"
+echo "installed $APP ($VERSION)"
+echo "launch:  open '$APP'"
+echo "login item: System Settings > General > Login Items, add Ullage"

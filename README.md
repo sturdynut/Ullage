@@ -16,7 +16,7 @@ SQLite database.
 | M2 | Ingest CLI | done |
 | M2.5 | Backfill + `session_env` snapshot | done |
 | M3 | Tailer — FSEvents on macOS, polling elsewhere | done |
-| M4 | Menu bar item | done, **not yet run on a Mac** |
+| M4 | Menu bar item | done, running |
 
 56 tests, all green on Linux. The collector, the CLI and every display rule are
 covered; the two macOS-only pieces (the FSEvents watcher and the SwiftUI views)
@@ -60,9 +60,14 @@ swift test
 ### The menu bar app
 
 ```bash
-open Package.swift        # opens the package in Xcode
-# select the UllageApp scheme, then Run
+scripts/install-app.sh    # builds, wraps in Ullage.app, installs to /Applications
+open /Applications/Ullage.app
 ```
+
+Pass a directory to install elsewhere (`scripts/install-app.sh ~/Applications`).
+To have it start at login, add Ullage under System Settings > General > Login
+Items. For development, `open Package.swift` and run the UllageApp scheme in
+Xcode instead.
 
 It shows `72%`, or `72% ⚠︎` above 85%, or a dimmed `circle.dotted` glyph when
 nothing has happened for 30 minutes — a number that looks live but is four
