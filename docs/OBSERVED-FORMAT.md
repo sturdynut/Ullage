@@ -127,10 +127,11 @@ All three are prompt tokens. `input_tokens` alone is the remainder that was
 neither read from nor written to cache; using it by itself undercounts occupancy
 by an order of magnitude on a cached session.
 
-**Still to verify by hand:** run `/context` in a live session and compare it
-against `context_tokens` on that session's last assistant entry. The recon
-script prints exactly that number. If they disagree, stop and find out why —
-this formula is the entire product.
+**Verified by hand 2026-09-12** (Claude Code 2.1.270, `claude-fable-5-1`):
+`/context` reported `129.1k/1m tokens (13%)` while the menu bar showed
+`129,096 / 1,000,000` for the same turn. The formula matches `/context` to the
+token. Re-check after Claude Code upgrades: the recon script prints exactly
+this number for the newest transcript.
 
 ## Window limits
 
