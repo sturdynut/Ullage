@@ -11,7 +11,7 @@ SQLite database.
 
 | Slice | What it is | State |
 |---|---|---|
-| M0 | Reconnaissance against real transcripts | **tooling ready, not run** — see below |
+| M0 | Reconnaissance against real transcripts | done 2026-09-12, see `docs/OBSERVED-FORMAT.md` |
 | M1 | Parser + schema, including tool calls and the cross-line `tool_result` join | done |
 | M2 | Ingest CLI | done |
 | M2.5 | Backfill + `session_env` snapshot | done |
