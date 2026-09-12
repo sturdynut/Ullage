@@ -1,0 +1,868 @@
+<title>Ullage Menu Bar Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    /* Cask palette: the neutral leans cool-slate, the accent is brass — the
+       liquid in the vessel. Ullage is the headroom above it. */
+    --ground: #e9eaec;
+    --ground-deep: #dcdee1;
+    --surface: #ffffff;
+    --surface-sunk: #f2f3f5;
+    --ink: #14181c;
+    --ink-soft: #4a535c;
+    --ink-faint: #838d97;
+    --rule: #cdd1d6;
+    --rule-soft: #e0e3e7;
+    --brass: #9a6c1c;
+    --brass-bright: #b98a2c;
+    --alarm: #b23a22;
+    --menu-surface: #f7f7f8;
+    --menu-rule: #d8d9dc;
+    --menu-ink: #16191d;
+    --menu-ink-dim: #7b838c;
+    --menu-select: #2f6fd0;
+    --bar-chrome: rgba(246,246,247,0.82);
+    --bar-ink: #1b1f24;
+    --desk: linear-gradient(118deg, #4b5a68 0%, #6d7c86 42%, #97a0a2 100%);
+    --shadow-menu: 0 1px 2px rgba(12,16,20,0.16), 0 14px 38px rgba(12,16,20,0.26);
+    --term-bg: #15191d;
+    --term-ink: #d3d9de;
+    --system: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Segoe UI, sans-serif;
+    --serif: "Newsreader", Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #101418;
+      --ground-deep: #0a0d10;
+      --surface: #191e24;
+      --surface-sunk: #14191e;
+      --ink: #e4e8ec;
+      --ink-soft: #a3adb7;
+      --ink-faint: #6f7982;
+      --rule: #2b333b;
+      --rule-soft: #222932;
+      --brass: #d9a441;
+      --brass-bright: #eebd63;
+      --alarm: #e4694c;
+      --menu-surface: #2a2d31;
+      --menu-rule: #3c4045;
+      --menu-ink: #edeff1;
+      --menu-ink-dim: #9aa2aa;
+      --menu-select: #3b7ee0;
+      --bar-chrome: rgba(30,33,37,0.86);
+      --bar-ink: #e6e9ec;
+      --desk: linear-gradient(118deg, #1d262f 0%, #2d3a44 45%, #414d52 100%);
+      --shadow-menu: 0 1px 2px rgba(0,0,0,0.5), 0 18px 44px rgba(0,0,0,0.55);
+      --term-bg: #0c0f12;
+      --term-ink: #cfd6dc;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #101418;
+    --ground-deep: #0a0d10;
+    --surface: #191e24;
+    --surface-sunk: #14191e;
+    --ink: #e4e8ec;
+    --ink-soft: #a3adb7;
+    --ink-faint: #6f7982;
+    --rule: #2b333b;
+    --rule-soft: #222932;
+    --brass: #d9a441;
+    --brass-bright: #eebd63;
+    --alarm: #e4694c;
+    --menu-surface: #2a2d31;
+    --menu-rule: #3c4045;
+    --menu-ink: #edeff1;
+    --menu-ink-dim: #9aa2aa;
+    --menu-select: #3b7ee0;
+    --bar-chrome: rgba(30,33,37,0.86);
+    --bar-ink: #e6e9ec;
+    --desk: linear-gradient(118deg, #1d262f 0%, #2d3a44 45%, #414d52 100%);
+    --shadow-menu: 0 1px 2px rgba(0,0,0,0.5), 0 18px 44px rgba(0,0,0,0.55);
+    --term-bg: #0c0f12;
+    --term-ink: #cfd6dc;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 940px;
+    margin: 0 auto;
+    padding-inline: 22px;
+    padding-block: 44px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 46px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(34px, 6vw, 52px);
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  .standfirst { margin: 0; max-width: 62ch; color: var(--ink-soft); font-size: 18px; }
+  .standfirst em { font-style: italic; color: var(--ink); }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+
+  /* ---- state switcher ---- */
+  .states { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .state-btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    padding: 7px 13px;
+    border-radius: 999px;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: border-color .12s ease, color .12s ease, background .12s ease;
+  }
+  .state-btn:hover { border-color: var(--ink-faint); color: var(--ink); }
+  .state-btn[aria-pressed="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--ground);
+  }
+  .state-btn:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  /* ---- the stage: a slice of desktop ---- */
+  .stage {
+    background: var(--desk);
+    border-radius: 12px;
+    padding: 0 0 302px;
+    overflow: hidden;
+    border: 1px solid var(--rule);
+    position: relative;
+  }
+  .menubar {
+    height: 30px;
+    background: var(--bar-chrome);
+    backdrop-filter: blur(14px);
+    display: flex;
+    align-items: center;
+    gap: 17px;
+    padding: 0 12px;
+    font-family: var(--system);
+    font-size: 13px;
+    color: var(--bar-ink);
+    white-space: nowrap;
+  }
+  .menubar .app-name { font-weight: 600; }
+  .menubar .left { display: flex; align-items: center; gap: 17px; overflow: hidden; }
+  .menubar .right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .menubar .dim { color: var(--bar-ink); opacity: .82; }
+
+  /* our status item, highlighted the way macOS highlights an open extra */
+  .status-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 5px;
+    background: var(--menu-select);
+    color: #fff;
+    font-family: var(--system);
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .status-item svg { display: block; }
+
+  /* ---- the menu ---- */
+  .menu {
+    position: absolute;
+    top: 34px;
+    right: 18px;
+    width: 322px;
+    background: var(--menu-surface);
+    border: 1px solid var(--menu-rule);
+    border-radius: 10px;
+    box-shadow: var(--shadow-menu);
+    padding: 5px 0;
+    font-family: var(--system);
+    font-size: 13px;
+    color: var(--menu-ink);
+  }
+  .menu-row {
+    padding: 4px 12px;
+    display: block;
+    color: var(--menu-ink-dim);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .menu-row.note { color: var(--menu-ink-dim); font-style: normal; }
+  .menu-action {
+    padding: 4px 12px;
+    color: var(--menu-ink);
+    border-radius: 5px;
+    margin: 0 5px;
+    cursor: default;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .menu-action:hover { background: var(--menu-select); color: #fff; }
+  .menu-action .key { opacity: .7; }
+  .menu-sep { height: 1px; background: var(--menu-rule); margin: 5px 0; }
+  .caption {
+    font-size: 14px;
+    color: var(--ink-soft);
+    margin: 14px 0 0;
+    max-width: 68ch;
+  }
+  .caption code, .inline-code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--surface-sunk);
+    border: 1px solid var(--rule-soft);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  /* ---- the gauge: used vs ullage ---- */
+  .gauge-card {
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
+    border-radius: 10px;
+    padding: 22px;
+  }
+  .gauge-nums { display: flex; flex-wrap: wrap; gap: 28px; margin-bottom: 18px; }
+  .gauge-num .label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 3px;
+  }
+  .gauge-num .value {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .gauge-num .value.brass { color: var(--brass); }
+  .gauge-num .value.alarm { color: var(--alarm); }
+  .track {
+    position: relative;
+    height: 30px;
+    background: var(--surface-sunk);
+    border: 1px solid var(--rule-soft);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(180deg, var(--brass-bright), var(--brass));
+    transition: width .35s cubic-bezier(.22,.61,.36,1), background .2s ease;
+  }
+  .fill.warn { background: linear-gradient(180deg, var(--alarm), var(--alarm)); }
+  .gauge-scale { position: relative; }
+  .threshold {
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 85%;
+    width: 1px;
+    background: var(--ink-faint);
+    opacity: .55;
+  }
+  .threshold-label {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 85%;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+    letter-spacing: .06em;
+    white-space: nowrap;
+  }
+  .threshold-label::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 1px);
+    width: 1px;
+    height: 5px;
+    background: var(--ink-faint);
+    opacity: .55;
+  }
+  .track-foot {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 26px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+
+
+  /* ---- time series ---- */
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
+    border-radius: 10px;
+    padding: 20px 20px 16px;
+    --viz-line: #9a6c1c;
+    --viz-line-warn: #b23a22;
+    --viz-fill: rgba(154,108,28,0.13);
+    --viz-fill-warn: rgba(178,58,34,0.13);
+    --viz-grid: var(--rule-soft);
+    --viz-axis: var(--ink-faint);
+    --viz-rule: var(--ink-faint);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .chart-card {
+      --viz-line: #bb8a36;
+      --viz-line-warn: #cf6b45;
+      --viz-fill: rgba(187,138,54,0.16);
+      --viz-fill-warn: rgba(207,107,69,0.16);
+    }
+  }
+  :root[data-theme="dark"] .chart-card {
+    --viz-line: #bb8a36;
+    --viz-line-warn: #cf6b45;
+    --viz-fill: rgba(187,138,54,0.16);
+    --viz-fill-warn: rgba(207,107,69,0.16);
+  }
+  .chart-head { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; margin-bottom: 16px; }
+  .chart-head h3 { margin: 0; font-family: var(--serif); font-weight: 400; font-size: 21px; letter-spacing: -0.01em; }
+  .chart-head .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .04em; }
+  .chart-holder { position: relative; }
+  .chart-holder svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+  .viz-grid-line { stroke: var(--viz-grid); stroke-width: 1; }
+  .viz-axis-text { fill: var(--viz-axis); font-family: var(--mono); font-size: 10px; letter-spacing: .04em; }
+  .viz-label { fill: var(--ink-soft); font-family: var(--mono); font-size: 10.5px; }
+  .viz-label-warn { fill: var(--viz-line-warn); font-family: var(--mono); font-size: 10.5px; font-weight: 600; }
+  .viz-event-line { stroke: var(--viz-rule); stroke-width: 1; stroke-dasharray: 3 3; opacity: .75; }
+  .viz-crosshair { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 2 3; }
+  .tip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--menu-surface);
+    border: 1px solid var(--menu-rule);
+    border-radius: 7px;
+    box-shadow: var(--shadow-menu);
+    padding: 9px 11px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: var(--menu-ink);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity .1s ease;
+    z-index: 3;
+  }
+  .tip.on { opacity: 1; }
+  .tip .tip-pct { font-size: 15px; font-weight: 600; }
+  .tip .tip-dim { color: var(--menu-ink-dim); }
+  .chart-key { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+  .chart-key span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 14px; height: 3px; border-radius: 2px; background: var(--viz-line); flex: none; }
+  .swatch.warn { background: var(--viz-line-warn); }
+  .swatch.dash { height: 0; border-top: 1px dashed var(--viz-rule); background: none; }
+  details.table-view { margin-top: 16px; }
+  details.table-view summary {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-faint); cursor: pointer; padding: 6px 0;
+  }
+  details.table-view summary:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  .table-scroll { overflow-x: auto; max-height: 300px; overflow-y: auto; border: 1px solid var(--rule-soft); border-radius: 6px; }
+  table.series { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 11.5px; }
+  table.series th, table.series td { padding: 5px 10px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.series th { position: sticky; top: 0; background: var(--surface-sunk); color: var(--ink-faint); font-weight: 500; text-align: right; }
+  table.series td:first-child, table.series th:first-child, table.series td:last-child, table.series th:last-child { text-align: left; }
+  table.series tr + tr td { border-top: 1px solid var(--rule-soft); }
+  table.series td { color: var(--ink-soft); }
+
+  /* ---- terminal ---- */
+  .terminal {
+    background: var(--term-bg);
+    color: var(--term-ink);
+    border-radius: 10px;
+    border: 1px solid var(--rule);
+    overflow-x: auto;
+  }
+  .terminal pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.75;
+    margin: 0;
+    padding: 18px 20px;
+  }
+  .terminal .prompt { color: #8fb8a0; }
+  .terminal .pct { color: #e3b45a; }
+  .terminal .pct.warn { color: #e58467; }
+  .terminal .muted { color: #7c858d; }
+
+  /* ---- honesty panel ---- */
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1px; background: var(--rule-soft); border: 1px solid var(--rule-soft); border-radius: 10px; overflow: hidden; }
+  .fact { background: var(--surface); padding: 18px 20px; }
+  .fact h3 {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    margin: 0 0 8px;
+    color: var(--ink-faint);
+  }
+  .fact p { margin: 0; font-size: 15px; color: var(--ink-soft); }
+  .fact.verified h3 { color: var(--brass); }
+  .fact.open h3 { color: var(--alarm); }
+  footer { color: var(--ink-faint); font-size: 14px; border-top: 1px solid var(--rule-soft); padding-top: 18px; }
+
+  @media (max-width: 560px) {
+    .menu { right: 10px; width: min(300px, calc(100% - 20px)); }
+    .stage { padding-bottom: 296px; }
+    .menubar .left { gap: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Preview · rendered mockup, not a screenshot</p>
+    <h1>Ullage in the menu bar</h1>
+    <p class="standfirst"><em>Ullage</em> is the empty space left in a cask — the headroom above the liquid. This is what the app puts in your menu bar: how full the context window of your most recently active Claude&nbsp;Code session is, updating within about two seconds of a turn finishing.</p>
+  </header>
+
+  <section>
+    <h2>The four states</h2>
+    <div class="states" role="group" aria-label="Menu bar state">
+      <button class="state-btn" id="btn-live" data-state="live" aria-pressed="true">Live · 72%</button>
+      <button class="state-btn" id="btn-warning" data-state="warning" aria-pressed="false">Warning · 86%</button>
+      <button class="state-btn" id="btn-idle" data-state="idle" aria-pressed="false">Idle</button>
+      <button class="state-btn" id="btn-empty" data-state="empty" aria-pressed="false">Nothing ingested</button>
+    </div>
+
+    <div class="stage">
+      <div class="menubar">
+        <div class="left">
+          <span class="app-name">Xcode</span>
+          <span class="dim">File</span>
+          <span class="dim">Edit</span>
+          <span class="dim">View</span>
+          <span class="dim">Product</span>
+        </div>
+        <div class="right">
+          <span class="status-item" id="status-item"><span id="status-title">72%</span></span>
+          <span class="dim" aria-hidden="true" title="Wi-Fi"><svg width="15" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.4 4.2a9.5 9.5 0 0 1 13.2 0"/><path d="M4 6.9a5.9 5.9 0 0 1 8 0"/><circle cx="8" cy="10" r=".9" fill="currentColor" stroke="none"/></svg></span>
+          <span class="dim">100%</span>
+          <span class="dim">Fri 12 Sep 04:19</span>
+        </div>
+      </div>
+
+      <div class="menu" id="menu" role="presentation"></div>
+    </div>
+
+    <p class="caption">Every string here comes from the code that exists: the title from <code>MenuBarFormatter</code>, the rows from <code>MenuContent</code>. The greyed rows are greyed for a real reason — plain <code>Text</code> in a SwiftUI menu renders as a disabled item; only the three buttons at the bottom are clickable.</p>
+  </section>
+
+  <section>
+    <h2>What the number means</h2>
+    <div class="gauge-card">
+      <div class="gauge-nums">
+        <div class="gauge-num">
+          <span class="label">Context in use</span>
+          <span class="value brass" id="g-used">144,000</span>
+        </div>
+        <div class="gauge-num">
+          <span class="label">Ullage — headroom left</span>
+          <span class="value" id="g-free">56,000</span>
+        </div>
+        <div class="gauge-num">
+          <span class="label">Window</span>
+          <span class="value" id="g-window">200,000</span>
+        </div>
+        <div class="gauge-num">
+          <span class="label">Change this turn</span>
+          <span class="value" id="g-delta">+508</span>
+        </div>
+      </div>
+      <div class="gauge-scale">
+        <div class="track">
+          <div class="fill" id="g-fill" style="width:72%"></div>
+          <div class="threshold"></div>
+        </div>
+        <span class="threshold-label">85% · warn</span>
+      </div>
+      <div class="track-foot">
+        <span>0</span>
+        <span id="g-limit-label">200,000 tokens</span>
+      </div>
+      <p class="caption" style="margin-top:18px">Occupancy is <span class="inline-code">input + cache_creation + cache_read</span> over the model's window. All three are prompt tokens; <span class="inline-code">input_tokens</span> alone is only the uncached remainder, which on a warm session undercounts by an order of magnitude. Percentages are floored, so 99.6% never shows as full.</p>
+    </div>
+  </section>
+
+
+  <section>
+    <h2>The same window over two hours</h2>
+    <div class="chart-card">
+      <div class="chart-head">
+        <h3>Context occupancy, turn by turn</h3>
+        <span class="meta">SESSION 9f2c1e44 · 48 TURNS · CLAUDE-SONNET-4-5 · 200,000 WINDOW</span>
+      </div>
+      <div class="chart-holder" id="chart-holder">
+        <div class="tip" id="tip" role="status" aria-live="polite"></div>
+      </div>
+      <div class="chart-key">
+        <span><i class="swatch"></i> occupancy</span>
+        <span><i class="swatch warn"></i> past the 85% warning line</span>
+        <span><i class="swatch dash"></i> compaction boundary</span>
+        <span>lower strip: tokens added per turn</span>
+      </div>
+      <details class="table-view">
+        <summary>Table view · 48 rows</summary>
+        <div class="table-scroll"><table class="series" id="series-table"></table></div>
+      </details>
+    </div>
+    <p class="caption">These are rows out of the database, not drawn numbers: a session was ingested through the real parser, and the chart reads <code>ts</code>, <code>context_tokens</code> and <code>context_delta</code> straight from the <code>call</code> table. The cliff at 10:26 is why the <code>event</code> table exists — occupancy falls from 87% to 14% between two adjacent turns, and without the marker that reads as a bug rather than as the moment the session forgot. The line breaks there because <code>context_delta</code> is NULL by design across a compaction.</p>
+    <p class="caption"><strong>Not shipped.</strong> Charts are an explicit non-goal for v1 — the menu bar renders one number. Everything needed to draw this is already in the schema, so it stays a later addition rather than a rewrite.</p>
+  </section>
+
+  <section>
+    <h2>The same thing without a UI</h2>
+    <div class="terminal">
+<pre><span class="prompt">$</span> ullage watch
+watching ~/.claude/projects  (ctrl-c to stop)
+<span class="muted">[23:02:41.923]</span> <span class="pct">0%</span>         other  1,210 ctx    live-ses
+<span class="muted">[23:02:43.922]</span> <span class="pct">10%</span>        other  21,810 ctx   +20,600  live-ses
+<span class="muted">[23:02:45.922]</span> <span class="pct">30%</span>        other  60,910 ctx   +39,100  live-ses
+<span class="muted">[23:02:47.923]</span> <span class="pct warn">89% &#9888;&#65038;</span>     other  179,010 ctx  +118,100  live-ses</pre>
+    </div>
+    <p class="caption">That is real captured output, not a mock-up: <code>ullage watch</code> prints exactly what the menu bar would be showing, once per completed turn. It is how the whole path was verified without a Mac.</p>
+  </section>
+
+  <section>
+    <h2>How much of this is real</h2>
+    <div class="facts">
+      <div class="fact verified">
+        <h3>Verified by running it</h3>
+        <p>Parsing, the token formula, the SQLite store, idempotent re-ingest, partial-line handling, live tailing, and every display rule above — 56 passing tests plus hands-on runs.</p>
+      </div>
+      <div class="fact open">
+        <h3>Never compiled</h3>
+        <p>The FSEvents watcher and the SwiftUI views are macOS-only and were written on Linux. This page is an HTML rendering of that code's intent, not a photograph of it running.</p>
+      </div>
+      <div class="fact open">
+        <h3>Still to confirm</h3>
+        <p>Field names came from the plan, not from your disk. Run <code>scripts/recon.sh</code> and compare <code>/context</code> in a live session before trusting a single row.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p style="margin:0">Ullage · pull request #1 on sturdynut/Ullage · the number tracks the most recently active session, goes quiet after 30 minutes of silence, and warns past 85%.</p>
+  </footer>
+</div>
+
+<script>
+  const IDLE_GLYPH = '<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="1.6 2.6"/></svg>';
+
+  const STATES = {
+    live: {
+      title: '72%',
+      used: 144000, window: 200000, delta: 508,
+      rows: [
+        ['Project: proj'],
+        ['Context: 144,000 / 200,000  (72%)'],
+        ['Last turn: +508'],
+        ['Model: claude-sonnet-4-5-20250929'],
+        ['Session: sess-abc'],
+        ['Last turn at 12:00:20']
+      ]
+    },
+    warning: {
+      title: '86% ⚠︎',
+      used: 172510, window: 200000, delta: 30500,
+      rows: [
+        ['Project: proj'],
+        ['Context: 172,510 / 200,000  (86%)'],
+        ['Last turn: +30,500'],
+        ['Model: claude-sonnet-4-5-20250929'],
+        ['Session: sess-abc'],
+        ['Last turn at 23:02:39']
+      ]
+    },
+    idle: {
+      title: null,
+      used: 144000, window: 200000, delta: 508, dim: true,
+      rows: [
+        ['Idle — no activity in the last 30 minutes', 'note'],
+        ['Project: proj'],
+        ['Context: 144,000 / 200,000  (72%)'],
+        ['Last turn: +508'],
+        ['Model: claude-sonnet-4-5-20250929'],
+        ['Session: sess-abc'],
+        ['Last turn at 09:41:07']
+      ]
+    },
+    empty: {
+      title: null,
+      used: 0, window: 0, delta: null,
+      rows: [['No sessions ingested yet', 'note']]
+    }
+  };
+
+  const ACTIONS = [
+    ['Refresh now', ''],
+    ['Reveal database in Finder', ''],
+    ['SEP', ''],
+    ['Quit Ullage', '⌘Q']
+  ];
+
+  const fmt = n => n.toLocaleString('en-US');
+  const menu = document.getElementById('menu');
+  const statusTitle = document.getElementById('status-title');
+
+  function render(key) {
+    const s = STATES[key];
+
+    statusTitle.innerHTML = s.title === null ? IDLE_GLYPH : s.title;
+
+    let html = '';
+    for (const [text, kind] of s.rows) {
+      html += '<span class="menu-row' + (kind ? ' ' + kind : '') + '">' + text + '</span>';
+    }
+    html += '<div class="menu-sep"></div>';
+    for (const [label, key2] of ACTIONS) {
+      html += label === 'SEP'
+        ? '<div class="menu-sep"></div>'
+        : '<div class="menu-action"><span>' + label + '</span><span class="key">' + key2 + '</span></div>';
+    }
+    menu.innerHTML = html;
+
+    const pct = s.window ? s.used / s.window : 0;
+    document.getElementById('g-used').textContent = s.window ? fmt(s.used) : '—';
+    document.getElementById('g-free').textContent = s.window ? fmt(s.window - s.used) : '—';
+    document.getElementById('g-window').textContent = s.window ? fmt(s.window) : '—';
+    document.getElementById('g-delta').textContent =
+      s.delta === null ? '—' : (s.delta >= 0 ? '+' : '') + fmt(s.delta);
+    document.getElementById('g-limit-label').textContent = s.window ? fmt(s.window) + ' tokens' : 'no window known';
+
+    const fill = document.getElementById('g-fill');
+    fill.style.width = (pct * 100) + '%';
+    fill.classList.toggle('warn', pct >= 0.85);
+    document.getElementById('g-used').className = 'value ' + (pct >= 0.85 ? 'alarm' : 'brass');
+
+    for (const btn of document.querySelectorAll('.state-btn')) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.state === key));
+    }
+  }
+
+  for (const btn of document.querySelectorAll('.state-btn')) {
+    btn.addEventListener('click', () => render(btn.dataset.state));
+  }
+  render('live');
+</script>
+
+<script>
+  const VIZ = {"series":[{"turn":0,"ts":"2026-09-12T09:14:00.000Z","ctx":2362,"limit":200000,"delta":null,"tools":["Skill","Grep"]},{"turn":1,"ts":"2026-09-12T09:16:35.000Z","ctx":14091,"limit":200000,"delta":11729,"tools":["Bash","Read","Grep"]},{"turn":2,"ts":"2026-09-12T09:18:15.000Z","ctx":16757,"limit":200000,"delta":2666,"tools":["mcp__github__get_pull_request","Grep"]},{"turn":3,"ts":"2026-09-12T09:21:09.000Z","ctx":19780,"limit":200000,"delta":3023,"tools":[]},{"turn":4,"ts":"2026-09-12T09:22:51.000Z","ctx":21480,"limit":200000,"delta":1700,"tools":[]},{"turn":5,"ts":"2026-09-12T09:24:29.000Z","ctx":37520,"limit":200000,"delta":16040,"tools":["Task","Grep"]},{"turn":6,"ts":"2026-09-12T09:27:25.000Z","ctx":38854,"limit":200000,"delta":1334,"tools":["Skill"]},{"turn":7,"ts":"2026-09-12T09:30:23.000Z","ctx":41312,"limit":200000,"delta":2458,"tools":["mcp__github__get_pull_request"]},{"turn":8,"ts":"2026-09-12T09:32:30.000Z","ctx":43675,"limit":200000,"delta":2363,"tools":["Grep"]},{"turn":9,"ts":"2026-09-12T09:35:17.000Z","ctx":45802,"limit":200000,"delta":2127,"tools":[]},{"turn":10,"ts":"2026-09-12T09:37:41.000Z","ctx":47161,"limit":200000,"delta":1359,"tools":[]},{"turn":11,"ts":"2026-09-12T09:39:43.000Z","ctx":59239,"limit":200000,"delta":12078,"tools":["Read"]},{"turn":12,"ts":"2026-09-12T09:42:11.000Z","ctx":61722,"limit":200000,"delta":2483,"tools":[]},{"turn":13,"ts":"2026-09-12T09:45:25.000Z","ctx":73473,"limit":200000,"delta":11751,"tools":["Glob","Bash","Read"]},{"turn":14,"ts":"2026-09-12T09:47:31.000Z","ctx":85554,"limit":200000,"delta":12081,"tools":["Edit","Read","mcp__github__get_pull_request"]},{"turn":15,"ts":"2026-09-12T09:49:30.000Z","ctx":101937,"limit":200000,"delta":16383,"tools":["Grep","Task"]},{"turn":16,"ts":"2026-09-12T09:51:19.000Z","ctx":103249,"limit":200000,"delta":1312,"tools":["mcp__github__get_pull_request","Edit"]},{"turn":17,"ts":"2026-09-12T09:53:20.000Z","ctx":106321,"limit":200000,"delta":3072,"tools":["mcp__github__get_pull_request"]},{"turn":18,"ts":"2026-09-12T09:55:07.000Z","ctx":107930,"limit":200000,"delta":1609,"tools":[]},{"turn":19,"ts":"2026-09-12T09:57:15.000Z","ctx":110835,"limit":200000,"delta":2905,"tools":[]},{"turn":20,"ts":"2026-09-12T10:00:36.000Z","ctx":112291,"limit":200000,"delta":1456,"tools":["mcp__github__get_pull_request"]},{"turn":21,"ts":"2026-09-12T10:03:25.000Z","ctx":124161,"limit":200000,"delta":11870,"tools":["Grep","Read","Glob"]},{"turn":22,"ts":"2026-09-12T10:06:01.000Z","ctx":126260,"limit":200000,"delta":2099,"tools":["Bash","mcp__github__get_pull_request"]},{"turn":23,"ts":"2026-09-12T10:08:05.000Z","ctx":141457,"limit":200000,"delta":15197,"tools":["Grep","Task"]},{"turn":24,"ts":"2026-09-12T10:10:05.000Z","ctx":142934,"limit":200000,"delta":1477,"tools":["mcp__github__get_pull_request","Grep","Glob"]},{"turn":25,"ts":"2026-09-12T10:12:45.000Z","ctx":145775,"limit":200000,"delta":2841,"tools":["Grep"]},{"turn":26,"ts":"2026-09-12T10:15:13.000Z","ctx":148149,"limit":200000,"delta":2374,"tools":["Skill","Bash"]},{"turn":27,"ts":"2026-09-12T10:17:17.000Z","ctx":149893,"limit":200000,"delta":1744,"tools":["Edit","Bash"]},{"turn":28,"ts":"2026-09-12T10:19:26.000Z","ctx":151321,"limit":200000,"delta":1428,"tools":["Skill","Edit"]},{"turn":29,"ts":"2026-09-12T10:22:08.000Z","ctx":163170,"limit":200000,"delta":11849,"tools":["Bash","Read"]},{"turn":30,"ts":"2026-09-12T10:25:16.000Z","ctx":174325,"limit":200000,"delta":11155,"tools":["Bash","Glob","Read"]},{"turn":31,"ts":"2026-09-12T10:27:53.000Z","ctx":27427,"limit":200000,"delta":null,"tools":["Edit","Grep","Read"]},{"turn":32,"ts":"2026-09-12T10:29:37.000Z","ctx":37445,"limit":200000,"delta":10018,"tools":["Task","Skill"]},{"turn":33,"ts":"2026-09-12T10:31:22.000Z","ctx":39228,"limit":200000,"delta":1783,"tools":["Edit","mcp__github__get_pull_request"]},{"turn":34,"ts":"2026-09-12T10:34:16.000Z","ctx":40176,"limit":200000,"delta":948,"tools":["mcp__github__get_pull_request","Glob"]},{"turn":35,"ts":"2026-09-12T10:37:12.000Z","ctx":41619,"limit":200000,"delta":1443,"tools":[]},{"turn":36,"ts":"2026-09-12T10:39:36.000Z","ctx":43633,"limit":200000,"delta":2014,"tools":["Skill","Grep","mcp__github__get_pull_request"]},{"turn":37,"ts":"2026-09-12T10:42:27.000Z","ctx":45521,"limit":200000,"delta":1888,"tools":[]},{"turn":38,"ts":"2026-09-12T10:45:31.000Z","ctx":47467,"limit":200000,"delta":1946,"tools":[]},{"turn":39,"ts":"2026-09-12T10:48:30.000Z","ctx":55533,"limit":200000,"delta":8066,"tools":["Glob","Read"]},{"turn":40,"ts":"2026-09-12T10:50:26.000Z","ctx":57464,"limit":200000,"delta":1931,"tools":["Skill"]},{"turn":41,"ts":"2026-09-12T10:53:26.000Z","ctx":59679,"limit":200000,"delta":2215,"tools":["Grep"]},{"turn":42,"ts":"2026-09-12T10:55:50.000Z","ctx":70016,"limit":200000,"delta":10337,"tools":["Task"]},{"turn":43,"ts":"2026-09-12T10:58:09.000Z","ctx":72378,"limit":200000,"delta":2362,"tools":[]},{"turn":44,"ts":"2026-09-12T11:01:29.000Z","ctx":74219,"limit":200000,"delta":1841,"tools":["Edit"]},{"turn":45,"ts":"2026-09-12T11:03:56.000Z","ctx":84790,"limit":200000,"delta":10571,"tools":["Skill","Task"]},{"turn":46,"ts":"2026-09-12T11:05:40.000Z","ctx":86282,"limit":200000,"delta":1492,"tools":[]},{"turn":47,"ts":"2026-09-12T11:08:41.000Z","ctx":96838,"limit":200000,"delta":10556,"tools":["Task"]}],"events":[{"ts":"2026-09-12T10:26:53.000Z","kind":"compaction","detail":{"preTokens":174325,"trigger":"auto"}}]};
+
+  (function () {
+    const holder = document.getElementById('chart-holder');
+    const tip = document.getElementById('tip');
+    const rows = VIZ.series.map(d => ({ ...d, t: Date.parse(d.ts) }));
+    const events = VIZ.events.map(e => ({ ...e, t: Date.parse(e.ts) }));
+    const WINDOW = rows[0].limit || 200000;
+    const WARN = 0.85;
+    const t0 = rows[0].t, t1 = rows[rows.length - 1].t;
+    const maxDelta = Math.max(...rows.map(d => d.delta || 0));
+    const peak = rows.reduce((a, b) => (b.ctx > a.ctx ? b : a));
+    const fmt = n => n.toLocaleString('en-US');
+    const clock = t => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+
+    let geom = null;
+
+    function draw() {
+      const w = Math.max(300, holder.clientWidth);
+      const narrow = w < 520;
+      const padL = narrow ? 36 : 46, padR = 14, padT = 18;
+      const plotH = narrow ? 150 : 200;
+      const stripH = narrow ? 40 : 54;
+      const gap = 10, axisH = 22;
+      const h = padT + plotH + gap + stripH + axisH;
+      const plotW = w - padL - padR;
+
+      const x = t => padL + ((t - t0) / (t1 - t0)) * plotW;
+      const y = pct => padT + plotH - Math.min(pct, 1) * plotH;
+      const yWarn = y(WARN);
+      const peakPct = Math.floor((peak.ctx / WINDOW) * 100);
+
+      const svg = [];
+      svg.push('<svg viewBox="0 0 ' + w + ' ' + h + '" width="' + w + '" height="' + h + '" role="img" aria-label="Context occupancy over two hours, peaking at ' + peakPct + ' percent before a compaction drops it to 14 percent">');
+      svg.push('<defs><clipPath id="warnClip"><rect x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + (yWarn - padT) + '"/></clipPath></defs>');
+      svg.push('<rect x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + (yWarn - padT) + '" fill="var(--viz-fill-warn)" opacity=".5"/>');
+
+      for (const pct of [0, 0.25, 0.5, 0.75, 1]) {
+        const yy = y(pct);
+        svg.push('<line class="viz-grid-line" x1="' + padL + '" y1="' + yy + '" x2="' + (padL + plotW) + '" y2="' + yy + '"/>');
+        svg.push('<text class="viz-axis-text" x="' + (padL - 7) + '" y="' + (yy + 3) + '" text-anchor="end">' + Math.round(pct * 100) + '%</text>');
+      }
+      svg.push('<line class="viz-event-line" x1="' + padL + '" y1="' + yWarn + '" x2="' + (padL + plotW) + '" y2="' + yWarn + '"/>');
+      svg.push('<text class="viz-label-warn" x="' + (padL + plotW) + '" y="' + (yWarn - 6) + '" text-anchor="end">85% warn</text>');
+
+      // Split wherever the database says the delta is NULL: that is a compaction.
+      const segments = [];
+      let current = [];
+      rows.forEach((d, i) => {
+        if (i > 0 && d.delta === null) { segments.push(current); current = []; }
+        current.push(d);
+      });
+      segments.push(current);
+
+      for (const seg of segments) {
+        if (seg.length < 2) continue;
+        const line = seg.map((d, i) => (i ? 'L' : 'M') + x(d.t).toFixed(1) + ',' + y(d.ctx / WINDOW).toFixed(1)).join(' ');
+        const area = line + ' L' + x(seg[seg.length - 1].t).toFixed(1) + ',' + y(0) + ' L' + x(seg[0].t).toFixed(1) + ',' + y(0) + ' Z';
+        svg.push('<path d="' + area + '" fill="var(--viz-fill)"/>');
+        svg.push('<path d="' + area + '" fill="var(--viz-fill-warn)" clip-path="url(#warnClip)"/>');
+        svg.push('<path d="' + line + '" fill="none" stroke="var(--viz-line)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>');
+        svg.push('<path d="' + line + '" fill="none" stroke="var(--viz-line-warn)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#warnClip)"/>');
+      }
+
+      for (const e of events) {
+        const ex = x(e.t);
+        svg.push('<line class="viz-event-line" x1="' + ex + '" y1="' + padT + '" x2="' + ex + '" y2="' + (padT + plotH + gap + stripH) + '"/>');
+        // to the right of its rule: the peak label sits to the left of the peak,
+        // which is always just before the boundary
+        const flipLabel = ex > padL + plotW - 90;
+        svg.push('<text class="viz-label" x="' + (flipLabel ? ex - 6 : ex + 6) + '" y="' + (padT + 24) + '" text-anchor="' + (flipLabel ? 'end' : 'start') + '">compaction · auto</text>');
+      }
+
+      const px = x(peak.t), py = y(peak.ctx / WINDOW);
+      svg.push('<circle cx="' + px + '" cy="' + py + '" r="4" fill="var(--viz-line-warn)" stroke="var(--surface)" stroke-width="2"/>');
+      svg.push('<text class="viz-label-warn" x="' + (px - 8) + '" y="' + (py - 8) + '" text-anchor="end">' + peakPct + '% · ' + fmt(peak.ctx) + '</text>');
+
+      const stripTop = padT + plotH + gap;
+      svg.push('<line class="viz-grid-line" x1="' + padL + '" y1="' + (stripTop + stripH) + '" x2="' + (padL + plotW) + '" y2="' + (stripTop + stripH) + '"/>');
+      const barW = Math.max(2, Math.min(9, (plotW / rows.length) - 2));
+      for (const d of rows) {
+        if (!d.delta) continue;
+        const bh = Math.max(1.5, (d.delta / maxDelta) * (stripH - 4));
+        svg.push('<rect x="' + (x(d.t) - barW / 2).toFixed(1) + '" y="' + (stripTop + stripH - bh).toFixed(1) + '" width="' + barW + '" height="' + bh.toFixed(1) + '" rx="2" fill="var(--viz-line)" opacity=".85"/>');
+      }
+      svg.push('<text class="viz-axis-text" x="' + padL + '" y="' + (stripTop - 1) + '">ADDED PER TURN · PEAK +' + fmt(maxDelta) + '</text>');
+
+      const step = narrow ? 60 : 30;
+      const first = Math.ceil(t0 / (step * 60000)) * step * 60000;
+      for (let t = first; t <= t1; t += step * 60000) {
+        svg.push('<text class="viz-axis-text" x="' + x(t) + '" y="' + (h - 6) + '" text-anchor="middle">' + clock(t) + '</text>');
+      }
+
+      svg.push('<line class="viz-crosshair" id="cross" x1="0" y1="' + padT + '" x2="0" y2="' + (padT + plotH) + '" style="opacity:0"/>');
+      svg.push('<circle id="cursor-dot" r="4.5" fill="var(--viz-line)" stroke="var(--surface)" stroke-width="2" style="opacity:0"/>');
+      svg.push('<rect id="hit" x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + (plotH + gap + stripH) + '" fill="transparent" style="cursor:crosshair"/>');
+      svg.push('</svg>');
+
+      const old = holder.querySelector('svg');
+      if (old) old.remove();
+      holder.insertAdjacentHTML('afterbegin', svg.join(''));
+      geom = { x, y, padL, plotW, padT, plotH, w };
+      wireHover();
+    }
+
+    function wireHover() {
+      const svg = holder.querySelector('svg');
+      const hit = svg.querySelector('#hit');
+      const cross = svg.querySelector('#cross');
+      const dot = svg.querySelector('#cursor-dot');
+
+      const move = point => {
+        const box = svg.getBoundingClientRect();
+        const scale = geom.w / box.width;
+        const atX = (point.clientX - box.left) * scale;
+        const tAt = ((atX - geom.padL) / geom.plotW) * (t1 - t0) + t0;
+        let best = rows[0], bestD = Infinity;
+        for (const d of rows) {
+          const dd = Math.abs(d.t - tAt);
+          if (dd < bestD) { bestD = dd; best = d; }
+        }
+        const cx = geom.x(best.t), cy = geom.y(best.ctx / WINDOW);
+        const warn = best.ctx / WINDOW >= WARN;
+        cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.style.opacity = 1;
+        dot.setAttribute('cx', cx); dot.setAttribute('cy', cy); dot.style.opacity = 1;
+        dot.setAttribute('fill', warn ? 'var(--viz-line-warn)' : 'var(--viz-line)');
+
+        const pct = Math.floor((best.ctx / WINDOW) * 100);
+        tip.innerHTML =
+          '<div class="tip-pct">' + pct + '%</div>' +
+          '<div>' + fmt(best.ctx) + ' <span class="tip-dim">/ ' + fmt(WINDOW) + '</span></div>' +
+          '<div class="tip-dim">' + clock(best.t) + ' · turn ' + best.turn + '</div>' +
+          '<div>' + (best.delta === null
+            ? '<span class="tip-dim">delta null — first turn after compaction</span>'
+            : (best.delta >= 0 ? '+' : '') + fmt(best.delta) + ' <span class="tip-dim">this turn</span>') + '</div>' +
+          (best.tools.length ? '<div class="tip-dim">' + best.tools.join(', ') + '</div>' : '<div class="tip-dim">no tools</div>');
+        tip.classList.add('on');
+        const leftPx = cx / scale;
+        const flip = leftPx > box.width - 210;
+        tip.style.left = Math.max(0, flip ? leftPx - tip.offsetWidth - 12 : leftPx + 12) + 'px';
+        tip.style.top = Math.max(0, (cy / scale) - 34) + 'px';
+      };
+
+      hit.addEventListener('mousemove', move);
+      hit.addEventListener('touchmove', e => move(e.touches[0]), { passive: true });
+      const leave = () => { tip.classList.remove('on'); cross.style.opacity = 0; dot.style.opacity = 0; };
+      hit.addEventListener('mouseleave', leave);
+      hit.addEventListener('touchend', leave);
+    }
+
+    const table = document.getElementById('series-table');
+    table.innerHTML =
+      '<thead><tr><th>Turn</th><th>Time</th><th>Context</th><th>Occupancy</th><th>Delta</th><th>Tools</th></tr></thead><tbody>' +
+      rows.map(d =>
+        '<tr><td>' + d.turn + '</td><td>' + clock(d.t) + '</td><td>' + fmt(d.ctx) + '</td>' +
+        '<td>' + Math.floor((d.ctx / WINDOW) * 100) + '%</td>' +
+        '<td>' + (d.delta === null ? '—' : (d.delta >= 0 ? '+' : '') + fmt(d.delta)) + '</td>' +
+        '<td>' + (d.tools.join(', ') || '—') + '</td></tr>').join('') +
+      '</tbody>';
+
+    draw();
+    let raf;
+    new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); }).observe(holder);
+  })();
+</script>
