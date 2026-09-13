@@ -18,10 +18,13 @@ USAGE
   ullage sessions            Per-session totals from the database
   ullage latest              The single row that drives the menu bar
   ullage env <session>       The configuration snapshot for a session
+  ullage history [--days N]  Activity per day and project (default: 30 days)
+  ullage composition <sess>  What a session's context window is made of
   ullage info                Resolved paths and row counts
 
 OPTIONS
   --db <path>    Database file (default: $ULLAGE_DB or the app support path)
+  --days <n>     Window for `history`
   --verbose      Report malformed lines and skipped files
   -h, --help     This text
 
@@ -35,6 +38,7 @@ struct Options {
     var paths: [String] = []
     var databasePath: String = ClaudePaths.defaultDatabaseURL().path
     var verbose = false
+    var days = 30
 }
 
 func parseArguments(_ arguments: [String]) -> Options {
@@ -48,6 +52,8 @@ func parseArguments(_ arguments: [String]) -> Options {
             if let value = rest.first { options.databasePath = (value as NSString).expandingTildeInPath; rest.removeFirst() }
         case "--verbose", "-v":
             options.verbose = true
+        case "--days":
+            if let value = rest.first, let days = Int(value) { options.days = days; rest.removeFirst() }
         case "-h", "--help", "help":
             positional.append("help")
         default:
@@ -151,6 +157,67 @@ func printSessions(_ store: Store) throws {
     re-sent every turn, so summing prompt counters across turns is meaningless.
     OUT is a mid-stream snapshot and undercounts (plan §9 trap 2).
     """)
+}
+
+func printHistory(_ store: Store, days: Int) throws {
+    let rows = try store.dailyActivity(days: days)
+    guard !rows.isEmpty else {
+        print("No activity in the last \(days) days.")
+        return
+    }
+    print(pad("DAY", 12) + pad("PROJECT", 22) + padLeft("SESSIONS", 9) + padLeft("CALLS", 7)
+        + padLeft("IN", 10) + padLeft("OUT", 10) + padLeft("CACHE R", 16) + padLeft("CACHE W", 12) + padLeft("PEAK CTX", 10))
+    var lastDay = ""
+    for row in rows {
+        print(pad(row.day == lastDay ? "" : row.day, 12) + pad(row.project, 22)
+            + padLeft(String(row.sessions), 9) + padLeft(String(row.calls), 7)
+            + padLeft(thousands(row.input), 10) + padLeft(thousands(row.output), 10)
+            + padLeft(thousands(row.cacheRead), 16) + padLeft(thousands(row.cacheWrite), 12)
+            + padLeft(thousands(row.peakContextTokens), 10))
+        lastDay = row.day
+    }
+    print("""
+
+    Days are local time. The four token counters stay separate on purpose:
+    CACHE R dwarfs the others and a single total would just be a cache-read number.
+    """)
+}
+
+func printComposition(_ store: Store, sessionPrefix: String) throws {
+    let matches = try store.recentSessions(limit: 10_000).map(\.sessionId).filter { $0.hasPrefix(sessionPrefix) }
+    guard let sessionId = matches.first else {
+        print("no session starting with \(sessionPrefix)")
+        return
+    }
+    guard let c = try store.composition(sessionId: sessionId) else {
+        print("no turns recorded for \(sessionId)")
+        return
+    }
+    func line(_ name: String, _ tokens: Int, _ note: String) -> String {
+        pad(name, 18) + padLeft(thousands(tokens), 10) + padLeft(percent(c.share(tokens)), 6) + "   " + note
+    }
+    let baselineNotes = [
+        "system prompt, tool schemas, skills",
+        c.claudeMdTokensEstimate.map { "CLAUDE.md ~\(thousands($0))" },
+        c.mcpServers.isEmpty ? nil : "\(c.mcpServers.count) MCP servers",
+        c.windowStartTurn == 0 ? "opening prompt" : "compaction summary",
+    ].compactMap { $0 }.joined(separator: ", ")
+    print("""
+    session      \(c.sessionId)
+    window       \(thousands(c.contextTokens)) / \(c.windowLimit.map(thousands) ?? "?")  \(percent(c.occupancy))   turns \(c.windowStartTurn)–\(c.lastTurn)\(c.compactions > 0 ? "  ⟲\(c.compactions)" : "")
+
+    \(line(ContextComposition.baselineName, c.baseline, baselineNotes))
+    \(line(ContextComposition.toolResultsName, c.toolResults, "estimated from result length"))
+    \(line(ContextComposition.assistantOutputName, c.assistantOutput, "reported output; undercounts"))
+    \(line(ContextComposition.otherName, c.other, c.estimatesOvershoot ? "estimates overshoot the window" : "prompts, thinking, tool inputs, estimate error"))
+    """)
+    if !c.tools.isEmpty {
+        print(pad("TOOL", 44) + padLeft("CALLS", 7) + padLeft("RESULT TOKENS", 15))
+        for tool in c.tools.prefix(15) {
+            print(pad(tool.name, 44) + padLeft(String(tool.calls), 7) + padLeft(thousands(tool.resultTokens), 15))
+        }
+        if c.tools.count > 15 { print("… and \(c.tools.count - 15) more") }
+    }
 }
 
 func printLatest(_ store: Store) throws {
@@ -297,6 +364,16 @@ do {
 
     case "latest":
         try printLatest(Store(path: options.databasePath))
+
+    case "history":
+        try printHistory(Store(path: options.databasePath), days: options.days)
+
+    case "composition":
+        guard let needle = options.paths.first else {
+            print("usage: ullage composition <session-id or prefix>")
+            break
+        }
+        try printComposition(Store(path: options.databasePath), sessionPrefix: needle)
 
     case "info":
         let store = try Store(path: options.databasePath)

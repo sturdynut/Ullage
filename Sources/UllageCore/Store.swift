@@ -518,7 +518,50 @@ public final class Store {
         )
     }
 
-    public struct SessionTotals {
+    /// The current window's make-up for one session (M7). Nil without turns.
+    public func composition(sessionId: String) throws -> ContextComposition? {
+        ContextComposition.build(
+            sessionId: sessionId,
+            calls: try calls(sessionId: sessionId),
+            toolCalls: try toolCalls(sessionId: sessionId),
+            events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue),
+            environment: try sessionEnv(sessionId: sessionId)
+        )
+    }
+
+    /// Activity per local day and project since `since` (a normalised UTC
+    /// timestamp), oldest day first (M6).
+    public func dailyActivity(since: String) throws -> [DailyActivity] {
+        let sql = """
+        SELECT date(ts, 'localtime') AS day, COALESCE(project, '—') AS project,
+               COUNT(DISTINCT session_id), COUNT(*),
+               SUM(input), SUM(output), SUM(cache_read), SUM(cache_write), MAX(context_tokens)
+        FROM call
+        WHERE ts >= ?1
+        GROUP BY day, project
+        ORDER BY day, project;
+        """
+        return try database.query(sql, [.text(since)]) { row in
+            DailyActivity(
+                day: row.text(0),
+                project: row.text(1),
+                sessions: row.int(2),
+                calls: row.int(3),
+                input: row.int(4),
+                output: row.int(5),
+                cacheRead: row.int(6),
+                cacheWrite: row.int(7),
+                peakContextTokens: row.int(8)
+            )
+        }
+    }
+
+    public func dailyActivity(days: Int, now: Date = Date()) throws -> [DailyActivity] {
+        try dailyActivity(since: Timestamps.string(from: now.addingTimeInterval(-Double(days) * 86_400)))
+    }
+
+    public struct SessionTotals: Identifiable {
+        public var id: String { sessionId }
         public var sessionId: String
         public var project: String?
         public var model: String?

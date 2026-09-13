@@ -33,17 +33,21 @@ Two consequences for this project:
 
 ## 2. Non-goals
 
-Do not build these. They are all planned for later and will wreck the schedule if they leak in now.
+The v1 tracer bullet (M0–M4) deliberately shipped none of these. Items now
+**done** in later slices are marked; the rest remain out of scope.
 
-- Any vendor other than Claude Code (Codex is next, Cursor is third)
-- Cost or pricing calculation of any kind
-- Charts, sparklines, time-series views
-- Context *composition* drill-down (what's in the window — the marquee feature, but later)
-- Multi-session UI, tabs, or a popover
-- Packaging, code signing, notarization, auto-update
-- Compaction handling, forked-session reconciliation
+- Any vendor other than Claude Code (Codex is next, Cursor is third) — still out
+- Cost or pricing calculation of any kind — still out
+- Charts, sparklines, time-series views — **done (M5 context-per-turn, M6 history)**
+- Context *composition* drill-down (what's in the window — the marquee feature) — **done (M7)**
+- Multi-session UI, tabs, or a popover — **done (M5 popover + picker, M6 history window)**
+- Packaging, code signing, notarization, auto-update — partial: `scripts/install-app.sh`
+  ad-hoc signs a local bundle; no notarization or auto-update
+- Compaction handling — **done** (events marked, deltas nulled across boundaries,
+  composition restarts at the summary); forked-session reconciliation still out
 
-Persist enough data that these become additive later. Render almost none of it.
+The v1 rule still holds for what remains: persist enough data that they become
+additive later, render almost none of it.
 
 ---
 

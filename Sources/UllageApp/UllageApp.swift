@@ -24,6 +24,13 @@ struct UllageApp: App {
             }
         }
         .menuBarExtraStyle(.window)
+
+        // M6/M7 — history across days and what the window is made of. A real
+        // window, because the popover is the wrong size for a table.
+        Window("Ullage History", id: HistoryWindow.id) {
+            HistoryWindow()
+        }
+        .defaultSize(width: 980, height: 680)
     }
 }
 

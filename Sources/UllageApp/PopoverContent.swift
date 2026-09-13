@@ -7,6 +7,7 @@ import UllageCore
 /// how it got there. Still no composition drill-down; that is the next slice.
 struct PopoverContent: View {
     @ObservedObject var model: MenuBarModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -15,6 +16,9 @@ struct PopoverContent: View {
             if let history = model.history {
                 ContextChart(history: history)
                     .frame(height: 120)
+            }
+            if let composition = model.composition {
+                CompositionView(composition: composition)
             }
             stats
             if let errorMessage = model.errorMessage {
@@ -141,6 +145,10 @@ struct PopoverContent: View {
         HStack {
             Button(model.isWatching ? "Refresh" : "Start watching") {
                 if model.isWatching { model.refreshNow() } else { model.start() }
+            }
+            Button("History…") {
+                openWindow(id: HistoryWindow.id)
+                NSApp.activate(ignoringOtherApps: true)
             }
             Button("Reveal database") { model.openDatabaseFolder() }
             Spacer()

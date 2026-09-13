@@ -25,6 +25,7 @@ final class MenuBarModel: ObservableObject {
     }
     @Published private(set) var sessions: [SessionSummary] = []
     @Published private(set) var history: ContextHistory?
+    @Published private(set) var composition: ContextComposition?
     /// True when a pinned session vanished and the display fell back.
     @Published private(set) var pinFellBack = false
 
@@ -79,6 +80,7 @@ final class MenuBarModel: ObservableObject {
             state = MenuBarFormatter.state(for: shown)
             sessions = try readStore.recentSessions(limit: Self.pickerLimit)
             history = try shown.map { try readStore.contextHistory(sessionId: $0.sessionId) }
+            composition = try shown.flatMap { try readStore.composition(sessionId: $0.sessionId) }
             errorMessage = nil
         } catch {
             errorMessage = "\(error)"
