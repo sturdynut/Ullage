@@ -21,10 +21,17 @@ Everything stays on your machine. Nothing is uploaded.
 
 ## What it looks like
 
+<div align="center">
+
+<img src="docs/screenshots/popover.png" alt="Ullage popover: 30% headline, a context-per-turn chart, and a bar breaking the window into baseline, tool results, assistant output, and other" width="360">
+
+</div>
+
 - **Menu bar:** a gauge icon whose needle rises with occupancy, followed by the
-  percentage. It turns amber past 85%, and drops to a plain gauge with no number
-  once a session has been idle for 30 minutes, so a stale figure is never
-  mistaken for a live one.
+  percentage &nbsp;<img src="docs/screenshots/menu-bar.png" alt="Ullage menu bar item showing a gauge icon and 30%" height="18" valign="middle">&nbsp;. It
+  turns amber past 85%, and drops to a plain gauge with no number once a session
+  has been idle for 30 minutes, so a stale figure is never mistaken for a live
+  one.
 - **Popover** — click the menu bar item for:
   - the active project, model, and headline percentage;
   - a session picker that follows the most recently active session, or pins one
@@ -41,9 +48,6 @@ Everything stays on your machine. Nothing is uploaded.
   project over 7, 30, 90, or 365 days, switchable between turns, output tokens,
   and cache reads; a table of every session in range; and the selected session's
   chart and full composition.
-
-A static HTML mock-up of the menu bar states is at
-[`docs/preview/menu-bar-preview.html`](docs/preview/menu-bar-preview.html).
 
 ## Install
 
@@ -179,5 +183,5 @@ Sources/UllageApp/     the SwiftUI menu bar popover and history window (macOS)
 Tests/                 unit tests for the collector and every display rule
 scripts/recon.sh       inspect the on-disk transcript format
 scripts/install-app.sh build, bundle, and install the app
-docs/                  the observed transcript format and a UI preview
+docs/                  the observed transcript format
 ```
