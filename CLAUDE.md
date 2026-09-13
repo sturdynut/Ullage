@@ -7,9 +7,10 @@ actually look like on disk.
 
 ## What this is
 
-Ullage reads Claude Code session transcripts (`~/.claude/projects/**/*.jsonl`),
-persists every API call as a row in a local SQLite database, and shows how full
-the live session's context window is — a macOS menu bar item backed by a
+Ullage reads Claude Code session transcripts (`~/.claude/projects/**/*.jsonl`)
+and OpenAI Codex CLI rollouts (`~/.codex/sessions/**/*.jsonl`), persists every
+API call as a row in a local SQLite database, and shows how full the live
+session's context window is — a macOS menu bar item backed by a
 Swift-package collector and a debug CLI.
 
 ## Build, test, run
@@ -64,6 +65,14 @@ plausible and are wrong.
 
 ## Conventions
 
+- **One parser per harness, one row shape.** `ClaudeCodeParser` and
+  `CodexParser` both emit `ParsedLine` (calls, tool results, events);
+  `TranscriptFormat.detect(path:)` routes a file to the right one and the store,
+  CLI and UI stay vendor-agnostic. Codex's `input_tokens` is the whole prompt
+  (cached included) and it reports the window on every turn, so its rows carry an
+  exact `window_limit` and no lookup; Claude uses `WindowLimits`. Codex lines are
+  not self-contained (model and cwd come from earlier lines), so Codex files are
+  re-read whole (`reingestsWholeFile`) rather than tailed from an offset.
 - **Logic in Core, not in views.** A rule that decides what to show is written
   and tested in `UllageCore`; the SwiftUI layer only renders it. This is why
   `MenuBarState`, `SessionHistory` and `Composition` exist as plain structs.

@@ -5,6 +5,7 @@ import Foundation
 
 public enum Vendor {
     public static let claudeCode = "claude-code"
+    public static let codex = "codex"
 }
 
 /// How much to trust the token counters on a row.

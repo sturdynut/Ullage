@@ -8,9 +8,9 @@
 
 </div>
 
-Ullage watches your Claude Code session transcripts, keeps every API call in a
-local SQLite database, and shows the context window's fill level as a percentage
-in the macOS menu bar. Click it to break the current session down turn by turn
+Ullage watches your Claude Code and OpenAI Codex CLI session transcripts, keeps
+every API call in a local SQLite database, and shows the context window's fill
+level as a percentage in the macOS menu bar. Click it to break the current session down turn by turn
 and see what is actually taking up the window. A separate history window charts
 your activity across days and projects.
 
@@ -138,22 +138,32 @@ as reported, with no correction factor.
 Verified by hand against Claude Code's own `/context`: it reported
 `129.1k/1m (13%)` while Ullage showed `129,096 / 1,000,000` for the same turn.
 
+Codex reports usage differently — its `input_tokens` is the whole prompt, cached
+tokens included, and it states the model's context window on every turn. Ullage
+splits that prompt back into the same four counters and reads the window from the
+transcript, so no lookup table is needed for Codex and the rows stay exact.
+
 ## Current limitations
 
-- **Claude Code is the only supported harness.** Ullage reads Claude Code's
-  `~/.claude` transcripts and nothing else. Other agents and harnesses — Cursor,
-  Codex, GitHub Copilot, Aider, and the rest — are not supported. The database
-  carries `vendor` and `confidence` columns so another harness could be added
-  later without letting its estimated numbers contaminate Claude Code's exact
-  ones, but no such adapter exists yet.
-- **The transcript format is Claude Code's private, versioned format**, not a
-  public contract, and it changes between releases. Ullage was validated against
-  Claude Code 2.1.270; after an upgrade the window sizes or field locations can
-  shift. `scripts/recon.sh` re-checks the format against your disk, and
+- **Two harnesses are supported: Claude Code and the OpenAI Codex CLI.** Ullage
+  reads Claude Code's `~/.claude/projects` transcripts and Codex's
+  `~/.codex/sessions` rollouts. Other agents — Cursor, GitHub Copilot, Aider,
+  and the rest — are not. The `vendor` and `confidence` columns keep each
+  harness's numbers distinct, so a third could be added without letting an
+  estimate-only source contaminate the exact ones.
+- **Cloud and web sessions are invisible.** Both harnesses can run in the cloud
+  (Claude Code on the web, Codex cloud tasks); those transcripts stay on the
+  server with no public per-session usage API, so only sessions that write to
+  local disk are seen. `claude --teleport <id>` pulls a cloud Claude session
+  down as a one-time local copy, which Ullage then reads.
+- **The transcript formats are private and versioned**, not public contracts,
+  and change between releases. Validated against Claude Code 2.1.270 and Codex
+  CLI 0.145–0.146; after an upgrade a window size or field location can shift.
+  `scripts/recon.sh` re-checks the Claude format against your disk, and
   [`docs/OBSERVED-FORMAT.md`](docs/OBSERVED-FORMAT.md) records what was seen.
-- **Window sizes are a lookup table.** A model Ullage does not recognize falls
-  back to 200k and is flagged as assumed, so its percentage may be wrong until
-  the table is updated.
+- **Claude window sizes are a lookup table** (Codex reports its window exactly on
+  every turn). A Claude model Ullage does not recognize falls back to 200k and is
+  flagged as assumed, so its percentage may be wrong until the table is updated.
 - **macOS 14+ only**, and the app is unsigned and un-notarized — a local build,
   not a distributed release.
 - **The menu bar item can be hidden.** On Macs with a notch and many menu bar
@@ -176,8 +186,8 @@ swift test        # runs on Linux or macOS
 Layout:
 
 ```
-Sources/UllageCore/    parser, ingestor, SQLite store, and all analysis and
-                       display logic (kept UI-free so it is testable)
+Sources/UllageCore/    parsers (Claude Code + Codex), ingestor, SQLite store,
+                       and all analysis and display logic (kept UI-free)
 Sources/ullage/        the command-line tool
 Sources/UllageApp/     the SwiftUI menu bar popover and history window (macOS)
 Tests/                 unit tests for the collector and every display rule
