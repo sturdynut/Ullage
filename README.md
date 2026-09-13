@@ -10,7 +10,8 @@
 
 Ullage watches your Claude Code and OpenAI Codex CLI session transcripts, keeps
 every API call in a local SQLite database, and shows the context window's fill
-level as a percentage in the macOS menu bar. Click it to break the current session down turn by turn
+level as a percentage in the macOS menu bar. It also lists Cursor agent activity,
+though Cursor records no token counts locally so it has no fill percentage. Click it to break the current session down turn by turn
 and see what is actually taking up the window. A separate history window charts
 your activity across days and projects.
 
@@ -143,14 +144,22 @@ tokens included, and it states the model's context window on every turn. Ullage
 splits that prompt back into the same four counters and reads the window from the
 transcript, so no lookup table is needed for Codex and the rows stay exact.
 
+Cursor reports none of this on disk, so its rows carry activity but no tokens and
+no window; there is no percentage to compute for a Cursor session.
+
 ## Current limitations
 
-- **Two harnesses are supported: Claude Code and the OpenAI Codex CLI.** Ullage
-  reads Claude Code's `~/.claude/projects` transcripts and Codex's
-  `~/.codex/sessions` rollouts. Other agents — Cursor, GitHub Copilot, Aider,
-  and the rest — are not. The `vendor` and `confidence` columns keep each
-  harness's numbers distinct, so a third could be added without letting an
-  estimate-only source contaminate the exact ones.
+- **Full support for two harnesses: Claude Code and the OpenAI Codex CLI.**
+  Ullage reads Claude Code's `~/.claude/projects` transcripts and Codex's
+  `~/.codex/sessions` rollouts, both with exact occupancy. The `vendor` and
+  `confidence` columns keep each harness's numbers distinct.
+- **Cursor is activity-only.** Cursor is a server-backed IDE: its token and
+  context accounting lives on Cursor's servers, and the local agent transcripts
+  (`~/.cursor/**/agent-transcripts`) hold conversation content but no token
+  counts, model, window, or timestamps. Ullage lists Cursor sessions with their
+  turn and tool counts (timed by the file, `confidence = unmeasured`) but shows
+  no occupancy, and a Cursor session never drives the menu bar gauge. GitHub
+  Copilot, Aider, and the rest are not read at all.
 - **Cloud and web sessions are invisible.** Both harnesses can run in the cloud
   (Claude Code on the web, Codex cloud tasks); those transcripts stay on the
   server with no public per-session usage API, so only sessions that write to
@@ -186,8 +195,8 @@ swift test        # runs on Linux or macOS
 Layout:
 
 ```
-Sources/UllageCore/    parsers (Claude Code + Codex), ingestor, SQLite store,
-                       and all analysis and display logic (kept UI-free)
+Sources/UllageCore/    parsers (Claude Code, Codex, Cursor), ingestor, SQLite
+                       store, and all analysis/display logic (kept UI-free)
 Sources/ullage/        the command-line tool
 Sources/UllageApp/     the SwiftUI menu bar popover and history window (macOS)
 Tests/                 unit tests for the collector and every display rule

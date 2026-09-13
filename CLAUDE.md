@@ -8,8 +8,10 @@ actually look like on disk.
 ## What this is
 
 Ullage reads Claude Code session transcripts (`~/.claude/projects/**/*.jsonl`)
-and OpenAI Codex CLI rollouts (`~/.codex/sessions/**/*.jsonl`), persists every
-API call as a row in a local SQLite database, and shows how full the live
+OpenAI Codex CLI rollouts (`~/.codex/sessions/**/*.jsonl`), and Cursor agent
+transcripts (`~/.cursor/**/agent-transcripts/**/*.jsonl`, activity only —
+Cursor stores no token or window data locally), persists every API call as a row
+in a local SQLite database, and shows how full the live
 session's context window is — a macOS menu bar item backed by a
 Swift-package collector and a debug CLI.
 
@@ -72,7 +74,10 @@ plausible and are wrong.
   (cached included) and it reports the window on every turn, so its rows carry an
   exact `window_limit` and no lookup; Claude uses `WindowLimits`. Codex lines are
   not self-contained (model and cwd come from earlier lines), so Codex files are
-  re-read whole (`reingestsWholeFile`) rather than tailed from an offset.
+  re-read whole (`reingestsWholeFile`) rather than tailed from an offset. Cursor
+  rows are `confidence=unmeasured` with a nil window and zero tokens (timed by
+  file mtime); `latestCall()` excludes window-less rows so Cursor never drives
+  the menu bar gauge.
 - **Logic in Core, not in views.** A rule that decides what to show is written
   and tested in `UllageCore`; the SwiftUI layer only renders it. This is why
   `MenuBarState`, `SessionHistory` and `Composition` exist as plain structs.
