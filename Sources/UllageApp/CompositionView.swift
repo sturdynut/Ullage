@@ -33,16 +33,31 @@ struct CompositionView: View {
             bar
             legend
 
-            DisclosureGroup(isExpanded: $expanded) {
+            // A full-width button, not a bare DisclosureGroup label: the whole
+            // row is the target and the chevron makes the affordance obvious.
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                    Text(expanded ? "Hide details" : "What's inside — baseline & tools")
+                        .font(.caption)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
                 VStack(alignment: .leading, spacing: 10) {
                     baseline
                     if !composition.tools.isEmpty { tools }
                 }
-                .padding(.top, 6)
-            } label: {
-                Text("What's inside")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .padding(.top, 2)
+                .transition(.opacity)
             }
         }
         .onAppear { expanded = startExpanded }

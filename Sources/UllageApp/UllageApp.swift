@@ -16,14 +16,12 @@ struct UllageApp: App {
         MenuBarExtra {
             PopoverContent(model: model)
         } label: {
-            // A gauge icon so the number reads as "context window", not just
-            // another percentage next to CPU, RAM and battery. Idle shows the
-            // same icon dimmed with no stale number behind it.
-            if model.state.isIdle {
-                Image(systemName: "gauge.with.dots.needle.33percent")
-            } else {
-                Text("\(Image(systemName: gaugeSymbol(model.state.occupancy))) \(model.state.title)")
-            }
+            // Rendered as one NSImage: a MenuBarExtra label built from a SwiftUI
+            // Text with an inline SF Symbol drops the symbol in the menu bar, so
+            // the gauge and the number are drawn together into a template image
+            // instead. The gauge makes the number read as "context window"
+            // rather than yet another percentage next to CPU, RAM and battery.
+            Image(nsImage: MenuBarLabel.image(for: model.state))
         }
         .menuBarExtraStyle(.window)
 
@@ -36,13 +34,44 @@ struct UllageApp: App {
     }
 }
 
-/// Fill metaphor: the needle climbs with occupancy, so the icon alone hints at
-/// how full the window is before the number is read.
-func gaugeSymbol(_ occupancy: Double?) -> String {
-    switch occupancy ?? 0 {
-    case ..<0.34: return "gauge.with.dots.needle.33percent"
-    case ..<0.67: return "gauge.with.dots.needle.67percent"
-    default: return "gauge.with.dots.needle.100percent"
+/// Draws the menu bar item as a template NSImage: a gauge whose needle climbs
+/// with occupancy, followed by the percentage. Template so the menu bar tints
+/// it for light/dark automatically. Idle shows the gauge alone, no stale number.
+enum MenuBarLabel {
+    static func gaugeSymbol(_ occupancy: Double?) -> String {
+        switch occupancy ?? 0 {
+        case ..<0.34: return "gauge.with.dots.needle.33percent"
+        case ..<0.67: return "gauge.with.dots.needle.67percent"
+        default: return "gauge.with.dots.needle.100percent"
+        }
+    }
+
+    static func image(for state: MenuBarState) -> NSImage {
+        let font = NSFont.menuBarFont(ofSize: 0)
+        let text = state.isIdle ? nil : state.title
+        let symbolConfig = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
+        let gauge = NSImage(systemSymbolName: gaugeSymbol(state.occupancy), accessibilityDescription: "context window")?
+            .withSymbolConfiguration(symbolConfig)
+        let symbolSize = gauge?.size ?? NSSize(width: font.pointSize, height: font.pointSize)
+
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        let textSize = text.map { ($0 as NSString).size(withAttributes: attributes) } ?? .zero
+        let spacing: CGFloat = text == nil ? 0 : 3
+        let height = ceil(max(symbolSize.height, textSize.height))
+        let width = ceil(symbolSize.width + spacing + textSize.width)
+
+        let image = NSImage(size: NSSize(width: max(width, 1), height: max(height, 1)))
+        image.lockFocus()
+        gauge?.draw(in: NSRect(x: 0, y: (height - symbolSize.height) / 2, width: symbolSize.width, height: symbolSize.height))
+        if let text {
+            (text as NSString).draw(
+                at: NSPoint(x: symbolSize.width + spacing, y: (height - textSize.height) / 2),
+                withAttributes: attributes
+            )
+        }
+        image.unlockFocus()
+        image.isTemplate = true
+        return image
     }
 }
 
