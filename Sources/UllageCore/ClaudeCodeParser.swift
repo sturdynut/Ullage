@@ -8,11 +8,15 @@ public struct LineContext {
     public var fallbackSessionId: String
     /// Timestamp of the last line that carried one, for lines that do not.
     public var lastTimestamp: String?
+    /// The source file's modification time (ISO). Used by formats whose lines
+    /// carry no timestamp of their own, such as Cursor.
+    public var fileModified: String?
 
-    public init(sourceFile: String, fallbackSessionId: String, lastTimestamp: String? = nil) {
+    public init(sourceFile: String, fallbackSessionId: String, lastTimestamp: String? = nil, fileModified: String? = nil) {
         self.sourceFile = sourceFile
         self.fallbackSessionId = fallbackSessionId
         self.lastTimestamp = lastTimestamp
+        self.fileModified = fileModified
     }
 }
 

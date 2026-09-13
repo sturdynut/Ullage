@@ -452,8 +452,15 @@ public final class Store {
 
     /// The single row that drives the whole v1 UI (plan §8.3).
     public func latestCall() throws -> CallRow? {
+        // Only rows with a known window drive the menu bar gauge: a Cursor row
+        // (no window, no occupancy) must not hijack the live percentage.
         try database.query(
-            Store.callColumns + " FROM call WHERE ts = (SELECT MAX(ts) FROM call) LIMIT 1;"
+            Store.callColumns + """
+             FROM call
+             WHERE window_limit IS NOT NULL
+               AND ts = (SELECT MAX(ts) FROM call WHERE window_limit IS NOT NULL)
+             LIMIT 1;
+            """
         ) { Store.callRow(from: $0) }.first
     }
 

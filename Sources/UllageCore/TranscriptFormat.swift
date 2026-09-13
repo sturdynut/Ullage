@@ -10,11 +10,15 @@ public protocol TranscriptLineParser: AnyObject {
 public enum TranscriptFormat {
     case claudeCode
     case codex
+    case cursor
 
-    /// Routes a file by path. Codex rollouts live under `.codex/sessions`;
-    /// everything else is treated as Claude Code.
+    /// Routes a file by path. Codex rollouts live under `.codex/sessions`,
+    /// Cursor agent transcripts under `.cursor/**/agent-transcripts`; everything
+    /// else is treated as Claude Code.
     public static func detect(path: String) -> TranscriptFormat {
-        CodexPaths.isCodexTranscript(path) ? .codex : .claudeCode
+        if CodexPaths.isCodexTranscript(path) { return .codex }
+        if CursorPaths.isCursorTranscript(path) { return .cursor }
+        return .claudeCode
     }
 
     /// Codex usage lines carry neither the model nor the working directory —
@@ -25,7 +29,7 @@ public enum TranscriptFormat {
     public var reingestsWholeFile: Bool {
         switch self {
         case .claudeCode: return false
-        case .codex: return true
+        case .codex, .cursor: return true
         }
     }
 
@@ -33,6 +37,7 @@ public enum TranscriptFormat {
         switch self {
         case .claudeCode: return ClaudeCodeLineParser()
         case .codex: return CodexParser()
+        case .cursor: return CursorParser()
         }
     }
 }

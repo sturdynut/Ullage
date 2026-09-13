@@ -6,6 +6,7 @@ import Foundation
 public enum Vendor {
     public static let claudeCode = "claude-code"
     public static let codex = "codex"
+    public static let cursor = "cursor"
 }
 
 /// How much to trust the token counters on a row.
@@ -17,6 +18,9 @@ public enum Confidence: String {
     case exact
     case estimated
     case cumulative
+    /// The harness records no token or window data locally; the row carries
+    /// activity (turns, tools) only, with no occupancy. Used for Cursor.
+    case unmeasured
 }
 
 /// One API call. Mirrors the `call` table.

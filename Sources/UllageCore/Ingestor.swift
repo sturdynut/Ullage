@@ -186,7 +186,8 @@ public final class Ingestor {
                 let context = LineContext(
                     sourceFile: path,
                     fallbackSessionId: sessionFallback,
-                    lastTimestamp: lastTimestamp
+                    lastTimestamp: lastTimestamp,
+                    fileModified: Timestamps.string(from: Date(timeIntervalSince1970: mtime))
                 )
                 guard let parsed = parser.parse(line: trimmed, context: context) else {
                     if (try? JSONSerialization.jsonObject(with: trimmed)) == nil {

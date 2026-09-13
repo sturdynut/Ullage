@@ -37,5 +37,6 @@ public enum TranscriptSources {
     ) -> [URL] {
         ClaudePaths.projectsDirectories(environment: environment)
             + CodexPaths.sessionsDirectories(environment: environment)
+            + CursorPaths.projectsDirectories(environment: environment)
     }
 }
