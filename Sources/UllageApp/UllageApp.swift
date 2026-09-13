@@ -16,11 +16,13 @@ struct UllageApp: App {
         MenuBarExtra {
             PopoverContent(model: model)
         } label: {
+            // A gauge icon so the number reads as "context window", not just
+            // another percentage next to CPU, RAM and battery. Idle shows the
+            // same icon dimmed with no stale number behind it.
             if model.state.isIdle {
-                // A glyph, not a stale percentage.
-                Image(systemName: "circle.dotted")
+                Image(systemName: "gauge.with.dots.needle.33percent")
             } else {
-                Text(model.state.title)
+                Text("\(Image(systemName: gaugeSymbol(model.state.occupancy))) \(model.state.title)")
             }
         }
         .menuBarExtraStyle(.window)
@@ -31,6 +33,16 @@ struct UllageApp: App {
             HistoryWindow()
         }
         .defaultSize(width: 980, height: 680)
+    }
+}
+
+/// Fill metaphor: the needle climbs with occupancy, so the icon alone hints at
+/// how full the window is before the number is read.
+func gaugeSymbol(_ occupancy: Double?) -> String {
+    switch occupancy ?? 0 {
+    case ..<0.34: return "gauge.with.dots.needle.33percent"
+    case ..<0.67: return "gauge.with.dots.needle.67percent"
+    default: return "gauge.with.dots.needle.100percent"
     }
 }
 
