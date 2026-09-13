@@ -3,7 +3,7 @@ import AppKit
 import SwiftUI
 import UllageCore
 
-/// M4 — title only, no popover.
+/// M4 put the number in the menu bar; M5 put a popover behind it.
 ///
 /// Runs unsandboxed: reading ~/.claude from a sandboxed app needs entitlements,
 /// which is a packaging task and not this milestone's problem.
@@ -14,7 +14,7 @@ struct UllageApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(model: model)
+            PopoverContent(model: model)
         } label: {
             if model.state.isIdle {
                 // A glyph, not a stale percentage.
@@ -23,7 +23,7 @@ struct UllageApp: App {
                 Text(model.state.title)
             }
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
     }
 }
 

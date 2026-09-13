@@ -457,6 +457,67 @@ public final class Store {
         ) { Store.callRow(from: $0) }.first
     }
 
+    /// Newest call in one session — the pinned-session counterpart of `latestCall()`.
+    public func latestCall(sessionId: String) throws -> CallRow? {
+        try database.query(
+            Store.callColumns + " FROM call WHERE session_id = ?1 ORDER BY ts DESC, turn_index DESC LIMIT 1;",
+            [.text(sessionId)]
+        ) { Store.callRow(from: $0) }.first
+    }
+
+    /// Sessions by most recent turn, one row each, for the picker. Cheap on
+    /// purpose: it runs on every refresh, unlike `sessionTotals()`.
+    public func recentSessions(limit: Int) throws -> [SessionSummary] {
+        let sql = """
+        SELECT c.session_id, c.project, c.model, c.ts, c.context_tokens, c.window_limit,
+               (SELECT COUNT(*) FROM call n WHERE n.session_id = c.session_id)
+        FROM call c
+        WHERE c.ts = (SELECT MAX(m.ts) FROM call m WHERE m.session_id = c.session_id)
+        GROUP BY c.session_id
+        ORDER BY c.ts DESC
+        LIMIT ?1;
+        """
+        return try database.query(sql, [.integer(Int64(limit))]) { row in
+            SessionSummary(
+                sessionId: row.text(0),
+                project: row.optionalText(1),
+                model: row.optionalText(2),
+                lastTs: row.text(3),
+                lastContextTokens: row.int(4),
+                windowLimit: row.optionalInt(5),
+                calls: row.int(6)
+            )
+        }
+    }
+
+    public func events(sessionId: String, kind: String? = nil) throws -> [EventRow] {
+        var sql = "SELECT id, session_id, ts, kind, detail FROM event WHERE session_id = ?1"
+        var bindings: [SQLiteValue] = [.text(sessionId)]
+        if let kind {
+            sql += " AND kind = ?2"
+            bindings.append(.text(kind))
+        }
+        sql += " ORDER BY ts, id;"
+        return try database.query(sql, bindings) { row in
+            EventRow(
+                id: row.text(0),
+                sessionId: row.text(1),
+                ts: row.text(2),
+                kind: row.text(3),
+                detail: row.optionalText(4)
+            )
+        }
+    }
+
+    /// Context per turn with compaction markers — the chart's whole input.
+    public func contextHistory(sessionId: String) throws -> ContextHistory {
+        ContextHistory.build(
+            sessionId: sessionId,
+            calls: try calls(sessionId: sessionId),
+            events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue)
+        )
+    }
+
     public struct SessionTotals {
         public var sessionId: String
         public var project: String?

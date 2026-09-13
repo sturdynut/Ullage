@@ -41,8 +41,10 @@ cat > "$STAGE/Ullage.app/Contents/Info.plist" <<PLIST
 PLIST
 codesign --force --sign - "$STAGE/Ullage.app" >/dev/null
 
-# Quit a running copy so the new one is what launches next.
+# Quit a running copy so the new one is what launches next, and wait for it
+# to actually exit: `open` right after the quit request fails with -600.
 osascript -e 'tell application id "com.sturdynut.ullage" to quit' >/dev/null 2>&1 || true
+for _ in $(seq 1 30); do pgrep -x UllageApp >/dev/null || break; sleep 0.1; done
 rm -rf "$APP"
 mkdir -p "$DEST_DIR"
 cp -R "$STAGE/Ullage.app" "$APP"

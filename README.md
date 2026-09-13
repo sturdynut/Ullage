@@ -16,7 +16,8 @@ SQLite database.
 | M2 | Ingest CLI | done |
 | M2.5 | Backfill + `session_env` snapshot | done |
 | M3 | Tailer — FSEvents on macOS, polling elsewhere | done |
-| M4 | Menu bar item | done, running |
+| M4 | Menu bar item | done, verified against `/context` |
+| M5 | Popover: session picker + context-per-turn chart | done |
 
 56 tests, all green on Linux. The collector, the CLI and every display rule are
 covered; the two macOS-only pieces (the FSEvents watcher and the SwiftUI views)
@@ -71,9 +72,15 @@ Xcode instead.
 
 It shows `72%`, or `72% ⚠︎` above 85%, or a dimmed `circle.dotted` glyph when
 nothing has happened for 30 minutes — a number that looks live but is four
-hours old is worse than no number. The menu behind it carries the session,
-project, model, context and last delta. There is no popover, no chart and no
-multi-session view; those are all later.
+hours old is worse than no number.
+
+Click it for the popover (M5): the project, model and headline percentage; a
+session picker that defaults to "most recent" and can pin one session while
+others are talking; a chart of context tokens per turn for that session, with
+the window as the ceiling, the 85% line, and a dashed rule wherever compaction
+fired (hover for the exact turn, tokens and delta); and the session's last
+delta, turn count, peak and last-turn time. There is still no composition
+drill-down — what the window is *made of* — which is the next slice.
 
 It runs unsandboxed: reading `~/.claude` from a sandboxed app needs
 entitlements, and packaging, signing and notarization are deliberately not part
