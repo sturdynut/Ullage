@@ -18,6 +18,19 @@ final class MenuBarModel: ObservableObject {
     @Published private(set) var isWatching = false
     @Published private(set) var databasePath: String = ClaudePaths.defaultDatabaseURL().path
 
+    // M5 — the popover's extra inputs. `selection` is the only thing the user
+    // sets; everything else is re-read from the database on every refresh.
+    @Published var selection: SessionSelection = .automatic {
+        didSet { if selection != oldValue { refresh() } }
+    }
+    @Published private(set) var sessions: [SessionSummary] = []
+    @Published private(set) var history: ContextHistory?
+    @Published private(set) var composition: ContextComposition?
+    /// True when a pinned session vanished and the display fell back.
+    @Published private(set) var pinFellBack = false
+
+    static let pickerLimit = 12
+
     private var readStore: Store?
     private var tailer: SessionTailer?
     private var refreshTimer: Timer?
@@ -59,7 +72,15 @@ final class MenuBarModel: ObservableObject {
     func refresh() {
         guard let readStore else { return }
         do {
-            state = MenuBarFormatter.state(for: try readStore.latestCall())
+            let latest = try readStore.latestCall()
+            let shown = try SessionSelection.resolve(selection, latestOverall: latest) {
+                try readStore.latestCall(sessionId: $0)
+            }
+            pinFellBack = selection.pinnedSessionId != nil && shown?.sessionId != selection.pinnedSessionId
+            state = MenuBarFormatter.state(for: shown)
+            sessions = try readStore.recentSessions(limit: Self.pickerLimit)
+            history = try shown.map { try readStore.contextHistory(sessionId: $0.sessionId) }
+            composition = try shown.flatMap { try readStore.composition(sessionId: $0.sessionId) }
             errorMessage = nil
         } catch {
             errorMessage = "\(error)"

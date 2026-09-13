@@ -17,8 +17,10 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "missing required tool: $1" >
 
 newest_transcripts() {
   # Largest recently-modified transcripts, most recent first.
-  find "$PROJECTS_DIR" -name '*.jsonl' -type f -print0 2>/dev/null \
-    | xargs -0 ls -S 2>/dev/null | head -n "${1:-3}"
+  # `|| true` on the producer: with pipefail, `head` closing the pipe early
+  # kills `ls` with SIGPIPE (141), which would abort the whole script.
+  { find "$PROJECTS_DIR" -name '*.jsonl' -type f -print0 2>/dev/null \
+    | xargs -0 ls -S 2>/dev/null || true; } | head -n "${1:-3}"
 }
 
 check_retention() {
@@ -75,12 +77,12 @@ report() {
     echo
     echo "### Keys on an assistant entry"
     echo '```'
-    jq -c 'select(.type == "assistant") | keys' < "$file" 2>/dev/null | head -1
+    jq -c 'select(.type == "assistant") | keys' < "$file" 2>/dev/null | head -1 || true
     echo '```'
     echo
     echo "### usage shape (the fields the whole product depends on)"
     echo '```'
-    jq -c 'select(.type == "assistant") | .message.usage' < "$file" 2>/dev/null | head -5
+    jq -c 'select(.type == "assistant") | .message.usage' < "$file" 2>/dev/null | head -5 || true
     echo '```'
     echo
     echo "### Last turn's context_tokens (compare against /context in a live session)"
@@ -101,7 +103,7 @@ report() {
     echo "### Tool names invoked"
     echo '```'
     jq -r 'select(.type == "assistant") | .message.content[]? | select(.type == "tool_use") | .name' \
-      < "$file" 2>/dev/null | sort | uniq -c | sort -rn | head -20
+      < "$file" 2>/dev/null | sort | uniq -c | sort -rn | head -20 || true
     echo '```'
     echo
   done <<< "$files"

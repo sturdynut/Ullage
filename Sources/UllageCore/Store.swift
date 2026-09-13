@@ -457,7 +457,111 @@ public final class Store {
         ) { Store.callRow(from: $0) }.first
     }
 
-    public struct SessionTotals {
+    /// Newest call in one session — the pinned-session counterpart of `latestCall()`.
+    public func latestCall(sessionId: String) throws -> CallRow? {
+        try database.query(
+            Store.callColumns + " FROM call WHERE session_id = ?1 ORDER BY ts DESC, turn_index DESC LIMIT 1;",
+            [.text(sessionId)]
+        ) { Store.callRow(from: $0) }.first
+    }
+
+    /// Sessions by most recent turn, one row each, for the picker. Cheap on
+    /// purpose: it runs on every refresh, unlike `sessionTotals()`.
+    public func recentSessions(limit: Int) throws -> [SessionSummary] {
+        let sql = """
+        SELECT c.session_id, c.project, c.model, c.ts, c.context_tokens, c.window_limit,
+               (SELECT COUNT(*) FROM call n WHERE n.session_id = c.session_id)
+        FROM call c
+        WHERE c.ts = (SELECT MAX(m.ts) FROM call m WHERE m.session_id = c.session_id)
+        GROUP BY c.session_id
+        ORDER BY c.ts DESC
+        LIMIT ?1;
+        """
+        return try database.query(sql, [.integer(Int64(limit))]) { row in
+            SessionSummary(
+                sessionId: row.text(0),
+                project: row.optionalText(1),
+                model: row.optionalText(2),
+                lastTs: row.text(3),
+                lastContextTokens: row.int(4),
+                windowLimit: row.optionalInt(5),
+                calls: row.int(6)
+            )
+        }
+    }
+
+    public func events(sessionId: String, kind: String? = nil) throws -> [EventRow] {
+        var sql = "SELECT id, session_id, ts, kind, detail FROM event WHERE session_id = ?1"
+        var bindings: [SQLiteValue] = [.text(sessionId)]
+        if let kind {
+            sql += " AND kind = ?2"
+            bindings.append(.text(kind))
+        }
+        sql += " ORDER BY ts, id;"
+        return try database.query(sql, bindings) { row in
+            EventRow(
+                id: row.text(0),
+                sessionId: row.text(1),
+                ts: row.text(2),
+                kind: row.text(3),
+                detail: row.optionalText(4)
+            )
+        }
+    }
+
+    /// Context per turn with compaction markers — the chart's whole input.
+    public func contextHistory(sessionId: String) throws -> ContextHistory {
+        ContextHistory.build(
+            sessionId: sessionId,
+            calls: try calls(sessionId: sessionId),
+            events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue)
+        )
+    }
+
+    /// The current window's make-up for one session (M7). Nil without turns.
+    public func composition(sessionId: String) throws -> ContextComposition? {
+        ContextComposition.build(
+            sessionId: sessionId,
+            calls: try calls(sessionId: sessionId),
+            toolCalls: try toolCalls(sessionId: sessionId),
+            events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue),
+            environment: try sessionEnv(sessionId: sessionId)
+        )
+    }
+
+    /// Activity per local day and project since `since` (a normalised UTC
+    /// timestamp), oldest day first (M6).
+    public func dailyActivity(since: String) throws -> [DailyActivity] {
+        let sql = """
+        SELECT date(ts, 'localtime') AS day, COALESCE(project, '—') AS project,
+               COUNT(DISTINCT session_id), COUNT(*),
+               SUM(input), SUM(output), SUM(cache_read), SUM(cache_write), MAX(context_tokens)
+        FROM call
+        WHERE ts >= ?1
+        GROUP BY day, project
+        ORDER BY day, project;
+        """
+        return try database.query(sql, [.text(since)]) { row in
+            DailyActivity(
+                day: row.text(0),
+                project: row.text(1),
+                sessions: row.int(2),
+                calls: row.int(3),
+                input: row.int(4),
+                output: row.int(5),
+                cacheRead: row.int(6),
+                cacheWrite: row.int(7),
+                peakContextTokens: row.int(8)
+            )
+        }
+    }
+
+    public func dailyActivity(days: Int, now: Date = Date()) throws -> [DailyActivity] {
+        try dailyActivity(since: Timestamps.string(from: now.addingTimeInterval(-Double(days) * 86_400)))
+    }
+
+    public struct SessionTotals: Identifiable {
+        public var id: String { sessionId }
         public var sessionId: String
         public var project: String?
         public var model: String?

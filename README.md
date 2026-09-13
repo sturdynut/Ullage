@@ -11,17 +11,20 @@ SQLite database.
 
 | Slice | What it is | State |
 |---|---|---|
-| M0 | Reconnaissance against real transcripts | **tooling ready, not run** — see below |
+| M0 | Reconnaissance against real transcripts | done 2026-09-12, see `docs/OBSERVED-FORMAT.md` |
 | M1 | Parser + schema, including tool calls and the cross-line `tool_result` join | done |
 | M2 | Ingest CLI | done |
 | M2.5 | Backfill + `session_env` snapshot | done |
 | M3 | Tailer — FSEvents on macOS, polling elsewhere | done |
-| M4 | Menu bar item | done, **not yet run on a Mac** |
+| M4 | Menu bar item | done, verified against `/context` |
+| M5 | Popover: session picker + context-per-turn chart | done |
+| M6 | History across days: activity per project, per day | done |
+| M7 | Composition: what the window is *made of* | done |
 
-56 tests, all green on Linux. The collector, the CLI and every display rule are
-covered; the two macOS-only pieces (the FSEvents watcher and the SwiftUI views)
-are compiled out on this platform and have never been built. Treat the first
-`swift build` on a Mac as part of the work, not a formality.
+68 tests, all green on Linux. The collector, the CLI and every display rule are
+covered; the macOS-only pieces (the FSEvents watcher and the SwiftUI views) are
+compiled out on this platform. Treat the first `swift build` on a Mac as part of
+the work, not a formality.
 
 ## Before anything else
 
@@ -54,21 +57,50 @@ swift test
 .build/debug/ullage sessions            # per-session totals
 .build/debug/ullage latest              # the single row that drives the menu bar
 .build/debug/ullage env <session>       # that session's configuration snapshot
+.build/debug/ullage history [--days N]  # activity per day and project (default 30)
+.build/debug/ullage composition <sess>  # what a session's window is made of
 .build/debug/ullage info                # resolved paths, retention, row counts
 ```
+
+`composition` decomposes the current window into a fixed baseline (system
+prompt, tool schemas, skills, `CLAUDE.md`, opening prompt — or the summary after
+a compaction), tool results, assistant output, and everything else, then lists
+the tools whose results are sitting in the window. Every figure but the window
+total is an estimate and is labelled as one. `history` rolls activity up by
+local day and project, keeping the four token counters apart.
 
 ### The menu bar app
 
 ```bash
-open Package.swift        # opens the package in Xcode
-# select the UllageApp scheme, then Run
+scripts/install-app.sh    # builds, wraps in Ullage.app, installs to /Applications
+open /Applications/Ullage.app
 ```
+
+Pass a directory to install elsewhere (`scripts/install-app.sh ~/Applications`).
+To have it start at login, add Ullage under System Settings > General > Login
+Items. For development, `open Package.swift` and run the UllageApp scheme in
+Xcode instead.
 
 It shows `72%`, or `72% ⚠︎` above 85%, or a dimmed `circle.dotted` glyph when
 nothing has happened for 30 minutes — a number that looks live but is four
-hours old is worse than no number. The menu behind it carries the session,
-project, model, context and last delta. There is no popover, no chart and no
-multi-session view; those are all later.
+hours old is worse than no number.
+
+Click it for the popover: the project, model and headline percentage; a session
+picker that defaults to "most recent" and can pin one session while others are
+talking; a chart of context tokens per turn for that session, with the window as
+the ceiling, the 85% line, and a dashed rule wherever compaction fired (hover
+for the exact turn, tokens and delta); a stacked bar of what the window holds
+right now (M7 — baseline, tool results, assistant output, other) with the
+configured MCP servers, skills and `CLAUDE.md` size named underneath; and the
+session's last delta, turn count, peak and last-turn time.
+
+**History…** opens a full window (M6): activity per day stacked by project over
+7, 30, 90 or 365 days, switchable between turns, output tokens and cache reads;
+a table of every session in range; and, for whichever session is selected, its
+context-per-turn chart and full composition breakdown including the per-tool
+table. The four token counters are never summed into one — a heavy session is
+almost entirely cache reads, so a combined total would just be a cache-read
+number.
 
 It runs unsandboxed: reading `~/.claude` from a sandboxed app needs
 entitlements, and packaging, signing and notarization are deliberately not part
@@ -91,26 +123,24 @@ subagent usage **rolls into the parent** session (`is_sidechain` is recorded, so
 splitting it later is a query change rather than a re-ingest), and **30 minutes**
 without a turn counts as idle (`MenuBarFormatter.idleThreshold`).
 
-## Verifying the number (M0, still outstanding)
+## Verifying the number (M0, done)
 
-The parser was written on a machine with no `~/.claude` directory, so every
-field name in it is a hypothesis taken from the plan rather than something
-observed. Run this on your Mac before trusting a single row:
+The parser was checked against 264 real transcripts on 2026-09-12 (Claude Code
+2.1.270); [docs/OBSERVED-FORMAT.md](docs/OBSERVED-FORMAT.md) records what was on
+disk and the two things that diverged from the plan (the Claude 5 window sizes
+and where thinking tokens live). The headline number was confirmed by hand:
+`/context` reported `129.1k/1m (13%)` while the menu bar showed `129,096 /
+1,000,000` for the same turn. Re-run the recon after Claude Code upgrades, since
+the format is internal and changes between versions:
 
 ```bash
 scripts/recon.sh                                      # what is actually on disk
 scripts/recon.sh fixture ~/.claude/projects/<dir>/<session>.jsonl
 ```
 
-The report prints the line types present, the `usage` shape, and the last
-turn's `context_tokens`. Open a Claude Code session, run `/context` inside it,
-and compare. If they disagree, fix the parser before building anything on top:
-that formula is the entire product. Record what you saw in
-[docs/OBSERVED-FORMAT.md](docs/OBSERVED-FORMAT.md) and bump
-`ClaudeCodeParser.version` on any parser change.
-
-The committed fixtures are **synthetic** — hand-built to the shape the plan
-describes. Replacing them with scrubbed real transcripts is part of closing M0.
+The committed test fixtures are still **synthetic**. Scrubbing a real transcript
+into a fixture with `scripts/recon.sh fixture` is worth doing, but the parser is
+no longer running blind.
 
 ## Layout
 
@@ -126,8 +156,10 @@ Sources/UllageCore/     the collector — no UI imports, so lifting it into a
   DirectoryWatcher      FSEvents on macOS, mtime polling elsewhere
   SessionTailer         debounce, serial ingest, startup sweep
   MenuBarState          what the menu bar shows, decided without a UI
+  SessionHistory        the session picker and context-per-turn series
+  Composition           what the window is made of; activity per day
 Sources/ullage/         debug CLI
-Sources/UllageApp/      SwiftUI MenuBarExtra (macOS only)
+Sources/UllageApp/      SwiftUI menu bar popover + history window (macOS only)
 Tests/                  fixture parse, idempotency, partial line, rotation,
                         unknown types, tool-result join, MCP name parsing,
                         tailing an appended file, the idle rule, SHA-256 vectors
@@ -159,7 +191,8 @@ so, which is exactly why backfilling early matters.
 
 ## What is deliberately not here
 
-No cost or pricing, no charts, no context *composition* drill-down, no
-multi-session UI, no compaction or forked-session reconciliation, no packaging.
-The schema keeps enough to make all of them additive later; the UI renders
-almost none of it.
+No cost or pricing, no vendor other than Claude Code, no signing or notarization
+or auto-update, no forked-session reconciliation. `confidence` and `vendor` are
+in the schema so a second agent's estimated numbers can arrive later without
+contaminating Claude Code's exact ones; `is_sidechain` is recorded so subagent
+usage can be split from its parent as a query change rather than a re-ingest.

@@ -28,6 +28,15 @@ public enum WindowLimits {
         "claude-opus-4-5": 200_000,
         "claude-sonnet-4": 200_000,
         "claude-sonnet-4-5": 200_000,
+        // Observed 2026-09-12 (Claude Code 2.1.270): the unsuffixed ids below
+        // reached 385k-999k prompt tokens in sessions whose cost-state never
+        // recorded a `[1m]` variant, so the plain id already means the 1M
+        // window. See docs/OBSERVED-FORMAT.md, "Window limits".
+        "claude-opus-4-8": 1_000_000,
+        "claude-opus-5": 1_000_000,
+        "claude-sonnet-5": 1_000_000,
+        "claude-fable-5": 1_000_000,
+        "claude-fable-5-1": 1_000_000,
     ]
 
     /// True when the model resolved against the table rather than the fallback.
