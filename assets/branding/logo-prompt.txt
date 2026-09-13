@@ -1,0 +1,10 @@
+Generated with the built-in image_gen tool.
+
+Use case: logo-brand
+Asset type: macOS app logo for Ullage, a menu bar utility that measures AI coding agents' context-window occupancy and remaining capacity.
+Primary request: Create one polished, distinctive app icon. A bold geometric U-shaped vessel doubles as a capacity gauge: a warm brass lower filled section, a crisp horizontal fill boundary, and clearly visible dark empty headroom above. The negative space should communicate available capacity at a glance. Make the U silhouette unmistakable, balanced, and memorable.
+Style/medium: Precision-crafted minimal macOS app icon, almost flat with restrained material depth and exceptionally clean contours.
+Scene/backdrop: Deep charcoal rounded-square tile with subtle corner rounding and very subtle surface shading, on genuine transparent background outside the tile.
+Color palette: Match the repository preview: charcoal #14181c and warm brass #d9a441, with a small soft highlight in #eebd63.
+Composition/framing: One centered icon, square 1024x1024 canvas. Tile occupies about 88 percent of canvas. Large simple symbol with generous internal breathing room and thick geometry that reads at small sizes.
+Constraints: No text, no lettering beyond the abstract U-shaped symbol, no numbers, no tick-mark clutter, no robot, no brain, no sparkle, no circuit traces, no mockup, no surrounding objects, no presentation board, no watermark. Deliver a single finished icon.

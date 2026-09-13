@@ -1,5 +1,7 @@
 # Ullage
 
+<img src="assets/branding/ullage-logo.png" alt="Ullage logo: a brass U-shaped capacity gauge on charcoal" width="128" height="128">
+
 Token and context-window telemetry for AI coding agents, headed for a macOS
 menu bar item that shows how full the context window of your live Claude Code
 session is.
