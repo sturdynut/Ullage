@@ -182,7 +182,7 @@ struct HistoryWindow: View {
                 ContextChart(history: history)
                     .frame(height: 170)
                 if let composition = model.composition {
-                    CompositionView(composition: composition, showTools: true)
+                    CompositionView(composition: composition, startExpanded: true)
                 }
                 Spacer(minLength: 0)
             }
