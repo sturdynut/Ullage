@@ -120,6 +120,7 @@ public final class Ingestor {
         stats.filesScanned = 1
 
         let path = url.path
+        let format = TranscriptFormat.detect(path: path)
         let attributes = try FileManager.default.attributesOfItem(atPath: path)
         let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
         let size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
@@ -145,9 +146,15 @@ public final class Ingestor {
             return stats
         }
 
+        // Codex usage lines are not self-contained; re-read the whole file when
+        // it has changed so the parser sees session_meta and turn_context first.
+        if format.reingestsWholeFile { startOffset = 0 }
+
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         if startOffset > 0 { try handle.seek(toOffset: startOffset) }
+
+        let parser = format.makeParser()
 
         let sessionFallback = url.deletingPathExtension().lastPathComponent
         var pending = Data()
@@ -181,7 +188,7 @@ public final class Ingestor {
                     fallbackSessionId: sessionFallback,
                     lastTimestamp: lastTimestamp
                 )
-                guard let parsed = ClaudeCodeParser.parse(line: trimmed, context: context) else {
+                guard let parsed = parser.parse(line: trimmed, context: context) else {
                     if (try? JSONSerialization.jsonObject(with: trimmed)) == nil {
                         stats.malformedLines += 1
                         warn("malformed JSON at \(path) byte \(startOffset + consumed)")
@@ -231,7 +238,10 @@ public final class Ingestor {
             call.contextDelta = delta
             try store.upsert(call: call)
             stats.callsUpserted += 1
-            if try snapshotEnvironmentIfNeeded(for: parsedCall) { stats.sessionEnvSnapshots += 1 }
+            // session_env is filesystem-derived Claude Code state (MCP servers,
+            // skills, CLAUDE.md); it does not apply to other vendors.
+            if parsedCall.call.vendor == Vendor.claudeCode,
+               try snapshotEnvironmentIfNeeded(for: parsedCall) { stats.sessionEnvSnapshots += 1 }
             for toolCall in parsedCall.toolCalls {
                 try store.upsert(toolCall: toolCall)
                 stats.toolCallsUpserted += 1

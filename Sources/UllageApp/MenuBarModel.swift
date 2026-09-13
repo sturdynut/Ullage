@@ -52,7 +52,7 @@ final class MenuBarModel: ObservableObject {
             tailer.onError = { [weak self] error in
                 Task { @MainActor in self?.errorMessage = "\(error)" }
             }
-            try tailer.start(roots: ClaudePaths.projectsDirectories())
+            try tailer.start(roots: TranscriptSources.roots())
             self.tailer = tailer
             isWatching = true
             refresh()

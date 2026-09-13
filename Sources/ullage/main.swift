@@ -244,7 +244,7 @@ func warnAboutRetention() {
 
 func targetURLs(_ options: Options) -> [URL] {
     options.paths.isEmpty
-        ? ClaudePaths.projectsDirectories()
+        ? TranscriptSources.roots()
         : options.paths.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
 }
 
@@ -379,7 +379,7 @@ do {
         let store = try Store(path: options.databasePath)
         print("""
         database   \(options.databasePath)
-        projects   \(ClaudePaths.projectsDirectories().map(\.path).joined(separator: ", "))
+        sources    \(TranscriptSources.roots().map(\.path).joined(separator: ", "))
         parser     v\(ClaudeCodeParser.version)
         retention  \(Retention.status())
         rows       \(try store.callCount()) calls, \(try store.toolCallCount()) tool calls, \(try store.eventCount()) events, \(try store.sessionEnvCount()) env snapshots
