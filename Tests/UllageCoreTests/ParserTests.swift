@@ -59,7 +59,9 @@ final class ParserTests: XCTestCase {
 
         let task = try XCTUnwrap(parsed.toolCalls.first { $0.name == "Task" })
         XCTAssertEqual(task.kind, "agent")
-        XCTAssertEqual(task.target, "Explore")
+        // The description, not the subagent type: it is the only name a human
+        // wrote for this spawn, and the agent row carries the type.
+        XCTAssertEqual(task.target, "find the parser")
         XCTAssertNil(task.resultTokens)
     }
 

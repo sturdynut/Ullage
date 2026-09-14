@@ -13,6 +13,10 @@ public struct IngestStats: Equatable {
     public var toolResultsOrphaned = 0
     public var eventsInserted = 0
     public var sessionEnvSnapshots = 0
+    /// Distinct subagents seen, and spawns joined back to the parent turn that
+    /// asked for them. Counted once each, not once per turn.
+    public var agentsSeen = 0
+    public var agentSpawnsLinked = 0
     /// A trailing partial line is normal — Claude Code is mid-write.
     public var partialTailBytes = 0
     public var restartedFromZero = 0
@@ -33,6 +37,8 @@ public struct IngestStats: Equatable {
         result.toolResultsOrphaned += rhs.toolResultsOrphaned
         result.eventsInserted += rhs.eventsInserted
         result.sessionEnvSnapshots += rhs.sessionEnvSnapshots
+        result.agentsSeen += rhs.agentsSeen
+        result.agentSpawnsLinked += rhs.agentSpawnsLinked
         result.partialTailBytes += rhs.partialTailBytes
         result.restartedFromZero += rhs.restartedFromZero
         return result
@@ -51,8 +57,14 @@ public final class Ingestor {
     /// session. Set to nil to ingest without touching the rest of the disk.
     public var environmentProvider: SessionEnvironmentProviding?
 
-    /// Per-session bookkeeping carried across files within one process.
-    private struct SessionState {
+    /// Per-*stream* bookkeeping carried across files within one process.
+    ///
+    /// A stream is one context window: the main thread of a session, or one
+    /// subagent of it. Subagent lines carry the parent's `sessionId`, so keying
+    /// this by session alone would number four concurrent windows into one
+    /// sequence and compute deltas between prompts that never followed each
+    /// other.
+    private struct StreamState {
         var nextTurnIndex: Int
         var contextByTurn: [Int: Int] = [:]
         /// Set when a compaction event is seen; nulls the delta of the next turn
@@ -60,10 +72,18 @@ public final class Ingestor {
         var compactionPending = false
     }
 
-    private var sessions: [String: SessionState] = [:]
+    private struct StreamKey: Hashable {
+        var sessionId: String
+        var agentId: String?
+    }
+
+    private var streams: [StreamKey: StreamState] = [:]
     /// Sessions this process has already considered for a snapshot, so the
     /// existence check is one query per session per run rather than per turn.
     private var snapshottedSessions = Set<String>()
+    /// Agents already counted in this process, so a 60-turn subagent is one
+    /// agent in the stats rather than sixty.
+    private var seenAgents = Set<String>()
 
     public init(
         store: Store,
@@ -155,6 +175,9 @@ public final class Ingestor {
         if startOffset > 0 { try handle.seek(toOffset: startOffset) }
 
         let parser = format.makeParser()
+        // Only a subagent transcript has one, and it is the one source of the
+        // agent's name that outlives the parent's transcript.
+        let agentMetadata = AgentMetadata.read(besideTranscript: path)
 
         let sessionFallback = url.deletingPathExtension().lastPathComponent
         var pending = Data()
@@ -211,7 +234,7 @@ public final class Ingestor {
         let newOffset = startOffset + consumed
         try store.database.transaction {
             for parsed in work {
-                try apply(parsed, to: &stats)
+                try apply(parsed, to: &stats, metadata: agentMetadata)
             }
             try store.upsert(
                 cursor: FileCursor(
@@ -230,7 +253,11 @@ public final class Ingestor {
 
     // MARK: - Row application
 
-    private func apply(_ parsed: ParsedLine, to stats: inout IngestStats) throws {
+    private func apply(
+        _ parsed: ParsedLine,
+        to stats: inout IngestStats,
+        metadata: AgentMetadata? = nil
+    ) throws {
         switch parsed {
         case .call(let parsedCall):
             var call = parsedCall.call
@@ -239,6 +266,14 @@ public final class Ingestor {
             call.contextDelta = delta
             try store.upsert(call: call)
             stats.callsUpserted += 1
+            // The child's own side of the agent row: identity and span, known
+            // even when the parent's transcript has already aged out.
+            if let agentId = call.agentId {
+                // Every turn, so the agent's last-seen time keeps up; counted
+                // only the first time.
+                try store.upsertAgent(fromCall: call, metadata: metadata)
+                if seenAgents.insert(agentId).inserted { stats.agentsSeen += 1 }
+            }
             // session_env is filesystem-derived Claude Code state (MCP servers,
             // skills, CLAUDE.md); it does not apply to other vendors.
             if parsedCall.call.vendor == Vendor.claudeCode,
@@ -258,12 +293,23 @@ public final class Ingestor {
                 } else {
                     stats.toolResultsOrphaned += 1
                 }
+                // An `Agent` result names the child it ran, which is the only
+                // exact link between the parent's turn and the child's window.
+                if let spawn = result.agent {
+                    if try store.recordAgentSpawn(
+                        toolUseId: result.toolUseId,
+                        info: spawn,
+                        sessionFallback: spawn.sessionId
+                    ) { stats.agentSpawnsLinked += 1 }
+                    if seenAgents.insert(spawn.agentId).inserted { stats.agentsSeen += 1 }
+                }
             }
 
         case .event(let event):
             if try store.insert(event: event) { stats.eventsInserted += 1 }
             if event.kind == EventKind.compaction.rawValue {
-                sessions[event.sessionId, default: SessionState(nextTurnIndex: 0)].compactionPending = true
+                let key = StreamKey(sessionId: event.sessionId, agentId: event.agentId)
+                streams[key, default: StreamState(nextTurnIndex: 0)].compactionPending = true
             }
         }
     }
@@ -289,8 +335,9 @@ public final class Ingestor {
     /// Turn index is ours, not the transcript's. It must be stable across
     /// re-ingests: a message id that already has one keeps it.
     private func assignTurn(for call: CallRow) throws -> (Int, Int?) {
-        var state = try sessionState(for: call.sessionId)
-        defer { sessions[call.sessionId] = state }
+        let key = StreamKey(sessionId: call.sessionId, agentId: call.agentId)
+        var state = try streamState(for: key)
+        defer { streams[key] = state }
 
         let turnIndex: Int
         if let existing = try store.turnIndex(forDedupeKey: call.dedupeKey) {
@@ -312,7 +359,11 @@ public final class Ingestor {
         } else if turnIndex > 0 {
             var previous = state.contextByTurn[turnIndex - 1]
             if previous == nil {
-                previous = try store.contextTokens(sessionId: call.sessionId, turnIndex: turnIndex - 1)
+                previous = try store.contextTokens(
+                    sessionId: call.sessionId,
+                    agentId: call.agentId,
+                    turnIndex: turnIndex - 1
+                )
             }
             delta = previous.map { call.contextTokens - $0 }
         } else {
@@ -321,13 +372,14 @@ public final class Ingestor {
         return (turnIndex, delta)
     }
 
-    private func sessionState(for sessionId: String) throws -> SessionState {
-        if let existing = sessions[sessionId] { return existing }
+    private func streamState(for key: StreamKey) throws -> StreamState {
+        if let existing = streams[key] { return existing }
         // Resume numbering where the database left off so tailing an appended
         // file continues the sequence instead of restarting it.
-        let next = (try store.maxTurnIndex(sessionId: sessionId)).map { $0 + 1 } ?? 0
-        let state = SessionState(nextTurnIndex: next)
-        sessions[sessionId] = state
+        let next = (try store.maxTurnIndex(sessionId: key.sessionId, agentId: key.agentId))
+            .map { $0 + 1 } ?? 0
+        let state = StreamState(nextTurnIndex: next)
+        streams[key] = state
         return state
     }
 

@@ -12,7 +12,10 @@ public struct SessionSummary: Equatable, Identifiable {
     public var lastTs: String
     public var lastContextTokens: Int
     public var windowLimit: Int?
+    /// Main-thread turns. A subagent's turns belong to the subagent.
     public var calls: Int
+    /// How many agents this session spawned, at any depth.
+    public var agents: Int
 
     public var id: String { sessionId }
 
@@ -28,7 +31,8 @@ public struct SessionSummary: Equatable, Identifiable {
         lastTs: String,
         lastContextTokens: Int,
         windowLimit: Int? = nil,
-        calls: Int
+        calls: Int,
+        agents: Int = 0
     ) {
         self.sessionId = sessionId
         self.project = project
@@ -37,6 +41,53 @@ public struct SessionSummary: Equatable, Identifiable {
         self.lastContextTokens = lastContextTokens
         self.windowLimit = windowLimit
         self.calls = calls
+        self.agents = agents
+    }
+}
+
+/// Sessions under the project they ran in.
+///
+/// The picker used to be a flat list of session ids, which is unreadable the
+/// moment more than one repo is in flight: an id is not a name, and the agents
+/// inside a session are named by other agents, not by the person reading the
+/// list. Project is the one label a human already knows.
+public struct ProjectGroup: Equatable, Identifiable {
+    public static let unknownProject = "—"
+
+    public var project: String
+    /// Most recent first.
+    public var sessions: [SessionSummary]
+
+    public var id: String { project }
+
+    public init(project: String, sessions: [SessionSummary]) {
+        self.project = project
+        self.sessions = sessions
+    }
+
+    /// The group's own recency: what it is ordered by.
+    public var lastTs: String { sessions.first?.lastTs ?? "" }
+    public var agents: Int { sessions.reduce(0) { $0 + $1.agents } }
+
+    /// Groups ordered by their most recent session, sessions within a group by
+    /// their own recency. Ties break on name and id so the list never reshuffles
+    /// between refreshes.
+    public static func build(sessions: [SessionSummary]) -> [ProjectGroup] {
+        var byProject: [String: [SessionSummary]] = [:]
+        for session in sessions {
+            let project = session.project.flatMap { $0.isEmpty ? nil : $0 } ?? unknownProject
+            byProject[project, default: []].append(session)
+        }
+        return byProject
+            .map { project, sessions in
+                ProjectGroup(
+                    project: project,
+                    sessions: sessions.sorted {
+                        $0.lastTs != $1.lastTs ? $0.lastTs > $1.lastTs : $0.sessionId < $1.sessionId
+                    }
+                )
+            }
+            .sorted { $0.lastTs != $1.lastTs ? $0.lastTs > $1.lastTs : $0.project < $1.project }
     }
 }
 

@@ -21,9 +21,23 @@ final class MenuBarModel: ObservableObject {
     // M5 — the popover's extra inputs. `selection` is the only thing the user
     // sets; everything else is re-read from the database on every refresh.
     @Published var selection: SessionSelection = .automatic {
-        didSet { if selection != oldValue { refresh() } }
+        didSet {
+            guard selection != oldValue else { return }
+            // Agents belong to a session; picking another one starts at its
+            // main thread.
+            focus = .mainThread
+            refresh()
+        }
     }
     @Published private(set) var sessions: [SessionSummary] = []
+    /// The picker's shape: sessions under the project they ran in.
+    @Published private(set) var projects: [ProjectGroup] = []
+    /// The agents the shown session spawned, and which stream the popover is
+    /// looking at. The menu bar title never follows this — a subagent's window
+    /// is not the session's — but everything inside the popover does.
+    @Published private(set) var agents: AgentTree?
+    @Published private(set) var focus: AgentScope = .mainThread
+    @Published private(set) var focusedAgent: AgentSummary?
     @Published private(set) var history: ContextHistory?
     @Published private(set) var composition: ContextComposition?
     /// True when a pinned session vanished and the display fell back.
@@ -69,6 +83,15 @@ final class MenuBarModel: ObservableObject {
         }
     }
 
+    /// Look at one agent's window instead of the session's. Assigning `focus`
+    /// directly would re-enter `refresh` from inside itself, so selection goes
+    /// through here.
+    func focus(on scope: AgentScope) {
+        guard focus != scope else { return }
+        focus = scope
+        refresh()
+    }
+
     func refresh() {
         guard let readStore else { return }
         do {
@@ -79,8 +102,24 @@ final class MenuBarModel: ObservableObject {
             pinFellBack = selection.pinnedSessionId != nil && shown?.sessionId != selection.pinnedSessionId
             state = MenuBarFormatter.state(for: shown)
             sessions = try readStore.recentSessions(limit: Self.pickerLimit)
-            history = try shown.map { try readStore.contextHistory(sessionId: $0.sessionId) }
-            composition = try shown.flatMap { try readStore.composition(sessionId: $0.sessionId) }
+            projects = ProjectGroup.build(sessions: sessions)
+
+            let tree = try shown.map { try readStore.agentTree(sessionId: $0.sessionId) }
+            agents = tree
+            // A focus that this session has no agent for — the session changed
+            // under us, or the agent's rows have not been ingested yet — falls
+            // back to the main thread rather than showing an empty chart.
+            if case .agent(let agentId) = focus,
+               tree?.flattened.contains(where: { $0.agent.agentId == agentId }) != true {
+                focus = .mainThread
+            }
+            focusedAgent = {
+                guard case .agent(let agentId) = focus else { return nil }
+                return tree?.flattened.first { $0.agent.agentId == agentId }?.agent
+            }()
+
+            history = try shown.map { try readStore.contextHistory(sessionId: $0.sessionId, scope: focus) }
+            composition = try shown.flatMap { try readStore.composition(sessionId: $0.sessionId, scope: focus) }
             errorMessage = nil
         } catch {
             errorMessage = "\(error)"

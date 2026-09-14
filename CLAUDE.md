@@ -18,7 +18,7 @@ a debug CLI. Everything is local; nothing is uploaded.
 
 | Harness | Reads | Occupancy | Notes |
 |---|---|---|---|
-| Claude Code | `~/.claude/projects/**/*.jsonl` | exact | Window from `WindowLimits` lookup |
+| Claude Code | `~/.claude/projects/**/*.jsonl` | exact | Window from `WindowLimits` lookup; subagents included, each its own window |
 | OpenAI Codex CLI | `~/.codex/sessions/**/*.jsonl` | exact | Window reported per turn, no lookup |
 | Cursor | `~/.cursor/**/agent-transcripts/**/*.jsonl` | **none** | Activity only; stores no tokens/window/model/timestamps |
 
@@ -38,7 +38,7 @@ scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 ```
 
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
-`composition <session>`, `env <session>`, `info`.
+`composition <session>`, `agents <session>`, `env <session>`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
   have no macOS-only imports. `Sources/UllageApp` is `#if os(macOS)` throughout.
@@ -71,23 +71,29 @@ cache_write`) which then sum to the same total. Cursor reports nothing.
 These come from real traps in the data. Breaking one produces numbers that look
 plausible and are wrong.
 
-1. **Keep the four token counters separate forever** (`input`, `output`,
+1. **A subagent is its own context stream, never a turn of its parent.** Its
+   lines live in `<session>/subagents/agent-<id>.jsonl` and carry the *parent's*
+   `sessionId`, so the key for turn index, context delta and occupancy is
+   `(session_id, agent_id)` — `agent_id IS NULL` being the main thread. The menu
+   bar gauge filters to the main thread: an agent's window is not the session's,
+   however recently it spoke.
+2. **Keep the four token counters separate forever** (`input`, `output`,
    `cache_read`, `cache_write`). A heavy session is ~99% cache reads, so any
    single "total tokens" number is a cache-read number in disguise. Charts pick
    one counter; they never sum them.
-2. **Never estimate a measurement.** If a harness does not report tokens, the
+3. **Never estimate a measurement.** If a harness does not report tokens, the
    row carries `confidence = unmeasured`, a nil window, and no occupancy — it
    does not get a guessed percentage. `confidence` exists precisely to keep an
    estimate-only source from contaminating exact rows.
-3. **`output_tokens` is a mid-stream snapshot and undercounts.** The upsert takes
+4. **`output_tokens` is a mid-stream snapshot and undercounts.** The upsert takes
    `MAX(existing, incoming)`. Never invent a correction factor — store what was
    reported.
-4. **Transcript formats are not contracts.** They are private and versioned.
+5. **Transcript formats are not contracts.** They are private and versioned.
    Guard every field access, default missing counters to 0, count and skip
    malformed lines, never throw out of a parser. Unknown line types are expected.
-5. **Estimated figures are labelled as estimates.** Tool-result and CLAUDE.md
+6. **Estimated figures are labelled as estimates.** Tool-result and CLAUDE.md
    sizes are length estimates (~4 bytes/token), never real token counts.
-6. **If the disk disagrees with the parser, the disk wins.** After a harness
+7. **If the disk disagrees with the parser, the disk wins.** After a harness
    upgrade, re-run `scripts/recon.sh`, record divergences in
    `docs/OBSERVED-FORMAT.md`, fix the parser, and bump its `version`.
 
@@ -116,6 +122,12 @@ plausible and are wrong.
 - **Compaction is a first-class event.** Context falls off a cliff at a
   compaction boundary: `context_delta` is NULL across it, charts mark it, and
   composition restarts the window at the post-compaction summary.
+- **The agent tree is assembled from two sides, in either order.** The child's
+  transcript and its `.meta.json` sidecar give identity, type and the name the
+  parent wrote; the parent's `toolUseResult` gives how the run ended. Neither
+  overwrites the other with nil, and the *parent agent* is derived on read from
+  `tool_call` → `call.agent_id` so ingest order cannot strand an edge. Nesting
+  falls out of that join for free.
 - **`session_env` is the one irreproducible table.** MCP servers, skills and
   CLAUDE.md are snapshotted at ingest because nothing on disk records what they
   were when a session ran. It is Claude-Code-only; other vendors skip it.

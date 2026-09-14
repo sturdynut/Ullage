@@ -35,8 +35,12 @@ Everything stays on your machine. Nothing is uploaded.
   one.
 - **Popover** — click the menu bar item for:
   - the active project, model, and headline percentage;
-  - a session picker that follows the most recently active session, or pins one
-    so it holds still while others are talking;
+  - a session picker **grouped by project**, following the most recently active
+    session or pinning one so it holds still while others are talking;
+  - the **subagents that session spawned**, as the tree that spawned them, each
+    named by the description the agent above it wrote and each with its own
+    window and occupancy — click one and the chart and breakdown below switch to
+    its context instead of the session's;
   - a chart of context tokens per turn, with the window as the ceiling, the 85%
     line, and a marker wherever a compaction dropped the window (hover for the
     exact turn, tokens, and change);
@@ -47,8 +51,8 @@ Everything stays on your machine. Nothing is uploaded.
   - the last turn's change, turn count, peak, and last-active time.
 - **History window** — the History button opens activity per day stacked by
   project over 7, 30, 90, or 365 days, switchable between turns, output tokens,
-  and cache reads; a table of every session in range; and the selected session's
-  chart and full composition.
+  and cache reads; a table of every session in range with its agent count; and
+  the selected session's agent tree, chart and full composition.
 
 ## Install
 
@@ -100,13 +104,19 @@ without the app:
 ```bash
 ullage backfill              # ingest everything on disk, report what is missing
 ullage watch                 # tail live; prints what the menu bar would show
-ullage sessions              # per-session totals
+ullage sessions              # per-session totals, grouped by project
+ullage agents <session>      # the subagent tree, each agent's own window
 ullage latest                # the single row driving the menu bar
 ullage history [--days N]    # activity per day and project (default 30)
 ullage composition <session> # what a session's window is made of
 ullage env <session>         # a session's configuration snapshot
 ullage info                  # resolved paths, retention, row counts
 ```
+
+`agents` prints the main thread and, indented beneath it, every subagent the
+session spawned: the name the spawning agent gave it, its type, its turns, and
+how full **its own** window got. A subagent starts from an empty context, so its
+occupancy is never the session's — and the menu bar gauge never follows one.
 
 `composition` breaks the current window into a baseline (system prompt, tool
 schemas, skills, CLAUDE.md, and the opening prompt — or the summary after a
