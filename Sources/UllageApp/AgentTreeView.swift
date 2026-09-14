@@ -18,24 +18,27 @@ struct AgentTreeView: View {
     let onSelect: (AgentScope) -> Void
 
     @State private var expanded = true
+    @State private var hovered: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-                    Text(title)
-                        .font(.caption)
-                    Spacer(minLength: 0)
+            if tree.count > 1 {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .rotationEffect(.degrees(expanded ? 90 : 0))
+                        Text(expanded ? "hide agents" : title)
+                            .font(.caption)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
                 }
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             if expanded {
                 // A ScrollView's ideal height is zero, so one inside the
@@ -54,7 +57,7 @@ struct AgentTreeView: View {
 
     /// Enough for a row of name over detail, plus its padding.
     private static let rowHeight: CGFloat = 36
-    private static let maxVisibleRows = 5
+    private static let maxVisibleRows = 4
 
     /// The main thread, then every agent under whichever agent asked for it.
     private var rowCount: Int { tree.count + 1 }
@@ -74,7 +77,8 @@ struct AgentTreeView: View {
                     detail: detail(for: node.agent),
                     depth: node.depth + 1,
                     occupancy: node.agent.occupancy,
-                    scope: .agent(node.agent.agentId)
+                    scope: .agent(node.agent.agentId),
+                    agent: node.agent
                 )
             }
         }
@@ -85,13 +89,28 @@ struct AgentTreeView: View {
         tree.count == 1 ? "1 agent" : "\(tree.count) agents"
     }
 
+    /// Counts only. The run's *state* used to be last in this string, so it was
+    /// the part macOS truncated ("· ba…"); it is a glyph on the row now, where
+    /// it cannot be cut, and the window is named because two rows' bars are
+    /// drawn at the same length against different windows.
     private func detail(for agent: AgentSummary) -> String {
         [
             agent.agentType,
             agent.calls == 1 ? "1 turn" : "\(agent.calls) turns",
             agent.toolCalls > 0 ? "\(agent.toolCalls) tools" : nil,
-            agent.statusLabel,
+            agent.windowLimit.map { "\(ContextChart.compact($0)) window" },
         ].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// Silence means it finished; anything else is a state worth a mark.
+    @ViewBuilder
+    private func statusMark(_ agent: AgentSummary?) -> some View {
+        if let agent, let label = agent.statusLabel {
+            Image(systemName: agent.status == nil ? "questionmark.circle" : "circle.dotted")
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+                .help(label)
+        }
     }
 
     private func row(
@@ -99,47 +118,77 @@ struct AgentTreeView: View {
         detail: String,
         depth: Int,
         occupancy: Double?,
-        scope: AgentScope
+        scope: AgentScope,
+        agent: AgentSummary? = nil
     ) -> some View {
         let selected = scope == focus
+        let key = Self.key(for: scope)
         return Button {
             onSelect(scope)
         } label: {
             HStack(spacing: 6) {
                 if depth > 0 {
-                    Color.clear.frame(width: CGFloat(depth - 1) * 12, height: 1)
-                    Text("↳")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    // A hairline down the left of a parent's children is what
+                    // makes a list read as a tree; an arrow on every row of a
+                    // flat sibling list only reads as a bullet.
+                    Color.clear.frame(width: CGFloat(depth - 1) * 14, height: 1)
+                    Rectangle()
+                        .fill(.quaternary)
+                        .frame(width: 1, height: 22)
+                        .padding(.leading, 4)
                 }
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(name)
-                        .font(.callout)
-                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(name)
+                            .font(.callout)
+                            .fontWeight(selected ? .medium : .regular)
+                            .lineLimit(1)
+                        statusMark(agent)
+                    }
                     Text(detail)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
-                gauge(occupancy)
+                gauge(occupancy, selected: selected)
             }
             .padding(.vertical, 2)
             .padding(.horizontal, 4)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(selected ? Color.accentColor.opacity(0.15) : Color.clear)
+                    // The default focus is the main thread, so a filled block
+                    // would be the resting state of every popover — the loudest
+                    // object on screen saying nothing. The fill is the hover
+                    // affordance; the accent rule carries "current".
+                    .fill(hovered == key ? Color.primary.opacity(0.06) : Color.clear)
             )
+            .overlay(alignment: .leading) {
+                if selected {
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(Color.accentColor)
+                        .frame(width: 2)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { inside in hovered = inside ? key : nil }
         .help(detail)
+    }
+
+    private static func key(for scope: AgentScope) -> String {
+        switch scope {
+        case .mainThread: return "main"
+        case .agent(let id): return id
+        case .all: return "all"
+        }
     }
 
     /// Each row's own window, never the session's. A window we do not know is
     /// left blank rather than drawn as empty.
     @ViewBuilder
-    private func gauge(_ occupancy: Double?) -> some View {
+    private func gauge(_ occupancy: Double?, selected: Bool = false) -> some View {
         HStack(spacing: 5) {
             if let occupancy {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)

@@ -10,25 +10,32 @@ struct PopoverContent: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             header
             sessionPicker
             if let tree = model.agents, !tree.isEmpty {
+                SectionRule("Streams") { streamsTrailing }
                 AgentTreeView(
                     tree: tree,
-                    mainThreadDetail: [model.state.model, model.state.project]
-                        .compactMap { $0 }.joined(separator: " · "),
+                    mainThreadDetail: mainThreadDetail,
                     mainThreadOccupancy: model.state.occupancy,
                     focus: model.focus,
                     onSelect: { model.focus(on: $0) }
                 )
             }
             if let history = model.history {
-                ContextChart(history: history)
-                    .frame(height: 120)
+                SectionRule("Context per turn", scope: scopeName)
+                ContextChart(history: history, showsIdleCaption: false)
+                    .frame(height: 84)
             }
             if let composition = model.composition {
-                CompositionView(composition: composition)
+                SectionRule("What the window holds", scope: scopeName) {
+                    if composition.estimatesOvershoot { overshootBadge }
+                }
+                CompositionView(composition: composition, showsTitle: false)
+            }
+            if model.state.status != .empty {
+                SectionRule("Details", scope: scopeName)
             }
             stats
             if let errorMessage = model.errorMessage {
@@ -37,49 +44,150 @@ struct PopoverContent: View {
                     .foregroundStyle(.red)
                     .lineLimit(3)
             }
-            Divider()
             actions
+                .padding(.top, 2)
         }
         .padding(14)
         .frame(width: 360)
     }
 
+    // MARK: Scope
+
+    /// Selecting an agent rescopes the chart, the breakdown and the stats —
+    /// three blocks that used to change meaning without changing a word. Each
+    /// one's section rule now carries the agent's name, so the scope is stated
+    /// on top of the numbers it governs, in the accent colour that means "the
+    /// stream you are looking at", and it survives collapsing the tree.
+    ///
+    /// Nil on the main thread: the header already names the session, and a
+    /// caption on every block repeating it is noise.
+    private var scopeName: String? { model.focusedAgent?.displayName }
+
+    /// The agent count, and the way back out of one.
+    @ViewBuilder
+    private var streamsTrailing: some View {
+        HStack(spacing: 6) {
+            if model.focusedAgent != nil {
+                Button { model.focus(on: .mainThread) } label: {
+                    Text("back to main thread")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.4)
+                        .textCase(.uppercase)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+            } else if let tree = model.agents {
+                Text("\(tree.count)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .fixedSize()
+    }
+
+    private var overshootBadge: some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(Color.orange)
+            .help("The estimated parts add up to more than the window holds, so the shares below are approximate and Other is clamped at zero.")
+    }
+
+    /// The main-thread row's second line, in the same shape as an agent's:
+    /// what is answering, then how much it has done.
+    private var mainThreadDetail: String {
+        [
+            model.state.model,
+            model.history.map { "\($0.points.count) turn\($0.points.count == 1 ? "" : "s")" },
+        ].compactMap { $0 }.joined(separator: " · ")
+    }
+
     // MARK: Header
 
+    /// The headline is the room left, not the percentage.
+    ///
+    /// The menu bar item you just clicked already showed the percentage; saying
+    /// it again at 26pt spends the largest type on the screen repeating the
+    /// control that opened it. Ullage is the empty space at the top of a barrel,
+    /// and until now the app never showed it. The percentage stays, in the
+    /// caption, because it is the vocabulary the menu bar speaks.
     @ViewBuilder
     private var header: some View {
         let state = model.state
-        // When an agent is selected the headline number is *its* window. The
-        // menu bar title keeps showing the session's, which is the one thing
-        // that must never be a subagent's.
+        // When an agent is selected these are *its* window. The menu bar title
+        // keeps showing the session's, which is the one thing that must never
+        // be a subagent's.
         let agent = model.focusedAgent
         let occupancy = agent.map(\.occupancy) ?? state.occupancy
-        HStack(alignment: .firstTextBaseline) {
+        let contextTokens = agent?.lastContextTokens ?? state.contextTokens
+        let windowLimit = agent?.windowLimit ?? state.windowLimit
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(agent?.displayName ?? state.project ?? "No sessions ingested yet")
                     .font(.headline)
                     .lineLimit(1)
-                if let subtitle = subtitle(agent: agent, state: state) {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                HStack(spacing: 5) {
+                    if let subtitle = subtitle(agent: agent, state: state) {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    // "window assumed" means this percentage may be wrong. It
+                    // used to be two grey words appended to the model name.
+                    if agent == nil, state.modelWindowIsAssumed, state.status != .empty {
+                        assumedWindowBadge
+                    }
                 }
+                // The arithmetic behind the ring, next to the ring instead of
+                // seven rows below it.
+                Text(exactLine(state: state, occupancy: occupancy, contextTokens: contextTokens, windowLimit: windowLimit))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .textSelection(.enabled)
             }
             Spacer(minLength: 8)
-            if state.status == .empty {
-                Text(MenuBarFormatter.idleGlyph)
-                    .font(.system(size: 26, weight: .medium, design: .rounded))
-                    .foregroundStyle(.tertiary)
-            } else if let occupancy {
-                Text(MenuBarFormatter.percentage(occupancy))
-                    .font(.system(size: 26, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(occupancy >= MenuBarFormatter.warningThreshold
-                        ? Color.orange
-                        : (agent == nil && state.isIdle ? Color.secondary : Color.primary))
-            }
+            OccupancyRing(
+                occupancy: state.status == .empty ? nil : occupancy,
+                peak: peakOccupancy(windowLimit: windowLimit),
+                center: headroom(contextTokens: contextTokens, windowLimit: windowLimit),
+                caption: windowLimit == nil ? nil : "left"
+            )
         }
+    }
+
+    /// The room left — the thing the app is named for, and the one number the
+    /// menu bar has no space to show.
+    private func headroom(contextTokens: Int?, windowLimit: Int?) -> String {
+        guard let windowLimit, let contextTokens else { return "—" }
+        return CompositionView.compact(max(0, windowLimit - contextTokens))
+    }
+
+    private func exactLine(state: MenuBarState, occupancy: Double?, contextTokens: Int?, windowLimit: Int?) -> String {
+        guard state.status != .empty else { return "nothing ingested yet" }
+        guard let contextTokens else { return "no turns recorded" }
+        guard let windowLimit, let occupancy else { return "\(contextTokens.formatted()) tokens · no window reported" }
+        return "\(contextTokens.formatted()) / \(windowLimit.formatted())  ·  \(MenuBarFormatter.percentage(occupancy))"
+    }
+
+    /// Drawn as a tick on the same track, not as a second gauge: it is the same
+    /// ratio against the same window, and on a growing session it is simply the
+    /// current value.
+    private func peakOccupancy(windowLimit: Int?) -> Double? {
+        guard let windowLimit, windowLimit > 0, let peak = model.history?.peakContextTokens else { return nil }
+        return Double(peak) / Double(windowLimit)
+    }
+
+    private var assumedWindowBadge: some View {
+        Text("window assumed")
+            .font(.caption2)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(Color.orange.opacity(0.18)))
+            .foregroundStyle(Color.orange)
+            .help("This model is not in the window-limit table, so the percentage is against an assumed 200k window.")
     }
 
     private func subtitle(agent: AgentSummary?, state: MenuBarState) -> String? {
@@ -88,8 +196,7 @@ struct PopoverContent: View {
                 .compactMap { $0 }
                 .joined(separator: " · ")
         }
-        guard let modelName = state.model else { return nil }
-        return modelName + (state.modelWindowIsAssumed ? "  · window assumed" : "")
+        return state.model
     }
 
     // MARK: Session picker
@@ -150,8 +257,13 @@ struct PopoverContent: View {
         let lastActivity = agent.flatMap { $0.lastTs.flatMap(Timestamps.date(from:)) } ?? state.lastActivity
         if state.status != .empty {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
-                if let contextTokens {
-                    row("Context", "\(contextTokens.formatted()) / \(windowLimit?.formatted() ?? "?")")
+                // Values right-aligned against the popover edge so they scan as
+                // a column instead of a ragged left edge wherever the longest
+                // label happened to push them.
+                // Context is the headline's own arithmetic and lives up there;
+                // repeating it here put the explanation 300pt from the number.
+                if let contextTokens, windowLimit == nil {
+                    row("Context", contextTokens.formatted() + "  (no window reported)")
                 }
                 if let delta {
                     row("Last turn", (delta >= 0 ? "+" : "") + delta.formatted())
@@ -159,14 +271,16 @@ struct PopoverContent: View {
                 if let history = model.history {
                     row("Turns", history.points.count.formatted()
                         + (history.compactionTurns.isEmpty ? "" : " · \(history.compactionTurns.count) compaction\(history.compactionTurns.count == 1 ? "" : "s")"))
-                    row("Peak", history.peakContextTokens.formatted())
+                    // Peak is a tick on the ring: same ratio, same window, and
+                    // on a growing session it is the current value anyway.
                 }
-                if let session = state.sessionId {
+                // Under an agent, the session id and the session's agent count
+                // describe something other than every number around them, which
+                // made both rows read as false.
+                if let agent {
+                    row("Agent", [agent.agentType, agent.statusLabel].compactMap { $0 }.joined(separator: " · "))
+                } else if let session = state.sessionId {
                     row("Session", String(session.prefix(8)))
-                }
-                if let agents = model.agents, !agents.isEmpty {
-                    row("Agents", agents.count.formatted()
-                        + (agents.crowded().isEmpty ? "" : " · \(agents.crowded().count) over \(Int(MenuBarFormatter.warningThreshold * 100))%"))
                 }
                 if let lastActivity {
                     row(state.isIdle && agent == nil ? "Idle since" : "Last turn at",
@@ -180,25 +294,41 @@ struct PopoverContent: View {
     private func row(_ name: String, _ value: String) -> some View {
         GridRow {
             Text(name).foregroundStyle(.secondary)
-            Text(value).monospacedDigit()
+            Text(value)
+                .monospacedDigit()
+                .textSelection(.enabled)
+                .gridColumnAlignment(.trailing)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 
     // MARK: Actions
 
+    /// One button for the thing you might actually want next; the app's own
+    /// housekeeping goes behind a menu instead of standing at the same weight
+    /// as the task.
     private var actions: some View {
-        HStack {
-            Button(model.isWatching ? "Refresh" : "Start watching") {
-                if model.isWatching { model.refreshNow() } else { model.start() }
-            }
+        HStack(spacing: 8) {
             Button("History…") {
                 openWindow(id: HistoryWindow.id)
                 NSApp.activate(ignoringOtherApps: true)
             }
-            Button("Reveal database") { model.openDatabaseFolder() }
+            .buttonStyle(.borderedProminent)
             Spacer()
-            Button("Quit") { NSApplication.shared.terminate(nil) }
-                .keyboardShortcut("q")
+            Menu {
+                Button(model.isWatching ? "Refresh now" : "Start watching") {
+                    if model.isWatching { model.refreshNow() } else { model.start() }
+                }
+                Button("Show database in Finder") { model.openDatabaseFolder() }
+                Divider()
+                Button("Quit Ullage") { NSApplication.shared.terminate(nil) }
+                    .keyboardShortcut("q")
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
         }
         .controlSize(.small)
     }

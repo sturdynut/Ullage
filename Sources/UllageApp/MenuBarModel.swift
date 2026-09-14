@@ -136,9 +136,10 @@ final class MenuBarModel: ObservableObject {
         }
     }
 
+    /// Selects the database itself rather than opening its folder — "show in
+    /// Finder" means the file is highlighted when you get there.
     func openDatabaseFolder() {
-        let url = URL(fileURLWithPath: databasePath).deletingLastPathComponent()
-        NSWorkspace.shared.open(url)
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: databasePath)])
     }
 }
 #endif
