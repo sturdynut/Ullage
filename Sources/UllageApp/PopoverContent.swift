@@ -11,8 +11,8 @@ struct PopoverContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            header
             sessionPicker
+            header
             if let tree = model.agents, !tree.isEmpty {
                 SectionRule("Agents") { agentsTrailing }
                 AgentTreeView(
@@ -203,8 +203,11 @@ struct PopoverContent: View {
 
     // MARK: Session picker
 
+    /// Full width at the top: it chooses the subject of everything below it,
+    /// so it reads as the popover's title bar rather than as a field sitting
+    /// between the answer and the evidence.
     private var sessionPicker: some View {
-        HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 3) {
             Picker("Session", selection: $model.selection) {
                 Text("Most recent").tag(SessionSelection.automatic)
                 // Grouped by project: a session id is not a name, and the
@@ -220,6 +223,7 @@ struct PopoverContent: View {
             }
             .labelsHidden()
             .pickerStyle(.menu)
+            .frame(maxWidth: .infinity)
             if model.pinFellBack {
                 Text("pinned session has no turns; showing most recent")
                     .font(.caption2)
