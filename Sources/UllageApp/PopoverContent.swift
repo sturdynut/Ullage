@@ -109,11 +109,23 @@ struct PopoverContent: View {
     /// the evidence below it.
     private var toolbar: some View {
         HStack(spacing: 8) {
+            // The installed app's own icon, so the mark in the strip is always
+            // the one in the Dock and the Finder — nothing to bundle twice.
+            if let icon = NSApp.applicationIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 15, height: 15)
+            }
+            Text("Ullage")
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(0.3)
+                .foregroundStyle(.secondary)
             Spacer(minLength: 0)
             sessionMenu
             overflowMenu
         }
-        .frame(height: 14)
+        .frame(height: 16)
     }
 
     // MARK: Header
