@@ -109,22 +109,22 @@ struct PopoverContent: View {
     /// the evidence below it.
     private var toolbar: some View {
         HStack(spacing: 8) {
-            // The installed app's own icon, so the mark in the strip is always
-            // the one in the Dock and the Finder — nothing to bundle twice.
-            if let icon = NSApp.applicationIconImage {
-                Image(nsImage: icon)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 15, height: 15)
-            }
+            // The menu bar item's own gauge, not the app icon: that icon is a
+            // full illustration on its own dark plate, drawn for 128pt in the
+            // Dock, and at 17pt on a dark popover it is a smudge in a hole.
+            // A symbol tints with the theme, stays crisp, and is the same mark
+            // the user just clicked in the menu bar.
+            Image(systemName: "gauge.with.dots.needle.bottom.50percent")
+                .font(.system(size: 12, weight: .regular))
             Text("Ullage")
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(0.3)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .textCase(.uppercase)
             Spacer(minLength: 0)
             sessionMenu
             overflowMenu
         }
+        .foregroundStyle(.tertiary)
         .frame(height: 16)
     }
 
@@ -174,14 +174,17 @@ struct PopoverContent: View {
                     }
                 }
                 Spacer(minLength: 8)
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                // Sized to sit with the session name, not to shout over it: a
+                // rounded figure set twice the size of the exact one, and of the
+                // name that says what you are looking at, inverts the hierarchy.
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(headroom(contextTokens: contextTokens, windowLimit: windowLimit))
-                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(headroomStyle(state: state, occupancy: occupancy, windowLimit: windowLimit))
                     if windowLimit != nil, state.status != .empty {
                         Text("left")
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -196,14 +199,15 @@ struct PopoverContent: View {
             // ends of the bar.
             HStack(spacing: 6) {
                 Text(exactLine(state: state, contextTokens: contextTokens, windowLimit: windowLimit))
+                    .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                 Spacer(minLength: 4)
                 if let occupancy, state.status != .empty {
                     Text(MenuBarFormatter.percentage(occupancy) + " used")
+                        .foregroundStyle(.tertiary)
                 }
             }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .font(.caption)
             .monospacedDigit()
             .lineLimit(1)
         }

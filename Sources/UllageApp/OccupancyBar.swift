@@ -28,6 +28,13 @@ struct OccupancyBar: View {
                 Capsule()
                     .fill(Color.primary.opacity(0.10))
 
+                // Quarter graduations. Most sessions live under 20%, where a
+                // bare rail is a stub against an empty void and reads as broken;
+                // marked, the same reading is a position on a known scale.
+                ForEach([0.25, 0.5, 0.75], id: \.self) { fraction in
+                    mark(at: width * fraction, color: Color.primary.opacity(0.10))
+                }
+
                 if let occupancy {
                     Capsule()
                         .fill(isWarning ? Color.orange : Color.accentColor)
@@ -37,7 +44,7 @@ struct OccupancyBar: View {
                         mark(at: width * peak, color: Color.primary.opacity(0.35))
                             .help("Peak: \(MenuBarFormatter.percentage(peak))")
                     }
-                    mark(at: width * MenuBarFormatter.warningThreshold, color: Color.orange.opacity(0.55))
+                    mark(at: width * MenuBarFormatter.warningThreshold, color: Color.orange.opacity(0.45))
                         .help("\(Int(MenuBarFormatter.warningThreshold * 100))% — compaction territory")
                 }
             }
