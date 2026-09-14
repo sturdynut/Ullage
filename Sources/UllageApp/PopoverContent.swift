@@ -123,41 +123,66 @@ struct PopoverContent: View {
         let occupancy = agent.map(\.occupancy) ?? state.occupancy
         let contextTokens = agent?.lastContextTokens ?? state.contextTokens
         let windowLimit = agent?.windowLimit ?? state.windowLimit
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(agent?.displayName ?? state.project ?? "No sessions ingested yet")
-                    .font(.headline)
-                    .lineLimit(1)
-                HStack(spacing: 5) {
-                    if let subtitle = subtitle(agent: agent, state: state) {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    // "window assumed" means this percentage may be wrong. It
-                    // used to be two grey words appended to the model name.
-                    if agent == nil, state.modelWindowIsAssumed, state.status != .empty {
-                        assumedWindowBadge
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(agent?.displayName ?? state.project ?? "No sessions ingested yet")
+                        .font(.headline)
+                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        if let subtitle = subtitle(agent: agent, state: state) {
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        // "window assumed" means this percentage may be wrong.
+                        // It used to be two grey words after the model name.
+                        if agent == nil, state.modelWindowIsAssumed, state.status != .empty {
+                            assumedWindowBadge
+                        }
                     }
                 }
-                // The arithmetic behind the ring, next to the ring instead of
-                // seven rows below it.
-                Text(exactLine(state: state, occupancy: occupancy, contextTokens: contextTokens, windowLimit: windowLimit))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .textSelection(.enabled)
+                Spacer(minLength: 8)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(headroom(contextTokens: contextTokens, windowLimit: windowLimit))
+                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(headroomStyle(state: state, occupancy: occupancy, windowLimit: windowLimit))
+                    if windowLimit != nil, state.status != .empty {
+                        Text("left")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
-            Spacer(minLength: 8)
-            OccupancyRing(
+
+            OccupancyBar(
                 occupancy: state.status == .empty ? nil : occupancy,
-                peak: peakOccupancy(windowLimit: windowLimit),
-                center: headroom(contextTokens: contextTokens, windowLimit: windowLimit),
-                caption: windowLimit == nil ? nil : "left"
+                peak: peakOccupancy(windowLimit: windowLimit)
             )
+
+            // The bar's own arithmetic, on its own line, ends aligned with the
+            // ends of the bar.
+            HStack(spacing: 6) {
+                Text(exactLine(state: state, contextTokens: contextTokens, windowLimit: windowLimit))
+                    .textSelection(.enabled)
+                Spacer(minLength: 4)
+                if let occupancy, state.status != .empty {
+                    Text(MenuBarFormatter.percentage(occupancy) + " used")
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .monospacedDigit()
+            .lineLimit(1)
         }
+    }
+
+    private func headroomStyle(state: MenuBarState, occupancy: Double?, windowLimit: Int?) -> AnyShapeStyle {
+        guard windowLimit != nil, state.status != .empty else { return AnyShapeStyle(.tertiary) }
+        if (occupancy ?? 0) >= MenuBarFormatter.warningThreshold { return AnyShapeStyle(Color.orange) }
+        return AnyShapeStyle(model.focusedAgent == nil && state.isIdle ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
     }
 
     /// The room left — the thing the app is named for, and the one number the
@@ -167,14 +192,14 @@ struct PopoverContent: View {
         return CompositionView.compact(max(0, windowLimit - contextTokens))
     }
 
-    private func exactLine(state: MenuBarState, occupancy: Double?, contextTokens: Int?, windowLimit: Int?) -> String {
+    private func exactLine(state: MenuBarState, contextTokens: Int?, windowLimit: Int?) -> String {
         guard state.status != .empty else { return "nothing ingested yet" }
         guard let contextTokens else { return "no turns recorded" }
-        guard let windowLimit, let occupancy else { return "\(contextTokens.formatted()) tokens · no window reported" }
-        return "\(contextTokens.formatted()) / \(windowLimit.formatted())  ·  \(MenuBarFormatter.percentage(occupancy))"
+        guard let windowLimit else { return "\(contextTokens.formatted()) tokens · no window reported" }
+        return "\(contextTokens.formatted()) / \(windowLimit.formatted())"
     }
 
-    /// Drawn as a tick on the same track, not as a second gauge: it is the same
+    /// Drawn as a mark on the same track, not as a second gauge: it is the same
     /// ratio against the same window, and on a growing session it is simply the
     /// current value.
     private func peakOccupancy(windowLimit: Int?) -> Double? {
