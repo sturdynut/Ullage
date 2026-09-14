@@ -29,7 +29,7 @@ Everything stays on your machine. Nothing is uploaded.
 </div>
 
 - **Menu bar:** a gauge icon whose needle rises with occupancy, followed by the
-  percentage &nbsp;<img src="docs/screenshots/menu-bar.png" alt="Ullage menu bar item showing a gauge icon and 30%" height="18" valign="middle">&nbsp;. It
+  percentage &nbsp;<img src="docs/screenshots/menu-bar.png" alt="Ullage menu bar item showing a gauge icon and 44%" height="18" valign="middle">&nbsp;. It
   turns amber past 85%, and drops to a plain gauge with no number once a session
   has been idle for 30 minutes, so a stale figure is never mistaken for a live
   one.
