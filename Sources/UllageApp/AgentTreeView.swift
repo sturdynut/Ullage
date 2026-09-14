@@ -98,7 +98,7 @@ struct AgentTreeView: View {
             agent.agentType,
             agent.calls == 1 ? "1 turn" : "\(agent.calls) turns",
             agent.toolCalls > 0 ? "\(agent.toolCalls) tools" : nil,
-            agent.windowLimit.map { "\(ContextChart.compact($0)) window" },
+            agent.windowLimit.map { ContextChart.compact($0) },
         ].compactMap { $0 }.joined(separator: " · ")
     }
 
