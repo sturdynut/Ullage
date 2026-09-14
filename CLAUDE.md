@@ -12,7 +12,9 @@ is the original plan and is historical — the milestones in it are all done.
 Ullage reads AI coding-agent session transcripts from disk, persists every API
 call as a row in a local SQLite database, and shows how full the live session's
 context window is. A macOS menu bar app backed by a Swift-package collector and
-a debug CLI. Everything is local; nothing is uploaded.
+a debug CLI. Everything is local; nothing is uploaded. The single exception is
+`ullage otlp`, which exports to an OpenTelemetry collector when invoked — never
+in the background, never from the app.
 
 ### Harness support
 
@@ -180,7 +182,8 @@ any app change so what is running matches what is committed.
 - `Sources/ullage` — the debug CLI.
 - `Sources/UllageApp` — menu bar popover + history window (macOS only).
 - `Tests/UllageCoreTests` — everything above, off temp databases and fixtures.
-- `docs/` — observed transcript format, the original plan, screenshots.
+- `docs/` — observed transcript format, the OTLP export reference, the original
+  plan, screenshots.
 - `scripts/recon.sh` — transcript reconnaissance and fixture scrubbing.
 - `scripts/install-app.sh` — build, bundle, sign, install the app.
 

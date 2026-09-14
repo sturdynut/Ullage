@@ -15,7 +15,10 @@ though Cursor records no token counts locally so it has no fill percentage. Clic
 and see what is actually taking up the window. A separate history window charts
 your activity across days and projects.
 
-Everything stays on your machine. Nothing is uploaded.
+Everything stays on your machine. Nothing is uploaded, and nothing is sent
+anywhere unless you ask for it: there is one command that exports — `ullage
+otlp`, for aggregating across machines — it runs only when you run it, and
+`--dry-run` prints exactly what would leave first.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
