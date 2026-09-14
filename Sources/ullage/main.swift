@@ -21,17 +21,25 @@ USAGE
   ullage env <session>       The configuration snapshot for a session
   ullage history [--days N]  Activity per day and project (default: 30 days)
   ullage composition <sess>  What a session's context window is made of
+  ullage otlp                Export everything measured to an OTLP collector
   ullage info                Resolved paths and row counts
 
 OPTIONS
-  --db <path>    Database file (default: $ULLAGE_DB or the app support path)
-  --days <n>     Window for `history`
-  --verbose      Report malformed lines and skipped files
-  -h, --help     This text
+  --db <path>       Database file (default: $ULLAGE_DB or the app support path)
+  --days <n>        Window for `history`, and for `otlp` spans
+  --endpoint <url>  OTLP collector base URL, e.g. http://localhost:4318
+  --dry-run         Print the OTLP payloads instead of sending them
+  --metrics-only    Export metrics but no spans
+  --traces-only     Export spans but no metrics
+  --all             Export every span on disk, not just the window
+  --verbose         Report malformed lines and skipped files
+  -h, --help        This text
 
 ENVIRONMENT
-  CLAUDE_CONFIG_DIR   Overrides ~/.claude
-  ULLAGE_DB           Overrides the default database location
+  CLAUDE_CONFIG_DIR              Overrides ~/.claude
+  ULLAGE_DB                      Overrides the default database location
+  OTEL_EXPORTER_OTLP_ENDPOINT    Collector base URL for `otlp`
+  OTEL_EXPORTER_OTLP_HEADERS     key=value,key2=value2 sent with every request
 """
 
 struct Options {
@@ -40,6 +48,13 @@ struct Options {
     var databasePath: String = ClaudePaths.defaultDatabaseURL().path
     var verbose = false
     var days = 30
+    var endpoint: String?
+    var dryRun = false
+    var metricsOnly = false
+    var tracesOnly = false
+    var everything = false
+    /// `--days` was given explicitly, so it wins over the export cursor.
+    var daysWasSet = false
 }
 
 func parseArguments(_ arguments: [String]) -> Options {
@@ -54,7 +69,21 @@ func parseArguments(_ arguments: [String]) -> Options {
         case "--verbose", "-v":
             options.verbose = true
         case "--days":
-            if let value = rest.first, let days = Int(value) { options.days = days; rest.removeFirst() }
+            if let value = rest.first, let days = Int(value) {
+                options.days = days
+                options.daysWasSet = true
+                rest.removeFirst()
+            }
+        case "--endpoint":
+            if let value = rest.first { options.endpoint = value; rest.removeFirst() }
+        case "--dry-run":
+            options.dryRun = true
+        case "--metrics-only":
+            options.metricsOnly = true
+        case "--traces-only":
+            options.tracesOnly = true
+        case "--all":
+            options.everything = true
         case "-h", "--help", "help":
             positional.append("help")
         default:
@@ -458,6 +487,66 @@ do {
             break
         }
         try printComposition(Store(path: options.databasePath), sessionPrefix: needle)
+
+    case "otlp":
+        let store = try Store(path: options.databasePath)
+        var endpoint = OTLPEndpoint.fromEnvironment()
+        if let raw = options.endpoint {
+            guard let url = URL(string: raw) else {
+                FileHandle.standardError.write(Data("error: not a URL: \(raw)\n".utf8))
+                exit(1)
+            }
+            endpoint.base = url
+        }
+        let destination = endpoint.metricsURL?.absoluteString ?? "(dry run)"
+        if !options.dryRun, endpoint.base == nil, endpoint.metricsURL == nil {
+            FileHandle.standardError.write(Data("error: \(OTLPError.noEndpoint)\n".utf8))
+            exit(1)
+        }
+
+        // Spans are not idempotent, so the default window is wherever the last
+        // successful export to this endpoint got to. `--days` and `--all`
+        // override it; a first run without either sends the last `--days`.
+        let cursorKey = endpoint.tracesURL?.absoluteString ?? "dry-run"
+        let windowStart = Timestamps.string(from: Date().addingTimeInterval(-Double(options.days) * 86_400))
+        var since: String? = windowStart
+        if options.everything {
+            since = nil
+        } else if !options.daysWasSet, let stored = try store.exportCursor(endpoint: cursorKey) {
+            since = stored
+        }
+
+        let exporter = OTLPExporter(
+            store: store,
+            endpoint: endpoint,
+            resource: OTLPResource(serviceVersion: "parser-v\(ClaudeCodeParser.version)")
+        )
+        let summary = try exporter.export(
+            metrics: !options.tracesOnly,
+            traces: !options.metricsOnly,
+            since: since,
+            dryRun: options.dryRun,
+            onPayload: options.dryRun ? { _, body in print(String(decoding: body, as: UTF8.self)) } : nil
+        )
+        if !options.dryRun, let lastTs = summary.lastTs {
+            try store.setExportCursor(endpoint: cursorKey, lastTs: lastTs)
+        }
+        let bytes = summary.metricsBytes + summary.traceBytes
+        print("""
+        endpoint   \(options.dryRun ? "dry run — nothing sent" : destination)
+        metrics    \(summary.metricPoints) data points over \(summary.streams) streams
+        traces     \(summary.spans) spans over \(summary.sessions) sessions\(since.map { " since \($0)" } ?? " (all history)")
+        payload    \(thousands(bytes)) bytes in \(summary.requests == 0 ? "no" : String(summary.requests)) request\(summary.requests == 1 ? "" : "s")
+        cursor     \(summary.lastTs ?? "unchanged")\(options.dryRun ? "  (not recorded: dry run)" : "")
+        """)
+        print("")
+        print("""
+        The four token counters travel as separate series (ullage.tokens, by
+        ullage.token.type) and are never summed. gen_ai.usage.input_tokens carries
+        the whole prompt — input + cache_read + cache_write — because that is what
+        the convention means by it. Rows from a harness that reports no tokens
+        export activity only.
+        """)
 
     case "info":
         let store = try Store(path: options.databasePath)
