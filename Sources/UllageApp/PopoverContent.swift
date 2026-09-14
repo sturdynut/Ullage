@@ -11,7 +11,6 @@ struct PopoverContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sessionPicker
             header
             if let tree = model.agents, !tree.isEmpty {
                 SectionRule("Agents") { agentsTrailing }
@@ -44,8 +43,12 @@ struct PopoverContent: View {
                     .foregroundStyle(.red)
                     .lineLimit(3)
             }
-            actions
+            // The controls live together at the foot: the picker chooses the
+            // subject, the buttons act on it, and neither interrupts the
+            // reading between the answer and the evidence.
+            sessionPicker
                 .padding(.top, 2)
+            actions
         }
         .padding(14)
         .frame(width: 360)
@@ -228,9 +231,7 @@ struct PopoverContent: View {
 
     // MARK: Session picker
 
-    /// Full width at the top: it chooses the subject of everything below it,
-    /// so it reads as the popover's title bar rather than as a field sitting
-    /// between the answer and the evidence.
+    /// Full width, at the foot with the other controls.
     private var sessionPicker: some View {
         VStack(alignment: .leading, spacing: 3) {
             Picker("Session", selection: $model.selection) {
