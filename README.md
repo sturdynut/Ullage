@@ -15,7 +15,10 @@ though Cursor records no token counts locally so it has no fill percentage. Clic
 and see what is actually taking up the window. A separate history window charts
 your activity across days and projects.
 
-Everything stays on your machine. Nothing is uploaded.
+Everything stays on your machine. Nothing is uploaded, and nothing is sent
+anywhere unless you ask for it: there is one command that exports — `ullage
+otlp`, for aggregating across machines — it runs only when you run it, and
+`--dry-run` prints exactly what would leave first.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
@@ -114,6 +117,7 @@ ullage agents <session>      # the subagent tree, each agent's own window
 ullage latest                # the single row driving the menu bar
 ullage history [--days N]    # activity per day and project (default 30)
 ullage composition <session> # what a session's window is made of
+ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
 ullage info                  # resolved paths, retention, row counts
 ```
@@ -128,6 +132,28 @@ schemas, skills, CLAUDE.md, and the opening prompt — or the summary after a
 compaction), tool results, assistant output, and the remainder, then lists the
 tools whose results are in the window. Every figure but the window total is an
 estimate and is labelled as one.
+
+### Aggregating across machines and harnesses
+
+`ullage otlp` sends what Ullage has measured to any collector that speaks
+OTLP/HTTP — the OpenTelemetry Collector, Grafana, Honeycomb, Datadog, Jaeger —
+so several machines and several harnesses can be looked at in one place.
+Sessions become traces, with each turn a span and **each subagent a span under
+the turn that spawned it**; tokens, window sizes and occupancy become metrics
+under the `gen_ai.*` semantic conventions.
+
+```bash
+ullage otlp --dry-run --days 1        # read exactly what would be sent
+ullage otlp --endpoint http://localhost:4318
+```
+
+Nothing leaves the machine unless you run that command: there is no background
+exporter and no telemetry about Ullage itself. Two details matter and are
+covered in [`docs/OPENTELEMETRY.md`](docs/OPENTELEMETRY.md) — the export sends
+the *whole prompt* as `gen_ai.usage.input_tokens` (Claude's own `input_tokens`
+is just the uncached remainder, and exporting that under the standard name would
+understate a cached session by three orders of magnitude), and a harness that
+reports no tokens exports activity only rather than a misleading zero.
 
 The database is at
 `~/Library/Application Support/com.sturdynut.ullage/telemetry.db` (WAL mode).

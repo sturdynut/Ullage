@@ -6,7 +6,7 @@ public final class Store {
     public let database: SQLiteDatabase
     public let path: String
 
-    public static let schemaVersion = 2
+    public static let schemaVersion = 3
 
     public init(path: String) throws {
         self.path = path
@@ -45,6 +45,10 @@ public final class Store {
             try database.execute(Store.schemaV2)
             if current > 0 { try repairAgentStreams() }
             try database.execute("PRAGMA user_version=2;")
+        }
+        if current < 3 {
+            try database.execute(Store.schemaV3)
+            try database.execute("PRAGMA user_version=3;")
         }
     }
 
@@ -251,6 +255,19 @@ public final class Store {
             }
         }
     }
+
+    /// v3 — how far the OpenTelemetry export has read, per endpoint.
+    ///
+    /// Metrics are cumulative and idempotent, so they need no cursor; spans are
+    /// not, and re-sending a month of them on every run would be both slow and
+    /// wrong.
+    static let schemaV3 = """
+    CREATE TABLE IF NOT EXISTS otlp_cursor (
+      endpoint  TEXT PRIMARY KEY,
+      last_ts   TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    """
 
     // MARK: - Writes
 
@@ -812,6 +829,138 @@ public final class Store {
                 lastTs: row.optionalText(15)
             )
         }
+    }
+
+    // MARK: - OpenTelemetry export
+
+    /// Per-stream totals, cumulative over everything on disk.
+    ///
+    /// `since` selects which streams are *included* — those active since then —
+    /// and never truncates their totals: a counter that goes down because the
+    /// export window moved would be worse than no counter.
+    public func telemetryStreams(since: String? = nil) throws -> [StreamTotals] {
+        var sql = """
+        SELECT c.session_id, c.agent_id, MAX(c.agent), MAX(c.project), MAX(c.vendor),
+               (SELECT m.model FROM call m
+                 WHERE m.session_id = c.session_id AND m.agent_id IS c.agent_id AND m.model IS NOT NULL
+                 ORDER BY m.ts DESC, m.turn_index DESC LIMIT 1),
+               MAX(c.confidence),
+               SUM(c.input), SUM(c.output), SUM(c.cache_read), SUM(c.cache_write), COUNT(*),
+               (SELECT l.context_tokens FROM call l
+                 WHERE l.session_id = c.session_id AND l.agent_id IS c.agent_id
+                 ORDER BY l.ts DESC, l.turn_index DESC LIMIT 1),
+               (SELECT l.window_limit FROM call l
+                 WHERE l.session_id = c.session_id AND l.agent_id IS c.agent_id
+                 ORDER BY l.ts DESC, l.turn_index DESC LIMIT 1),
+               MAX(c.context_tokens),
+               (SELECT COUNT(*) FROM tool_call t JOIN call x ON x.dedupe_key = t.call_id
+                 WHERE x.session_id = c.session_id AND x.agent_id IS c.agent_id),
+               (SELECT COALESCE(SUM(t.result_tokens), 0) FROM tool_call t JOIN call x ON x.dedupe_key = t.call_id
+                 WHERE x.session_id = c.session_id AND x.agent_id IS c.agent_id),
+               (SELECT COUNT(*) FROM event e
+                 WHERE e.session_id = c.session_id AND e.agent_id IS c.agent_id
+                   AND e.kind = 'compaction'),
+               MIN(c.ts), MAX(c.ts)
+        FROM call c
+        GROUP BY c.session_id, c.agent_id
+        """
+        var bindings: [SQLiteValue] = []
+        if let since {
+            sql += "\nHAVING MAX(c.ts) >= ?1"
+            bindings.append(.text(since))
+        }
+        sql += "\nORDER BY MAX(c.ts) DESC;"
+
+        return try database.query(sql, bindings) { row in
+            StreamTotals(
+                sessionId: row.text(0),
+                agentId: row.optionalText(1),
+                agentType: row.optionalText(2),
+                project: row.optionalText(3),
+                vendor: row.text(4),
+                model: row.optionalText(5),
+                confidence: row.text(6),
+                input: row.int(7),
+                output: row.int(8),
+                cacheRead: row.int(9),
+                cacheWrite: row.int(10),
+                turns: row.int(11),
+                lastContextTokens: row.optionalInt(12),
+                windowLimit: row.optionalInt(13),
+                peakContextTokens: row.optionalInt(14),
+                toolCalls: row.int(15),
+                toolResultTokens: row.int(16),
+                compactions: row.int(17),
+                firstTs: row.text(18),
+                lastTs: row.text(19)
+            )
+        }
+    }
+
+    /// Sessions with a turn in the window, oldest first so spans arrive in the
+    /// order they happened.
+    public func sessionsActive(since: String?) throws -> [String] {
+        var sql = "SELECT session_id, MIN(ts) AS first_ts FROM call"
+        var bindings: [SQLiteValue] = []
+        if let since {
+            sql += " WHERE ts >= ?1"
+            bindings.append(.text(since))
+        }
+        sql += " GROUP BY session_id ORDER BY first_ts;"
+        return try database.query(sql, bindings) { $0.text(0) }
+    }
+
+    /// Which turn spawned which agent — the edge that makes the trace a tree.
+    public func agentSpawnCalls(sessionId: String) throws -> [String: String] {
+        let rows = try database.query(
+            """
+            SELECT a.agent_id, t.call_id
+            FROM agent a JOIN tool_call t ON t.id = a.spawn_tool_call_id
+            WHERE a.session_id = ?1;
+            """,
+            [.text(sessionId)]
+        ) { ($0.text(0), $0.text(1)) }
+        return Dictionary(rows, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Everything one session's trace is built from. `since` limits the turns,
+    /// not the agents: an agent whose spawning turn fell outside the window
+    /// still hangs off the session rather than vanishing.
+    public func sessionTrace(sessionId: String, since: String? = nil) throws -> SessionTrace {
+        var sql = Store.callColumns + " FROM call WHERE session_id = ?1"
+        var bindings: [SQLiteValue] = [.text(sessionId)]
+        if let since {
+            sql += " AND ts >= ?2"
+            bindings.append(.text(since))
+        }
+        sql += " ORDER BY ts, turn_index;"
+        let calls = try database.query(sql, bindings) { Store.callRow(from: $0) }
+        let newest = calls.last
+        return SessionTrace(
+            sessionId: sessionId,
+            project: newest?.project,
+            vendor: newest?.vendor ?? Vendor.claudeCode,
+            calls: calls,
+            agents: try agents(sessionId: sessionId),
+            compactions: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue, scope: .all),
+            spawnCalls: try agentSpawnCalls(sessionId: sessionId)
+        )
+    }
+
+    public func exportCursor(endpoint: String) throws -> String? {
+        try database.query(
+            "SELECT last_ts FROM otlp_cursor WHERE endpoint = ?1;", [.text(endpoint)]
+        ) { $0.text(0) }.first
+    }
+
+    public func setExportCursor(endpoint: String, lastTs: String) throws {
+        try database.run(
+            """
+            INSERT INTO otlp_cursor (endpoint, last_ts, updated_at) VALUES (?1, ?2, ?3)
+            ON CONFLICT(endpoint) DO UPDATE SET last_ts = excluded.last_ts, updated_at = excluded.updated_at;
+            """,
+            [.text(endpoint), .text(lastTs), .text(Timestamps.now())]
+        )
     }
 
     public func agentTree(sessionId: String) throws -> AgentTree {
