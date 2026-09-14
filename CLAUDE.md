@@ -38,7 +38,7 @@ scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 ```
 
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
-`composition <session>`, `agents <session>`, `env <session>`, `info`.
+`composition <session>`, `agents <session>`, `env <session>`, `otlp`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
   have no macOS-only imports. `Sources/UllageApp` is `#if os(macOS)` throughout.
@@ -93,7 +93,13 @@ plausible and are wrong.
    malformed lines, never throw out of a parser. Unknown line types are expected.
 6. **Estimated figures are labelled as estimates.** Tool-result and CLAUDE.md
    sizes are length estimates (~4 bytes/token), never real token counts.
-7. **If the disk disagrees with the parser, the disk wins.** After a harness
+7. **A counter's meaning travels with it.** `gen_ai.usage.input_tokens` means
+   the whole prompt; Claude's `input_tokens` means the uncached remainder. The
+   OTLP export sends `context_tokens` under the standard name and the four
+   counters under `ullage.tokens` — see `docs/OPENTELEMETRY.md`. Exporting a
+   number under a name that means something else is the same error as
+   estimating one, committed in a dashboard where nobody can see it.
+8. **If the disk disagrees with the parser, the disk wins.** After a harness
    upgrade, re-run `scripts/recon.sh`, record divergences in
    `docs/OBSERVED-FORMAT.md`, fix the parser, and bump its `version`.
 
@@ -128,6 +134,12 @@ plausible and are wrong.
   overwrites the other with nil, and the *parent agent* is derived on read from
   `tool_call` → `call.agent_id` so ingest order cannot strand an edge. Nesting
   falls out of that join for free.
+- **The export is pulled, never pushed.** `ullage otlp` is the only thing that
+  sends anything anywhere, it runs when invoked, and `--dry-run` prints the
+  exact payloads. OTLP JSON is written by hand (`OpenTelemetry.swift`) rather
+  than by taking a dependency: the package has none beyond system SQLite, and an
+  exporter should not drag gRPC into a menu bar app. Metrics are cumulative and
+  therefore idempotent; spans are not, so they follow a per-endpoint cursor.
 - **`session_env` is the one irreproducible table.** MCP servers, skills and
   CLAUDE.md are snapshotted at ingest because nothing on disk records what they
   were when a session ran. It is Claude-Code-only; other vendors skip it.
