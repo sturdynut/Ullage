@@ -24,7 +24,7 @@ Everything stays on your machine. Nothing is uploaded.
 
 <div align="center">
 
-<img src="docs/screenshots/popover.png" alt="Ullage popover: the room left in the window, an occupancy bar, the session's agents each with their own window, a context-per-turn chart, and a bar breaking the window into baseline, tool results, output and other" width="360">
+<img src="docs/screenshots/popover.png" alt="The Ullage popover: 546k left in a 1M window over a marked occupancy bar, the session's agents each with their own window, a context-per-turn chart whose upper band is the room left, and a breakdown of what the window holds" width="380">
 
 </div>
 
