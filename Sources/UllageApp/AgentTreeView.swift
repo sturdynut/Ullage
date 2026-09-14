@@ -38,31 +38,47 @@ struct AgentTreeView: View {
             .buttonStyle(.plain)
 
             if expanded {
-                // Tall trees scroll rather than pushing the chart off the
-                // popover; six rows is about where that starts to matter.
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        row(
-                            name: "main thread",
-                            detail: mainThreadDetail,
-                            depth: 0,
-                            occupancy: mainThreadOccupancy,
-                            scope: .mainThread
-                        )
-                        ForEach(tree.flattened) { node in
-                            row(
-                                name: node.agent.displayName,
-                                detail: detail(for: node.agent),
-                                depth: node.depth + 1,
-                                occupancy: node.agent.occupancy,
-                                scope: .agent(node.agent.agentId)
-                            )
-                        }
-                    }
+                // A ScrollView's ideal height is zero, so one inside the
+                // popover's VStack collapses to nothing. Short trees — nearly
+                // all of them — are laid out directly; only a tall one scrolls,
+                // at a height it is told explicitly.
+                if rowCount <= Self.maxVisibleRows {
+                    rows
+                } else {
+                    ScrollView(.vertical) { rows }
+                        .frame(height: Self.rowHeight * CGFloat(Self.maxVisibleRows))
                 }
-                .frame(maxHeight: 148)
             }
         }
+    }
+
+    /// Enough for a row of name over detail, plus its padding.
+    private static let rowHeight: CGFloat = 36
+    private static let maxVisibleRows = 5
+
+    /// The main thread, then every agent under whichever agent asked for it.
+    private var rowCount: Int { tree.count + 1 }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            row(
+                name: "main thread",
+                detail: mainThreadDetail,
+                depth: 0,
+                occupancy: mainThreadOccupancy,
+                scope: .mainThread
+            )
+            ForEach(tree.flattened) { node in
+                row(
+                    name: node.agent.displayName,
+                    detail: detail(for: node.agent),
+                    depth: node.depth + 1,
+                    occupancy: node.agent.occupancy,
+                    scope: .agent(node.agent.agentId)
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var title: String {
