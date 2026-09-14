@@ -24,7 +24,7 @@ Everything stays on your machine. Nothing is uploaded.
 
 <div align="center">
 
-<img src="docs/screenshots/popover.png" alt="Ullage popover: 30% headline, a context-per-turn chart, and a bar breaking the window into baseline, tool results, assistant output, and other" width="360">
+<img src="docs/screenshots/popover.png" alt="Ullage popover: the room left in the window, an occupancy bar, the session's agents each with their own window, a context-per-turn chart, and a bar breaking the window into baseline, tool results, output and other" width="360">
 
 </div>
 
@@ -34,21 +34,26 @@ Everything stays on your machine. Nothing is uploaded.
   has been idle for 30 minutes, so a stale figure is never mistaken for a live
   one.
 - **Popover** — click the menu bar item for:
-  - the active project, model, and headline percentage;
-  - a session picker **grouped by project**, following the most recently active
-    session or pinning one so it holds still while others are talking;
+  - **the room left in the window**, in tokens, over a bar marked at 85% and at
+    the session's own peak, with the exact `used / window` beneath it;
   - the **subagents that session spawned**, as the tree that spawned them, each
-    named by the description the agent above it wrote and each with its own
-    window and occupancy — click one and the chart and breakdown below switch to
-    its context instead of the session's;
-  - a chart of context tokens per turn, with the window as the ceiling, the 85%
-    line, and a marker wherever a compaction dropped the window (hover for the
-    exact turn, tokens, and change);
+    named by the description the agent above it wrote and each with **its own
+    window and occupancy** — click one and the chart, the breakdown and the
+    figures below switch to its context, and say so;
+  - a chart of context tokens per turn, where the band above the line is the
+    room left, with the 85% line and a marker wherever a compaction dropped the
+    window (hover for the exact turn, tokens, and change);
   - a bar of **what the window holds right now** — baseline, tool results,
-    assistant output, and everything else — with a "What's inside" button that
-    expands to the baseline's parts (CLAUDE.md, MCP servers, skills) and a
-    per-tool table of what is sitting in the window;
-  - the last turn's change, turn count, peak, and last-active time.
+    output, and everything else — with `≈` on the figures that are estimates,
+    and a "What's inside" button that expands to the baseline's parts
+    (CLAUDE.md, MCP servers, skills) and a per-tool table of what is sitting in
+    the window;
+  - the last turn's change, turn count and last-active time.
+
+  It follows the most recently active session and holds still on it while the
+  popover is open. The chevron at the top switches session — grouped by
+  project, since a session id is not a name — and stays accented while one is
+  pinned.
 - **History window** — the History button opens activity per day stacked by
   project over 7, 30, 90, or 365 days, switchable between turns, output tokens,
   and cache reads; a table of every session in range with its agent count; and
