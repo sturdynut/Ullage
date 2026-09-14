@@ -10,16 +10,46 @@ struct CompositionView: View {
     let composition: ContextComposition
     /// Start with the breakdown open (the History window); the popover starts collapsed.
     var startExpanded = false
+    /// The popover names the block in its section rule; the history window has
+    /// no such rule, so it keeps the name in the caption.
+    var showsTitle = true
 
     @State private var expanded = false
 
     /// Fixed per segment: a segment keeps its colour whatever its size.
+    ///
+    /// None of these is the accent, which means one thing only — the stream you
+    /// are looking at. `Other` is a real colour rather than the system's
+    /// *absence* colour: it is routinely a third of the window, and drawing the
+    /// second-largest share in the same grey family as the largest made
+    /// two-thirds of the bar unreadable.
     static func color(for segment: String) -> Color {
         switch segment {
         case ContextComposition.baselineName: return Color(nsColor: .systemGray)
-        case ContextComposition.toolResultsName: return Color.accentColor
+        case ContextComposition.toolResultsName: return Color(nsColor: .systemTeal)
         case ContextComposition.assistantOutputName: return Color(nsColor: .systemPurple)
-        default: return Color(nsColor: .quaternaryLabelColor)
+        default: return Color(nsColor: .systemBrown)
+        }
+    }
+
+    /// Which legend values are not measurements. Tool results are a length
+    /// estimate and Other is the remainder that absorbs their error; the
+    /// baseline is a measured prompt size, and assistant output is reported
+    /// (it undercounts, which the detail says, but it is not a guess).
+    static func isEstimated(_ segment: String) -> Bool {
+        segment == ContextComposition.toolResultsName || segment == ContextComposition.otherName
+    }
+
+    static func note(for segment: String) -> String {
+        switch segment {
+        case ContextComposition.baselineName:
+            return "Rides every turn: system prompt, tool schemas, skills, CLAUDE.md, and the opening prompt — or the summary, after a compaction."
+        case ContextComposition.toolResultsName:
+            return "Estimated from the length of what each tool returned (~4 bytes per token), never a counted figure."
+        case ContextComposition.assistantOutputName:
+            return "Output tokens as reported. They are a mid-stream snapshot and undercount."
+        default:
+            return "Prompts, thinking, tool inputs, and the error in the two estimates above."
         }
     }
 
@@ -77,25 +107,50 @@ struct CompositionView: View {
         .frame(height: 10)
     }
 
+    /// The section rule above names the block and carries the overshoot
+    /// warning, which used to be appended last to a one-line caption and was
+    /// therefore the first thing macOS truncated.
     private var caption: String {
-        var text = "What the window holds  ·  turns \(composition.windowStartTurn)–\(composition.lastTurn)"
+        var text = showsTitle
+            ? "What the window holds  ·  turns \(composition.windowStartTurn)–\(composition.lastTurn)"
+            : "turns \(composition.windowStartTurn)–\(composition.lastTurn)"
         if composition.compactions > 0 { text += "  ·  after \(composition.compactions) compaction\(composition.compactions == 1 ? "" : "s")" }
-        if composition.estimatesOvershoot { text += "  ·  estimates overshoot" }
         return text
     }
 
+    /// Two rows of two. As one row it needed about 416pt in a 332pt box, so two
+    /// of the four labels were always truncated — including, routinely, the
+    /// largest share in the bar.
     private var legend: some View {
-        HStack(spacing: 12) {
-            ForEach(composition.segments) { segment in
-                HStack(spacing: 4) {
-                    Circle().fill(Self.color(for: segment.name)).frame(width: 7, height: 7)
-                    Text(segment.name).foregroundStyle(.secondary)
-                    Text(Self.compact(segment.tokens)).monospacedDigit()
-                }
+        let segments = composition.segments
+        return Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 3) {
+            GridRow {
+                ForEach(segments.prefix(2)) { legendItem($0) }
+            }
+            GridRow {
+                ForEach(segments.dropFirst(2)) { legendItem($0) }
             }
         }
         .font(.caption2)
-        .lineLimit(1)
+    }
+
+    private func legendItem(_ segment: ContextComposition.Segment) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(Self.color(for: segment.name)).frame(width: 7, height: 7)
+            Text(segment.name).foregroundStyle(.secondary).lineLimit(1)
+            Spacer(minLength: 2)
+            // `≈` where the figure is an estimate: in the collapsed state — the
+            // one most people ever see — all four numbers used to be set
+            // identically, so a length estimate read as a measurement.
+            Text((Self.isEstimated(segment.name) ? "≈" : "") + Self.compact(segment.tokens))
+                .monospacedDigit()
+            Text(MenuBarFormatter.percentage(composition.share(segment.tokens)))
+                .foregroundStyle(.tertiary)
+                .monospacedDigit()
+                .frame(width: 30, alignment: .trailing)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .help(Self.note(for: segment.name))
     }
 
     // MARK: - Baseline breakdown

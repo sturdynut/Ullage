@@ -16,6 +16,7 @@ divergence here, fix the parser, and bump `ClaudeCodeParser.version`.
 | observed on | Claude Code version | by |
 |---|---|---|
 | 2026-09-12 | 2.1.270 | Matti Salokangas, 264 transcripts / 96 sessions |
+| 2026-09-13 | 2.1.x | Subagents: 23 subagent transcripts / 23 sidecars, see "Subagents" |
 
 ## Divergences found (2026-09-12)
 
@@ -70,6 +71,68 @@ delimited, multiple roots) also exists upstream; it is out of scope for v1, but
 `ClaudePaths.configDirectories` already returns a list so adding it is not a
 redesign.
 
+## Subagents (2026-09-13)
+
+A subagent is **not** a turn of the session that spawned it. It has its own
+context window, starting empty, and Claude Code writes it to its own file:
+
+```
+~/.claude/projects/<sanitized-cwd>/<session-id>/subagents/agent-<agentId>.jsonl
+~/.claude/projects/<sanitized-cwd>/<session-id>/subagents/agent-<agentId>.meta.json
+```
+
+Every line in that file carries the **parent's** `sessionId`, so a parser that
+keys on session alone merges four concurrent windows into one series: turn
+numbering interleaves and deltas are taken between prompts that never followed
+each other (observed: deltas of −56,331 in a real session). The stream key is
+`(sessionId, agentId)`, and `agentId` is NULL for the main thread.
+
+Fields that only appear on subagent lines:
+
+| Field | Column | Notes |
+|---|---|---|
+| `agentId` | `call.agent_id`, `event.agent_id` | On *every* line of the file. The stream key |
+| `attributionAgent` | `call.agent` | The agent's type: `Explore`, `general-purpose`, … |
+| `isSidechain: true` | `is_sidechain` | Also set on older inline sidechain lines |
+
+The `.meta.json` sidecar is four keys and is the best source of identity,
+because it survives a parent transcript that has aged out, a background agent
+whose result never reported completion, and a forked session that replays the
+spawn under a different session id:
+
+```json
+{"agentType":"general-purpose","description":"Generate UI via claude CLI",
+ "toolUseId":"toolu_01WCf4AXqWoUx6DA3JJ4LVxN","spawnDepth":1}
+```
+
+`description` is the label the spawning agent wrote — the only human-readable
+name an agent has.
+
+### The spawn, from the parent's side
+
+The spawning tool is `Agent` (it was `Task`; both appear on disk depending on
+the version). Its input is `{description, subagent_type, prompt}`. The
+`tool_result` line for it carries a sibling `toolUseResult` object naming the
+child exactly:
+
+```json
+{"status":"completed","agentId":"a86066d140435af09","agentType":"Explore",
+ "resolvedModel":"claude-opus-5[1m]","totalDurationMs":161328,
+ "totalTokens":68593,"totalToolUseCount":40,"usage":{…},"toolStats":{…}}
+```
+
+- `agentId` is the exact join to the child's transcript. No heuristics needed.
+- `status` is `completed`, or `async_launched` for an agent started in the
+  background — 21 of 23 observed spawns were `async_launched`, and those carry
+  no totals at all, so an agent's own rows are the only measurement of it.
+- `totalTokens` is **one turn's four counters summed** (1 + 3,623 + 60,066 +
+  4,903 = 68,593 for the entry above). It is a cache-read number in disguise and
+  is deliberately not stored.
+- The agent that spawned an agent is whichever stream made the `Agent` call, so
+  nesting resolves through `tool_call` → `call.agent_id` with no extra format
+  support. Observed depth on this machine: 1. `spawnDepth` in the sidecar says
+  the format expects more.
+
 ## Line format
 
 One JSON object per line, appended as the session runs. The last line of a live
@@ -108,7 +171,9 @@ next — is skipped silently. Unknown types are expected, not errors.
 | `sessionId` | `session_id` | |
 | `cwd` | `cwd`, `project` | `project` is the basename |
 | `uuid`, `parentUuid` | `uuid`, `parent_uuid` | Stored for fork detection later |
-| `isSidechain` | `is_sidechain` | Subagent turn |
+| `isSidechain` | `is_sidechain` | Subagent turn — see "Subagents" |
+| `agentId` | `agent_id` | Subagent lines only; the context-stream key |
+| `attributionAgent` | `agent` | Subagent type, e.g. `Explore` |
 | `durationMs` | `duration_ms` | Not always present |
 
 Thinking tokens: `reasoning` is read from

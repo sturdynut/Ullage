@@ -30,7 +30,10 @@ public struct ContextComposition: Equatable {
 
     public static let baselineName = "Baseline"
     public static let toolResultsName = "Tool results"
-    public static let assistantOutputName = "Assistant output"
+    // "Assistant output" did not fit the popover's legend column and was
+    // truncated to "Assistant out…" on the segment that is routinely the
+    // largest share of the window.
+    public static let assistantOutputName = "Output"
     public static let otherName = "Other"
 
     public var sessionId: String
@@ -107,6 +110,13 @@ public struct ContextComposition: Equatable {
            let after = turns.first(where: { $0.ts >= latest.ts }) {
             windowStart = after
         }
+        // One boundary writes more than one line — a `compact_boundary` system
+        // entry and a summary entry, ~0.3s apart — so counting events counts
+        // every compaction twice. A boundary is the turn the window restarted
+        // at, which is also how the chart marks them, so the two agree.
+        let boundaryTurns = Set(compactions.compactMap { event in
+            turns.first(where: { $0.ts >= event.ts })?.turnIndex
+        })
         let windowStartTurn = windowStart?.turnIndex ?? 0
         let baseline = windowStart?.contextTokens ?? last.contextTokens
 
@@ -138,7 +148,7 @@ public struct ContextComposition: Equatable {
             contextTokens: last.contextTokens,
             lastTurn: lastTurn,
             windowStartTurn: windowStartTurn,
-            compactions: compactions.count,
+            compactions: boundaryTurns.count,
             baseline: baseline,
             toolResults: toolResults,
             assistantOutput: assistantOutput,

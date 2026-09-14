@@ -6,7 +6,7 @@ public final class Store {
     public let database: SQLiteDatabase
     public let path: String
 
-    public static let schemaVersion = 1
+    public static let schemaVersion = 2
 
     public init(path: String) throws {
         self.path = path
@@ -36,6 +36,22 @@ public final class Store {
             try database.execute(Store.schemaV1)
             try database.execute("PRAGMA user_version=1;")
         }
+        if current < 2 {
+            // Column adds are checked rather than blind: `ALTER TABLE … ADD
+            // COLUMN` fails on a column that already exists, and a migration
+            // that half-applied once would then fail on every open forever.
+            try addColumnIfMissing(table: "call", column: "agent_id", type: "TEXT")
+            try addColumnIfMissing(table: "event", column: "agent_id", type: "TEXT")
+            try database.execute(Store.schemaV2)
+            if current > 0 { try repairAgentStreams() }
+            try database.execute("PRAGMA user_version=2;")
+        }
+    }
+
+    func addColumnIfMissing(table: String, column: String, type: String) throws {
+        let existing = try database.query("PRAGMA table_info(\(table));") { $0.text(1) }
+        guard !existing.contains(column) else { return }
+        try database.execute("ALTER TABLE \(table) ADD COLUMN \(column) \(type);")
     }
 
     static let schemaV1 = """
@@ -119,6 +135,123 @@ public final class Store {
     );
     """
 
+    /// v2 — a subagent is its own context stream.
+    ///
+    /// `call.agent_id` is the stream key: turn index, context delta and
+    /// occupancy are per (session, agent), never per session alone. The `agent`
+    /// table is the spawn tree, assembled from the child's transcript and
+    /// sidecar plus the parent's result; `spawn_tool_call_id` is the edge, and
+    /// which *agent* that was is derived on read.
+    static let schemaV2 = """
+    CREATE INDEX IF NOT EXISTS call_stream ON call(session_id, agent_id, ts);
+
+    CREATE TABLE IF NOT EXISTS agent (
+      agent_id           TEXT PRIMARY KEY,
+      session_id         TEXT NOT NULL,
+      spawn_tool_call_id TEXT,
+      agent_type         TEXT,
+      label              TEXT,
+      resolved_model     TEXT,
+      status             TEXT,
+      reported_tool_uses INTEGER,
+      duration_ms        INTEGER,
+      first_ts           TEXT,
+      last_ts            TEXT,
+      parser_version     INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS agent_session ON agent(session_id, first_ts);
+    CREATE INDEX IF NOT EXISTS agent_spawn   ON agent(spawn_tool_call_id);
+    """
+
+    /// Rows written before v2 have no `agent_id`, and their turn numbering
+    /// interleaves every agent of a session into one counter — which is what
+    /// made a parent's chart read as a sawtooth of unrelated windows.
+    ///
+    /// The path is enough to recover the identity (`…/subagents/agent-<id>.jsonl`)
+    /// and the numbering is ours to redo, so both are fixed in place. Only the
+    /// spawn tree needs the transcripts again, and the cursors for exactly those
+    /// files are rewound at the end so the next ingest picks it up.
+    func repairAgentStreams() throws {
+        try database.transaction { try repairAgentStreamsInTransaction() }
+    }
+
+    private func repairAgentStreamsInTransaction() throws {
+        let paths = try database.query(
+            "SELECT DISTINCT source_file FROM call WHERE is_sidechain = 1 AND agent_id IS NULL;"
+        ) { $0.text(0) }
+        for path in paths {
+            guard let agentId = Store.agentId(fromTranscriptPath: path) else { continue }
+            try database.run(
+                "UPDATE call SET agent_id = ?2 WHERE source_file = ?1 AND agent_id IS NULL;",
+                [.text(path), .text(agentId)]
+            )
+        }
+        let sessions = try database.query(
+            "SELECT DISTINCT session_id FROM call WHERE agent_id IS NOT NULL;"
+        ) { $0.text(0) }
+        for sessionId in sessions {
+            try renumberStreams(sessionId: sessionId)
+            // The spawn tree lives in lines these files were already read past:
+            // the `Agent` tool's description, and the result that names the
+            // child it ran. Rewinding the cursors is the only way to recover
+            // them, and re-ingest is idempotent — a dedupe key already in the
+            // database keeps the turn index just assigned to it.
+            let files = try database.query(
+                "SELECT DISTINCT source_file FROM call WHERE session_id = ?1;",
+                [.text(sessionId)]
+            ) { $0.text(0) }
+            for path in files {
+                try database.run("DELETE FROM file_cursor WHERE path = ?1;", [.text(path)])
+            }
+        }
+    }
+
+    /// `…/<session>/subagents/agent-<agentId>.jsonl` — the only place a
+    /// pre-v2 row records which agent wrote it.
+    static func agentId(fromTranscriptPath path: String) -> String? {
+        let url = URL(fileURLWithPath: path)
+        guard url.deletingLastPathComponent().lastPathComponent == "subagents" else { return nil }
+        let name = url.deletingPathExtension().lastPathComponent
+        guard name.hasPrefix("agent-") else { return nil }
+        let id = String(name.dropFirst("agent-".count))
+        return id.isEmpty ? nil : id
+    }
+
+    /// Re-derives turn index and context delta for every stream of one session
+    /// from the rows already stored, with the same rules the ingestor applies:
+    /// numbering starts at zero per stream, and a delta across a compaction
+    /// boundary is NULL because the two prompts are not the same window.
+    public func renumberStreams(sessionId: String) throws {
+        let calls = try calls(sessionId: sessionId, scope: .all)
+        guard !calls.isEmpty else { return }
+        let boundaries = try events(sessionId: sessionId, kind: EventKind.compaction.rawValue, scope: .all)
+            .map { ($0.agentId ?? "", $0.ts) }
+
+        var streams: [String: [CallRow]] = [:]
+        for call in calls { streams[call.agentId ?? "", default: []].append(call) }
+
+        for (stream, rows) in streams {
+            var pending = boundaries.filter { $0.0 == stream }.map(\.1).sorted()
+            var previous: Int?
+            // Already ordered by (ts, turn_index) by the query: re-sorting on ts
+            // alone would reshuffle rows that share a timestamp.
+            for (index, row) in rows.enumerated() {
+                var crossedBoundary = false
+                while let next = pending.first, next <= row.ts {
+                    pending.removeFirst()
+                    crossedBoundary = true
+                }
+                let delta = (crossedBoundary || index == 0) ? nil : previous.map { row.contextTokens - $0 }
+                try database.run(
+                    "UPDATE call SET turn_index = ?2, context_delta = ?3 WHERE dedupe_key = ?1;",
+                    [.text(row.dedupeKey), .integer(Int64(index)), .int(delta)]
+                )
+                previous = row.contextTokens
+            }
+        }
+    }
+
     // MARK: - Writes
 
     /// Upsert on `dedupe_key`. JSONL is append-only and forked sessions replay
@@ -131,16 +264,17 @@ public final class Store {
     public func upsert(call: CallRow) throws {
         let sql = """
         INSERT INTO call (
-          dedupe_key, ts, vendor, agent, session_id, project, cwd, model,
+          dedupe_key, ts, vendor, agent, agent_id, session_id, project, cwd, model,
           input, output, cache_read, cache_write, reasoning, web_search,
           context_tokens, window_limit, turn_index, context_delta,
           service_tier, stop_reason, duration_ms, is_sidechain,
           uuid, parent_uuid, source_file, confidence, parser_version
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27)
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)
         ON CONFLICT(dedupe_key) DO UPDATE SET
           ts = excluded.ts,
           vendor = excluded.vendor,
           agent = excluded.agent,
+          agent_id = excluded.agent_id,
           session_id = excluded.session_id,
           project = excluded.project,
           cwd = excluded.cwd,
@@ -170,6 +304,7 @@ public final class Store {
             .text(call.ts),
             .text(call.vendor),
             .string(call.agent),
+            .string(call.agentId),
             .text(call.sessionId),
             .string(call.project),
             .string(call.cwd),
@@ -252,13 +387,14 @@ public final class Store {
     public func insert(event: EventRow) throws -> Bool {
         let changes = try database.run(
             """
-            INSERT INTO event (id, session_id, ts, kind, detail)
-            VALUES (?1,?2,?3,?4,?5)
+            INSERT INTO event (id, session_id, agent_id, ts, kind, detail)
+            VALUES (?1,?2,?3,?4,?5,?6)
             ON CONFLICT(id) DO NOTHING;
             """,
             [
                 .text(event.id),
                 .text(event.sessionId),
+                .string(event.agentId),
                 .text(event.ts),
                 .text(event.kind),
                 .string(event.detail),
@@ -296,6 +432,98 @@ public final class Store {
                 .string(sessionEnv.claudeMdBody),
             ]
         )
+    }
+
+    /// Both sides of an agent row land here, in either order, and neither may
+    /// erase what the other knew: the child's transcript supplies identity and
+    /// timestamps, the parent's result supplies the outcome.
+    public func upsert(agent: AgentRow) throws {
+        try database.run(
+            """
+            INSERT INTO agent (
+              agent_id, session_id, spawn_tool_call_id, agent_type, label,
+              resolved_model, status, reported_tool_uses, duration_ms, first_ts, last_ts,
+              parser_version
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
+            ON CONFLICT(agent_id) DO UPDATE SET
+              -- The agent's own transcript decides where it is filed: it lives
+              -- in that session's `subagents/` directory. A forked session
+              -- replays the spawn under a different id, so the parent side of
+              -- the row only supplies a session when nothing else has.
+              session_id = CASE WHEN excluded.first_ts IS NOT NULL
+                                THEN excluded.session_id ELSE agent.session_id END,
+              spawn_tool_call_id = COALESCE(excluded.spawn_tool_call_id, agent.spawn_tool_call_id),
+              agent_type = COALESCE(excluded.agent_type, agent.agent_type),
+              label = COALESCE(excluded.label, agent.label),
+              resolved_model = COALESCE(excluded.resolved_model, agent.resolved_model),
+              status = COALESCE(excluded.status, agent.status),
+              reported_tool_uses = COALESCE(excluded.reported_tool_uses, agent.reported_tool_uses),
+              duration_ms = COALESCE(excluded.duration_ms, agent.duration_ms),
+              first_ts = MIN(COALESCE(excluded.first_ts, agent.first_ts),
+                             COALESCE(agent.first_ts, excluded.first_ts)),
+              last_ts  = MAX(COALESCE(excluded.last_ts, agent.last_ts),
+                             COALESCE(agent.last_ts, excluded.last_ts)),
+              parser_version = excluded.parser_version;
+            """,
+            [
+                .text(agent.agentId),
+                .text(agent.sessionId),
+                .string(agent.spawnToolCallId),
+                .string(agent.agentType),
+                .string(agent.label),
+                .string(agent.resolvedModel),
+                .string(agent.status),
+                .int(agent.reportedToolUses),
+                .int(agent.durationMs),
+                .string(agent.firstTs),
+                .string(agent.lastTs),
+                .integer(Int64(agent.parserVersion)),
+            ]
+        )
+    }
+
+    /// The parent's side of the row: how the run ended. The spawning `tool_use`
+    /// is recorded here too, which is what places the agent in the tree.
+    ///
+    /// Returns false when that `tool_use` is not in the database — normal when a
+    /// file is read from mid-stream, and the reason the tree resolves the parent
+    /// *agent* on read rather than storing it now.
+    @discardableResult
+    public func recordAgentSpawn(
+        toolUseId: String,
+        info: AgentSpawnInfo,
+        sessionFallback: String
+    ) throws -> Bool {
+        try upsert(agent: AgentRow(
+            agentId: info.agentId,
+            sessionId: sessionFallback,
+            spawnToolCallId: toolUseId,
+            agentType: info.agentType,
+            resolvedModel: info.model,
+            status: info.status,
+            reportedToolUses: info.reportedToolUses,
+            durationMs: info.durationMs
+        ))
+        return try database.query(
+            "SELECT 1 FROM tool_call WHERE id = ?1;", [.text(toolUseId)]
+        ) { _ in true }.first ?? false
+    }
+
+    /// The child's side: seen on every turn the agent records, so identity and
+    /// span survive even when the parent's transcript does not. The sidecar
+    /// beside that transcript supplies the name and the spawn it came from.
+    public func upsertAgent(fromCall call: CallRow, metadata: AgentMetadata? = nil) throws {
+        guard let agentId = call.agentId else { return }
+        try upsert(agent: AgentRow(
+            agentId: agentId,
+            sessionId: call.sessionId,
+            spawnToolCallId: metadata?.toolUseId,
+            agentType: call.agent ?? metadata?.agentType,
+            label: metadata?.label,
+            firstTs: call.ts,
+            lastTs: call.ts,
+            parserVersion: call.parserVersion
+        ))
     }
 
     public func sessionEnv(sessionId: String) throws -> SessionEnvRow? {
@@ -386,18 +614,36 @@ public final class Store {
         ) { $0.optionalInt(0) }.first ?? nil
     }
 
-    public func maxTurnIndex(sessionId: String) throws -> Int? {
-        try database.query(
-            "SELECT MAX(turn_index) FROM call WHERE session_id = ?1;",
-            [.text(sessionId)]
+    public func maxTurnIndex(sessionId: String, agentId: String? = nil) throws -> Int? {
+        let (clause, bindings) = Store.scopeSQL(agentId, index: 2)
+        return try database.query(
+            "SELECT MAX(turn_index) FROM call WHERE session_id = ?1" + clause + ";",
+            [.text(sessionId)] + bindings
         ) { $0.optionalInt(0) }.first ?? nil
     }
 
-    public func contextTokens(sessionId: String, turnIndex: Int) throws -> Int? {
-        try database.query(
-            "SELECT context_tokens FROM call WHERE session_id = ?1 AND turn_index = ?2;",
-            [.text(sessionId), .integer(Int64(turnIndex))]
+    public func contextTokens(sessionId: String, agentId: String? = nil, turnIndex: Int) throws -> Int? {
+        let (clause, bindings) = Store.scopeSQL(agentId, index: 3)
+        return try database.query(
+            "SELECT context_tokens FROM call WHERE session_id = ?1 AND turn_index = ?2" + clause + ";",
+            [.text(sessionId), .integer(Int64(turnIndex))] + bindings
         ) { $0.int(0) }.first
+    }
+
+    /// One stream of a session, as a SQL fragment. `nil` is the main thread and
+    /// is a filter, not an absence: without it a subagent's rows join the
+    /// parent's series and the chart plots two windows as one line.
+    static func scopeSQL(_ agentId: String?, index: Int, column: String = "agent_id") -> (String, [SQLiteValue]) {
+        guard let agentId else { return (" AND \(column) IS NULL", []) }
+        return (" AND \(column) = ?\(index)", [.text(agentId)])
+    }
+
+    static func scopeSQL(_ scope: AgentScope, index: Int, column: String = "agent_id") -> (String, [SQLiteValue]) {
+        switch scope {
+        case .all: return ("", [])
+        case .mainThread: return scopeSQL(nil, index: index, column: column)
+        case .agent(let id): return scopeSQL(id, index: index, column: column)
+        }
     }
 
     public func callCount() throws -> Int {
@@ -418,10 +664,14 @@ public final class Store {
         }.first
     }
 
-    public func calls(sessionId: String) throws -> [CallRow] {
-        try database.query(
-            Store.callColumns + " FROM call WHERE session_id = ?1 ORDER BY turn_index, ts;",
-            [.text(sessionId)]
+    /// One stream's turns, in order. `.all` is ordered by time instead of by
+    /// turn index, because turn indexes only order rows within a stream.
+    public func calls(sessionId: String, scope: AgentScope = .mainThread) throws -> [CallRow] {
+        let (clause, bindings) = Store.scopeSQL(scope, index: 2)
+        let order = scope == .all ? "ts, turn_index" : "turn_index, ts"
+        return try database.query(
+            Store.callColumns + " FROM call WHERE session_id = ?1" + clause + " ORDER BY \(order);",
+            [.text(sessionId)] + bindings
         ) { Store.callRow(from: $0) }
     }
 
@@ -453,35 +703,50 @@ public final class Store {
     /// The single row that drives the whole v1 UI (plan §8.3).
     public func latestCall() throws -> CallRow? {
         // Only rows with a known window drive the menu bar gauge: a Cursor row
-        // (no window, no occupancy) must not hijack the live percentage.
+        // (no window, no occupancy) must not hijack the live percentage, and a
+        // subagent's window is not the session's window however recently it
+        // spoke — the popover's tree is where agents get their own numbers.
         try database.query(
             Store.callColumns + """
              FROM call
-             WHERE window_limit IS NOT NULL
-               AND ts = (SELECT MAX(ts) FROM call WHERE window_limit IS NOT NULL)
+             WHERE window_limit IS NOT NULL AND agent_id IS NULL
+               AND ts = (SELECT MAX(ts) FROM call WHERE window_limit IS NOT NULL AND agent_id IS NULL)
              LIMIT 1;
             """
         ) { Store.callRow(from: $0) }.first
     }
 
     /// Newest call in one session — the pinned-session counterpart of `latestCall()`.
-    public func latestCall(sessionId: String) throws -> CallRow? {
-        try database.query(
-            Store.callColumns + " FROM call WHERE session_id = ?1 ORDER BY ts DESC, turn_index DESC LIMIT 1;",
-            [.text(sessionId)]
+    public func latestCall(sessionId: String, scope: AgentScope = .mainThread) throws -> CallRow? {
+        let (clause, bindings) = Store.scopeSQL(scope, index: 2)
+        return try database.query(
+            Store.callColumns + " FROM call WHERE session_id = ?1" + clause
+                + " ORDER BY ts DESC, turn_index DESC LIMIT 1;",
+            [.text(sessionId)] + bindings
         ) { Store.callRow(from: $0) }.first
     }
 
     /// Sessions by most recent turn, one row each, for the picker. Cheap on
     /// purpose: it runs on every refresh, unlike `sessionTotals()`.
+    /// Context and model come from the main thread — that is the session's own
+    /// window — while the timestamp spans every stream, so a session whose
+    /// agents are still working stays at the top of the list where it belongs.
     public func recentSessions(limit: Int) throws -> [SessionSummary] {
         let sql = """
-        SELECT c.session_id, c.project, c.model, c.ts, c.context_tokens, c.window_limit,
-               (SELECT COUNT(*) FROM call n WHERE n.session_id = c.session_id)
-        FROM call c
-        WHERE c.ts = (SELECT MAX(m.ts) FROM call m WHERE m.session_id = c.session_id)
-        GROUP BY c.session_id
-        ORDER BY c.ts DESC
+        SELECT s.session_id,
+               (SELECT project FROM call p WHERE p.session_id = s.session_id
+                 ORDER BY p.ts DESC LIMIT 1),
+               (SELECT model FROM call m WHERE m.session_id = s.session_id AND m.agent_id IS NULL
+                 ORDER BY m.ts DESC, m.turn_index DESC LIMIT 1),
+               s.last_ts,
+               (SELECT context_tokens FROM call l WHERE l.session_id = s.session_id AND l.agent_id IS NULL
+                 ORDER BY l.ts DESC, l.turn_index DESC LIMIT 1),
+               (SELECT window_limit FROM call l WHERE l.session_id = s.session_id AND l.agent_id IS NULL
+                 ORDER BY l.ts DESC, l.turn_index DESC LIMIT 1),
+               (SELECT COUNT(*) FROM call n WHERE n.session_id = s.session_id AND n.agent_id IS NULL),
+               (SELECT COUNT(*) FROM agent a WHERE a.session_id = s.session_id)
+        FROM (SELECT session_id, MAX(ts) AS last_ts FROM call GROUP BY session_id) s
+        ORDER BY s.last_ts DESC
         LIMIT ?1;
         """
         return try database.query(sql, [.integer(Int64(limit))]) { row in
@@ -490,48 +755,117 @@ public final class Store {
                 project: row.optionalText(1),
                 model: row.optionalText(2),
                 lastTs: row.text(3),
-                lastContextTokens: row.int(4),
+                lastContextTokens: row.optionalInt(4) ?? 0,
                 windowLimit: row.optionalInt(5),
-                calls: row.int(6)
+                calls: row.int(6),
+                agents: row.int(7)
             )
         }
     }
 
-    public func events(sessionId: String, kind: String? = nil) throws -> [EventRow] {
-        var sql = "SELECT id, session_id, ts, kind, detail FROM event WHERE session_id = ?1"
+    /// The spawn tree for one session, joined to the turns each agent recorded.
+    ///
+    /// The label is the description the parent wrote when it spawned the agent,
+    /// read back off the `tool_call` row rather than stored twice.
+    public func agents(sessionId: String) throws -> [AgentSummary] {
+        let sql = """
+        SELECT a.agent_id, a.session_id,
+               -- The parent is whichever stream made the spawning call: NULL is
+               -- the main thread. Derived, so ingest order cannot strand it.
+               (SELECT c.agent_id FROM tool_call t JOIN call c ON c.dedupe_key = t.call_id
+                 WHERE t.id = a.spawn_tool_call_id),
+               a.agent_type,
+               COALESCE((SELECT c.model FROM call c WHERE c.agent_id = a.agent_id
+                          ORDER BY c.ts DESC, c.turn_index DESC LIMIT 1), a.resolved_model),
+               a.status,
+               COALESCE(a.label, (SELECT t.target FROM tool_call t WHERE t.id = a.spawn_tool_call_id)),
+               (SELECT COUNT(*) FROM call c WHERE c.agent_id = a.agent_id),
+               (SELECT c.context_tokens FROM call c WHERE c.agent_id = a.agent_id
+                 ORDER BY c.ts DESC, c.turn_index DESC LIMIT 1),
+               (SELECT c.window_limit FROM call c WHERE c.agent_id = a.agent_id
+                 ORDER BY c.ts DESC, c.turn_index DESC LIMIT 1),
+               (SELECT MAX(c.context_tokens) FROM call c WHERE c.agent_id = a.agent_id),
+               (SELECT COUNT(*) FROM tool_call t JOIN call c ON c.dedupe_key = t.call_id
+                 WHERE c.agent_id = a.agent_id),
+               a.reported_tool_uses, a.duration_ms, a.first_ts, a.last_ts
+        FROM agent a
+        WHERE a.session_id = ?1
+        ORDER BY a.first_ts, a.agent_id;
+        """
+        return try database.query(sql, [.text(sessionId)]) { row in
+            AgentSummary(
+                agentId: row.text(0),
+                sessionId: row.text(1),
+                parentAgentId: row.optionalText(2),
+                agentType: row.optionalText(3),
+                label: row.optionalText(6),
+                model: row.optionalText(4),
+                status: row.optionalText(5),
+                calls: row.int(7),
+                lastContextTokens: row.optionalInt(8),
+                windowLimit: row.optionalInt(9),
+                peakContextTokens: row.optionalInt(10),
+                toolCalls: row.int(11),
+                reportedToolUses: row.optionalInt(12),
+                durationMs: row.optionalInt(13),
+                firstTs: row.optionalText(14),
+                lastTs: row.optionalText(15)
+            )
+        }
+    }
+
+    public func agentTree(sessionId: String) throws -> AgentTree {
+        AgentTree.build(sessionId: sessionId, agents: try agents(sessionId: sessionId))
+    }
+
+    public func agentCount() throws -> Int {
+        try database.query("SELECT COUNT(*) FROM agent;") { $0.int(0) }.first ?? 0
+    }
+
+    public func events(
+        sessionId: String,
+        kind: String? = nil,
+        scope: AgentScope = .mainThread
+    ) throws -> [EventRow] {
+        var sql = "SELECT id, session_id, agent_id, ts, kind, detail FROM event WHERE session_id = ?1"
         var bindings: [SQLiteValue] = [.text(sessionId)]
         if let kind {
             sql += " AND kind = ?2"
             bindings.append(.text(kind))
         }
-        sql += " ORDER BY ts, id;"
+        let (clause, scopeBindings) = Store.scopeSQL(scope, index: bindings.count + 1)
+        sql += clause + " ORDER BY ts, id;"
+        bindings += scopeBindings
         return try database.query(sql, bindings) { row in
             EventRow(
                 id: row.text(0),
                 sessionId: row.text(1),
-                ts: row.text(2),
-                kind: row.text(3),
-                detail: row.optionalText(4)
+                agentId: row.optionalText(2),
+                ts: row.text(3),
+                kind: row.text(4),
+                detail: row.optionalText(5)
             )
         }
     }
 
     /// Context per turn with compaction markers — the chart's whole input.
-    public func contextHistory(sessionId: String) throws -> ContextHistory {
+    public func contextHistory(sessionId: String, scope: AgentScope = .mainThread) throws -> ContextHistory {
         ContextHistory.build(
             sessionId: sessionId,
-            calls: try calls(sessionId: sessionId),
-            events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue)
+            calls: try calls(sessionId: sessionId, scope: scope),
+            events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue, scope: scope)
         )
     }
 
     /// The current window's make-up for one session (M7). Nil without turns.
-    public func composition(sessionId: String) throws -> ContextComposition? {
+    public func composition(sessionId: String, scope: AgentScope = .mainThread) throws -> ContextComposition? {
         ContextComposition.build(
             sessionId: sessionId,
-            calls: try calls(sessionId: sessionId),
+            calls: try calls(sessionId: sessionId, scope: scope),
+            // Unscoped on purpose: tool rows are selected by the call that made
+            // them, which already belongs to exactly one stream.
             toolCalls: try toolCalls(sessionId: sessionId),
-            events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue),
+            events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue, scope: scope),
             environment: try sessionEnv(sessionId: sessionId)
         )
     }
@@ -583,6 +917,10 @@ public final class Store {
         public var lastTs: String
         public var toolCalls: Int
         public var compactions: Int
+        /// Subagents this session spawned. Their turns are counted in `calls`
+        /// and the token sums — they are real API calls — but never in the
+        /// occupancy, which is the main thread's own window.
+        public var agents: Int
 
         public var occupancy: Double? {
             guard let windowLimit, windowLimit > 0 else { return nil }
@@ -598,14 +936,15 @@ public final class Store {
         SELECT
           c.session_id,
           MAX(c.project),
-          (SELECT model FROM call m WHERE m.session_id = c.session_id ORDER BY m.ts DESC, m.turn_index DESC LIMIT 1),
+          (SELECT model FROM call m WHERE m.session_id = c.session_id AND m.agent_id IS NULL ORDER BY m.ts DESC, m.turn_index DESC LIMIT 1),
           COUNT(*),
           SUM(c.input), SUM(c.output), SUM(c.cache_read), SUM(c.cache_write),
-          (SELECT context_tokens FROM call l WHERE l.session_id = c.session_id ORDER BY l.ts DESC, l.turn_index DESC LIMIT 1),
-          (SELECT window_limit FROM call l WHERE l.session_id = c.session_id ORDER BY l.ts DESC, l.turn_index DESC LIMIT 1),
+          (SELECT context_tokens FROM call l WHERE l.session_id = c.session_id AND l.agent_id IS NULL ORDER BY l.ts DESC, l.turn_index DESC LIMIT 1),
+          (SELECT window_limit FROM call l WHERE l.session_id = c.session_id AND l.agent_id IS NULL ORDER BY l.ts DESC, l.turn_index DESC LIMIT 1),
           MIN(c.ts), MAX(c.ts),
           (SELECT COUNT(*) FROM tool_call t WHERE t.session_id = c.session_id),
-          (SELECT COUNT(*) FROM event e WHERE e.session_id = c.session_id AND e.kind = 'compaction')
+          (SELECT COUNT(*) FROM event e WHERE e.session_id = c.session_id AND e.kind = 'compaction'),
+          (SELECT COUNT(*) FROM agent a WHERE a.session_id = c.session_id)
         FROM call c
         GROUP BY c.session_id
         ORDER BY MAX(c.ts) DESC;
@@ -625,13 +964,14 @@ public final class Store {
                 firstTs: row.text(10),
                 lastTs: row.text(11),
                 toolCalls: row.int(12),
-                compactions: row.int(13)
+                compactions: row.int(13),
+                agents: row.int(14)
             )
         }
     }
 
     static let callColumns = """
-    SELECT dedupe_key, ts, vendor, agent, session_id, project, cwd, model,
+    SELECT dedupe_key, ts, vendor, agent, agent_id, session_id, project, cwd, model,
            input, output, cache_read, cache_write, reasoning, web_search,
            context_tokens, window_limit, turn_index, context_delta,
            service_tier, stop_reason, duration_ms, is_sidechain,
@@ -644,29 +984,30 @@ public final class Store {
             ts: row.text(1),
             vendor: row.text(2),
             agent: row.optionalText(3),
-            sessionId: row.text(4),
-            project: row.optionalText(5),
-            cwd: row.optionalText(6),
-            model: row.optionalText(7),
-            input: row.int(8),
-            output: row.int(9),
-            cacheRead: row.int(10),
-            cacheWrite: row.int(11),
-            reasoning: row.optionalInt(12),
-            webSearch: row.optionalInt(13),
-            contextTokens: row.int(14),
-            windowLimit: row.optionalInt(15),
-            turnIndex: row.optionalInt(16),
-            contextDelta: row.optionalInt(17),
-            serviceTier: row.optionalText(18),
-            stopReason: row.optionalText(19),
-            durationMs: row.optionalInt(20),
-            isSidechain: row.optionalBool(21),
-            uuid: row.optionalText(22),
-            parentUuid: row.optionalText(23),
-            sourceFile: row.text(24),
-            confidence: row.text(25),
-            parserVersion: row.int(26)
+            agentId: row.optionalText(4),
+            sessionId: row.text(5),
+            project: row.optionalText(6),
+            cwd: row.optionalText(7),
+            model: row.optionalText(8),
+            input: row.int(9),
+            output: row.int(10),
+            cacheRead: row.int(11),
+            cacheWrite: row.int(12),
+            reasoning: row.optionalInt(13),
+            webSearch: row.optionalInt(14),
+            contextTokens: row.int(15),
+            windowLimit: row.optionalInt(16),
+            turnIndex: row.optionalInt(17),
+            contextDelta: row.optionalInt(18),
+            serviceTier: row.optionalText(19),
+            stopReason: row.optionalText(20),
+            durationMs: row.optionalInt(21),
+            isSidechain: row.optionalBool(22),
+            uuid: row.optionalText(23),
+            parentUuid: row.optionalText(24),
+            sourceFile: row.text(25),
+            confidence: row.text(26),
+            parserVersion: row.int(27)
         )
     }
 }

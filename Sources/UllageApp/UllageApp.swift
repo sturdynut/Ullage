@@ -21,7 +21,7 @@ struct UllageApp: App {
             // the gauge and the number are drawn together into a template image
             // instead. The gauge makes the number read as "context window"
             // rather than yet another percentage next to CPU, RAM and battery.
-            Image(nsImage: MenuBarLabel.image(for: model.state))
+            Image(nsImage: MenuBarLabel.image(for: model.menuBarState))
         }
         .menuBarExtraStyle(.window)
 
