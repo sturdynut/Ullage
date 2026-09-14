@@ -13,7 +13,11 @@ import UllageCore
 final class MenuBarModel: ObservableObject {
     static let shared = MenuBarModel()
 
+    /// What the popover is looking at. Held steady while the popover is open.
     @Published private(set) var state: MenuBarState = MenuBarFormatter.state(for: nil)
+    /// What the menu bar item shows: always whichever session spoke last (or
+    /// the pinned one). It keeps following even while the popover is frozen.
+    @Published private(set) var menuBarState: MenuBarState = MenuBarFormatter.state(for: nil)
     @Published private(set) var errorMessage: String?
     @Published private(set) var isWatching = false
     @Published private(set) var databasePath: String = ClaudePaths.defaultDatabaseURL().path
@@ -26,8 +30,30 @@ final class MenuBarModel: ObservableObject {
             // Agents belong to a session; picking another one starts at its
             // main thread.
             focus = .mainThread
+            heldSessionId = nil
             refresh()
         }
+    }
+
+    /// The session the popover latched onto when it opened.
+    ///
+    /// "Most recent" means the popover's subject can change under the pointer
+    /// whenever another session takes a turn — the header, the chart and the
+    /// agent list all swapping mid-read, which is what made the agents section
+    /// appear and vanish. While the popover is open it follows one session and
+    /// updates that session's numbers; the menu bar keeps following the latest.
+    private var heldSessionId: String?
+    private var popoverIsOpen = false
+
+    func popoverDidOpen() {
+        popoverIsOpen = true
+        heldSessionId = nil      // re-latch onto whatever is current right now
+        refresh()
+    }
+
+    func popoverDidClose() {
+        popoverIsOpen = false
+        heldSessionId = nil
     }
     @Published private(set) var sessions: [SessionSummary] = []
     /// The picker's shape: sessions under the project they ran in.
@@ -96,8 +122,18 @@ final class MenuBarModel: ObservableObject {
         guard let readStore else { return }
         do {
             let latest = try readStore.latestCall()
-            let shown = try SessionSelection.resolve(selection, latestOverall: latest) {
+            let resolved = try SessionSelection.resolve(selection, latestOverall: latest) {
                 try readStore.latestCall(sessionId: $0)
+            }
+            menuBarState = MenuBarFormatter.state(for: resolved)
+
+            var shown = resolved
+            if selection == .automatic, popoverIsOpen {
+                if let held = heldSessionId, let stillThere = try readStore.latestCall(sessionId: held) {
+                    shown = stillThere
+                } else {
+                    heldSessionId = resolved?.sessionId
+                }
             }
             pinFellBack = selection.pinnedSessionId != nil && shown?.sessionId != selection.pinnedSessionId
             state = MenuBarFormatter.state(for: shown)

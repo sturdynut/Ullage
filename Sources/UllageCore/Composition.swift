@@ -30,7 +30,10 @@ public struct ContextComposition: Equatable {
 
     public static let baselineName = "Baseline"
     public static let toolResultsName = "Tool results"
-    public static let assistantOutputName = "Assistant output"
+    // "Assistant output" did not fit the popover's legend column and was
+    // truncated to "Assistant out…" on the segment that is routinely the
+    // largest share of the window.
+    public static let assistantOutputName = "Output"
     public static let otherName = "Other"
 
     public var sessionId: String

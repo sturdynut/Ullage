@@ -14,7 +14,7 @@ struct PopoverContent: View {
             header
             sessionPicker
             if let tree = model.agents, !tree.isEmpty {
-                SectionRule("Streams") { streamsTrailing }
+                SectionRule("Agents") { agentsTrailing }
                 AgentTreeView(
                     tree: tree,
                     mainThreadDetail: mainThreadDetail,
@@ -49,6 +49,8 @@ struct PopoverContent: View {
         }
         .padding(14)
         .frame(width: 360)
+        .onAppear { model.popoverDidOpen() }
+        .onDisappear { model.popoverDidClose() }
     }
 
     // MARK: Scope
@@ -65,7 +67,7 @@ struct PopoverContent: View {
 
     /// The agent count, and the way back out of one.
     @ViewBuilder
-    private var streamsTrailing: some View {
+    private var agentsTrailing: some View {
         HStack(spacing: 6) {
             if model.focusedAgent != nil {
                 Button { model.focus(on: .mainThread) } label: {

@@ -40,7 +40,7 @@ final class CompositionTests: XCTestCase {
         XCTAssertFalse(c.estimatesOvershoot)
         XCTAssertEqual(c.tools.map(\.name), ["Read", "Bash"])
         XCTAssertEqual(c.tools[1].calls, 2)
-        XCTAssertEqual(c.segments.map(\.name), ["Baseline", "Tool results", "Assistant output", "Other"])
+        XCTAssertEqual(c.segments.map(\.name), ["Baseline", "Tool results", "Output", "Other"])
         XCTAssertEqual(c.segments.map(\.tokens).reduce(0, +), 70_000)
     }
 
