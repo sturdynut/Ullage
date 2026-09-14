@@ -26,11 +26,22 @@ final class HistoryModel: ObservableObject {
 
     @Published var days = 30 { didSet { reload() } }
     @Published var metric: Metric = .turns
-    @Published var selectedSession: String? { didSet { loadSelection() } }
+    @Published var selectedSession: String? {
+        didSet {
+            guard selectedSession != oldValue else { return }
+            focus = .mainThread          // agents belong to one session
+            loadSelection()
+        }
+    }
     @Published private(set) var activity: [DailyActivity] = []
     @Published private(set) var sessions: [Store.SessionTotals] = []
     @Published private(set) var history: ContextHistory?
     @Published private(set) var composition: ContextComposition?
+    /// The selected session's agents, and which of its streams the detail pane
+    /// is showing. Each agent has its own window, so the chart and the
+    /// composition both follow this.
+    @Published private(set) var agents: AgentTree?
+    @Published private(set) var focus: AgentScope = .mainThread
     @Published private(set) var errorMessage: String?
 
     private var store: Store?
@@ -56,15 +67,33 @@ final class HistoryModel: ObservableObject {
         }
     }
 
+    func focus(on scope: AgentScope) {
+        guard focus != scope else { return }
+        focus = scope
+        loadSelection()
+    }
+
+    var focusedAgent: AgentSummary? {
+        guard case .agent(let agentId) = focus else { return nil }
+        return agents?.flattened.first { $0.agent.agentId == agentId }?.agent
+    }
+
     private func loadSelection() {
         guard let store, let selectedSession else {
             history = nil
             composition = nil
+            agents = nil
             return
         }
         do {
-            history = try store.contextHistory(sessionId: selectedSession)
-            composition = try store.composition(sessionId: selectedSession)
+            let tree = try store.agentTree(sessionId: selectedSession)
+            agents = tree
+            if case .agent(let agentId) = focus,
+               !tree.flattened.contains(where: { $0.agent.agentId == agentId }) {
+                focus = .mainThread
+            }
+            history = try store.contextHistory(sessionId: selectedSession, scope: focus)
+            composition = try store.composition(sessionId: selectedSession, scope: focus)
         } catch {
             errorMessage = "\(error)"
         }
@@ -167,6 +196,7 @@ struct HistoryWindow: View {
                 Text(Timestamps.date(from: row.lastTs).map { $0.formatted(date: .abbreviated, time: .shortened) } ?? row.lastTs)
             }.width(140)
             TableColumn("Turns") { Text($0.calls.formatted()).monospacedDigit() }.width(50)
+            TableColumn("Agents") { Text($0.agents == 0 ? "" : "\($0.agents)").monospacedDigit() }.width(48)
             TableColumn("Last %") { row in
                 Text(row.occupancy.map(MenuBarFormatter.percentage) ?? "?").monospacedDigit()
             }.width(52)
@@ -175,10 +205,24 @@ struct HistoryWindow: View {
         }
     }
 
+    private var selectedTotals: Store.SessionTotals? {
+        model.sessions.first { $0.sessionId == model.selectedSession }
+    }
+
     @ViewBuilder
     private var detail: some View {
         if let history = model.history {
             VStack(alignment: .leading, spacing: 12) {
+                if let tree = model.agents, !tree.isEmpty, let session = selectedTotals {
+                    AgentTreeView(
+                        tree: tree,
+                        mainThreadDetail: [session.model, session.project]
+                            .compactMap { $0 }.joined(separator: " · "),
+                        mainThreadOccupancy: session.occupancy,
+                        focus: model.focus,
+                        onSelect: { model.focus(on: $0) }
+                    )
+                }
                 ContextChart(history: history)
                     .frame(height: 170)
                 if let composition = model.composition {

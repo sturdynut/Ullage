@@ -8,11 +8,15 @@ public struct LineContext {
     public var fallbackSessionId: String
     /// Timestamp of the last line that carried one, for lines that do not.
     public var lastTimestamp: String?
+    /// The source file's modification time (ISO). Used by formats whose lines
+    /// carry no timestamp of their own, such as Cursor.
+    public var fileModified: String?
 
-    public init(sourceFile: String, fallbackSessionId: String, lastTimestamp: String? = nil) {
+    public init(sourceFile: String, fallbackSessionId: String, lastTimestamp: String? = nil, fileModified: String? = nil) {
         self.sourceFile = sourceFile
         self.fallbackSessionId = fallbackSessionId
         self.lastTimestamp = lastTimestamp
+        self.fileModified = fileModified
     }
 }
 
@@ -30,6 +34,53 @@ public struct ToolResultObservation: Equatable {
     public var toolUseId: String
     public var resultTokens: Int
     public var isError: Bool
+    /// Set when this result is an `Agent` spawn returning. The `agentId` in it
+    /// is the exact join to the child's own transcript — the one place the
+    /// parent and the child name the same thing.
+    public var agent: AgentSpawnInfo?
+
+    public init(toolUseId: String, resultTokens: Int, isError: Bool, agent: AgentSpawnInfo? = nil) {
+        self.toolUseId = toolUseId
+        self.resultTokens = resultTokens
+        self.isError = isError
+        self.agent = agent
+    }
+}
+
+/// What the parent records about a subagent when it returns (`toolUseResult`).
+///
+/// `totalTokens` is also reported and is deliberately not carried: it is one
+/// turn's four counters summed, which is a cache-read number in disguise. The
+/// child's own rows measure its context exactly, so nothing is lost.
+public struct AgentSpawnInfo: Equatable {
+    public var agentId: String
+    /// The session the spawn happened in. Carried because the link to the
+    /// parent turn can be missing — a file read from mid-stream never saw the
+    /// `tool_use` — and an agent row still has to know where it belongs.
+    public var sessionId: String
+    public var agentType: String?
+    public var status: String?
+    public var model: String?
+    public var reportedToolUses: Int?
+    public var durationMs: Int?
+
+    public init(
+        agentId: String,
+        sessionId: String,
+        agentType: String? = nil,
+        status: String? = nil,
+        model: String? = nil,
+        reportedToolUses: Int? = nil,
+        durationMs: Int? = nil
+    ) {
+        self.agentId = agentId
+        self.sessionId = sessionId
+        self.agentType = agentType
+        self.status = status
+        self.model = model
+        self.reportedToolUses = reportedToolUses
+        self.durationMs = durationMs
+    }
 }
 
 public enum ParsedLine: Equatable {
@@ -45,7 +96,7 @@ public enum ParsedLine: Equatable {
 public enum ClaudeCodeParser {
     /// Bump on every parser change. Tells you which rows to distrust after an
     /// upstream format shift.
-    public static let version = 2
+    public static let version = 3
 
     public static func parse(line: Data, context: LineContext) -> ParsedLine? {
         guard !line.isEmpty else { return nil }
@@ -69,12 +120,13 @@ public enum ClaudeCodeParser {
             guard let parsed = parseAssistant(entry: entry, context: context) else { return nil }
             return .call(parsed)
         case "user":
-            let results = parseToolResults(entry: entry)
+            let results = parseToolResults(entry: entry, context: context)
             return results.isEmpty ? nil : .toolResults(results)
         case "summary":
             let event = EventRow(
                 id: eventID(kind: .summary, entry: entry, rawLine: rawLine, context: context),
                 sessionId: sessionId(entry: entry, context: context),
+                agentId: JSONAccess.string(entry, "agentId"),
                 ts: timestamp(entry: entry, context: context),
                 kind: EventKind.summary.rawValue,
                 detail: JSONAccess.jsonString(entry)
@@ -116,6 +168,10 @@ public enum ClaudeCodeParser {
         let call = CallRow(
             dedupeKey: dedupeKey,
             ts: ts,
+            // Present on every line of a subagent transcript and on nothing
+            // else, which is what makes it a reliable stream key.
+            agent: JSONAccess.string(entry, "attributionAgent"),
+            agentId: JSONAccess.string(entry, "agentId"),
             sessionId: sessionId,
             project: cwd.map { URL(fileURLWithPath: $0).lastPathComponent },
             cwd: cwd,
@@ -199,7 +255,9 @@ public enum ClaudeCodeParser {
         }
         switch toolName {
         case "Skill": return (.skill, nil)
-        case "Task": return (.agent, nil)
+        // `Task` was renamed `Agent`; both spawn a subagent and both appear on
+        // disk depending on the Claude Code version that wrote the transcript.
+        case "Agent", "Task": return (.agent, nil)
         default: return (.builtin, nil)
         }
     }
@@ -216,8 +274,11 @@ public enum ClaudeCodeParser {
             candidates = ["file_path", "notebook_path", "path"]
         case "Bash", "BashOutput":
             candidates = ["command", "description"]
-        case "Task":
-            candidates = ["subagent_type", "description"]
+        case "Agent", "Task":
+            // Description first: `subagent_type` is the type, recorded on the
+            // agent row, while the description is the only human-written name
+            // the spawn has — and the thing you cannot recover anywhere else.
+            candidates = ["description", "subagent_type"]
         case "Skill":
             candidates = ["skill", "command"]
         case "Glob", "Grep":
@@ -240,7 +301,7 @@ public enum ClaudeCodeParser {
     /// Results land on a *later* `type: "user"` entry, matched by tool_use id.
     /// That cross-line join is the awkward part of the parser, and it is why
     /// tool_call exists in M1 rather than being bolted on later.
-    static func parseToolResults(entry: [String: Any]) -> [ToolResultObservation] {
+    static func parseToolResults(entry: [String: Any], context: LineContext) -> [ToolResultObservation] {
         guard let message = JSONAccess.dict(entry, "message"),
               let blocks = JSONAccess.list(message, "content") else { return [] }
         var results: [ToolResultObservation] = []
@@ -256,7 +317,30 @@ public enum ClaudeCodeParser {
                 )
             )
         }
+        // `toolUseResult` is a sibling of `message`, one per line, and names no
+        // tool_use id of its own. Attaching it to a line carrying several
+        // results would be a guess, so it is only claimed when there is exactly
+        // one result for it to belong to.
+        if results.count == 1, let spawn = agentSpawn(entry: entry, context: context) {
+            results[0].agent = spawn
+        }
         return results
+    }
+
+    /// The parent's record of a finished subagent, on the `user` line that
+    /// carries the `Agent` tool's result.
+    static func agentSpawn(entry: [String: Any], context: LineContext) -> AgentSpawnInfo? {
+        guard let result = JSONAccess.dict(entry, "toolUseResult"),
+              let agentId = JSONAccess.string(result, "agentId") else { return nil }
+        return AgentSpawnInfo(
+            agentId: agentId,
+            sessionId: sessionId(entry: entry, context: context),
+            agentType: JSONAccess.string(result, "agentType"),
+            status: JSONAccess.string(result, "status"),
+            model: JSONAccess.string(result, "resolvedModel"),
+            reportedToolUses: JSONAccess.int(result, "totalToolUseCount"),
+            durationMs: JSONAccess.int(result, "totalDurationMs")
+        )
     }
 
     /// Length-based estimate, never a real count. A Read of a large file is
@@ -305,6 +389,7 @@ public enum ClaudeCodeParser {
         return EventRow(
             id: eventID(kind: .compaction, entry: entry, rawLine: rawLine, context: context),
             sessionId: sessionId(entry: entry, context: context),
+            agentId: JSONAccess.string(entry, "agentId"),
             ts: timestamp(entry: entry, context: context),
             kind: EventKind.compaction.rawValue,
             detail: JSONAccess.jsonString(metadata) ?? JSONAccess.jsonString(entry)

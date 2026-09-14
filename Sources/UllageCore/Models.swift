@@ -5,6 +5,8 @@ import Foundation
 
 public enum Vendor {
     public static let claudeCode = "claude-code"
+    public static let codex = "codex"
+    public static let cursor = "cursor"
 }
 
 /// How much to trust the token counters on a row.
@@ -16,6 +18,9 @@ public enum Confidence: String {
     case exact
     case estimated
     case cumulative
+    /// The harness records no token or window data locally; the row carries
+    /// activity (turns, tools) only, with no occupancy. Used for Cursor.
+    case unmeasured
 }
 
 /// One API call. Mirrors the `call` table.
@@ -23,7 +28,14 @@ public struct CallRow: Equatable {
     public var dedupeKey: String        // message.id
     public var ts: String               // ISO 8601, normalised to UTC
     public var vendor: String
-    public var agent: String?           // subagent name; NULL for the main thread in v1
+    /// Subagent *type* (`attributionAgent`): "Explore", "general-purpose", …
+    /// NULL on the main thread.
+    public var agent: String?
+    /// Claude Code's `agentId`. NULL on the main thread, and the stream key
+    /// everywhere else: turn index, context delta and occupancy are per
+    /// (session, agent), because a subagent has its own context window while
+    /// carrying the parent's `sessionId`.
+    public var agentId: String?
     public var sessionId: String
     public var project: String?         // basename of cwd
     public var cwd: String?
@@ -53,6 +65,7 @@ public struct CallRow: Equatable {
         ts: String,
         vendor: String = Vendor.claudeCode,
         agent: String? = nil,
+        agentId: String? = nil,
         sessionId: String,
         project: String? = nil,
         cwd: String? = nil,
@@ -81,6 +94,7 @@ public struct CallRow: Equatable {
         self.ts = ts
         self.vendor = vendor
         self.agent = agent
+        self.agentId = agentId
         self.sessionId = sessionId
         self.project = project
         self.cwd = cwd
@@ -175,16 +189,85 @@ public enum EventKind: String {
 public struct EventRow: Equatable {
     public var id: String
     public var sessionId: String
+    /// Which stream compacted: nil for the main thread, otherwise the agent.
+    /// Without it a subagent's compaction would null the delta of the parent's
+    /// next turn, which is a different window entirely.
+    public var agentId: String?
     public var ts: String
     public var kind: String
     public var detail: String?          // raw JSON
 
-    public init(id: String, sessionId: String, ts: String, kind: String, detail: String? = nil) {
+    public init(
+        id: String,
+        sessionId: String,
+        agentId: String? = nil,
+        ts: String,
+        kind: String,
+        detail: String? = nil
+    ) {
         self.id = id
         self.sessionId = sessionId
+        self.agentId = agentId
         self.ts = ts
         self.kind = kind
         self.detail = detail
+    }
+}
+
+/// One spawned subagent. Mirrors the `agent` table.
+///
+/// Assembled from two sides that arrive in either order and never overwrite
+/// each other with nil: the child's own transcript carries `agentId` and
+/// `attributionAgent` on every line, and the parent's `toolUseResult` for the
+/// spawning `Agent` call carries the same `agentId` plus how the run ended.
+/// Nothing here is estimated.
+public struct AgentRow: Equatable {
+    public var agentId: String
+    public var sessionId: String
+    /// `tool_use` id of the `Agent` call that spawned it — the edge in the
+    /// tree. Which *agent* that was is derived from it on read, so it cannot go
+    /// stale when the parent's transcript is ingested after the child's.
+    public var spawnToolCallId: String?
+    public var agentType: String?
+    /// The description the spawning agent wrote, from the `.meta.json` sidecar.
+    public var label: String?
+    /// What the *parent* resolved for the run. The child's own turns record the
+    /// model that actually answered, so this is only a fallback for an agent
+    /// whose transcript is not on disk.
+    public var resolvedModel: String?
+    public var status: String?
+    public var reportedToolUses: Int?
+    public var durationMs: Int?
+    public var firstTs: String?
+    public var lastTs: String?
+    public var parserVersion: Int
+
+    public init(
+        agentId: String,
+        sessionId: String,
+        spawnToolCallId: String? = nil,
+        agentType: String? = nil,
+        label: String? = nil,
+        resolvedModel: String? = nil,
+        status: String? = nil,
+        reportedToolUses: Int? = nil,
+        durationMs: Int? = nil,
+        firstTs: String? = nil,
+        lastTs: String? = nil,
+        parserVersion: Int = ClaudeCodeParser.version
+    ) {
+        self.agentId = agentId
+        self.sessionId = sessionId
+        self.spawnToolCallId = spawnToolCallId
+        self.agentType = agentType
+        self.label = label
+        self.resolvedModel = resolvedModel
+        self.status = status
+        self.reportedToolUses = reportedToolUses
+        self.durationMs = durationMs
+        self.firstTs = firstTs
+        self.lastTs = lastTs
+        self.parserVersion = parserVersion
     }
 }
 

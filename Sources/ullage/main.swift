@@ -15,7 +15,8 @@ USAGE
   ullage ingest [path ...]   Ingest transcripts (default: ~/.claude/projects)
   ullage backfill [path ...] Ingest everything and report what is still missing
   ullage watch [path ...]    Tail transcripts live, printing the menu bar title
-  ullage sessions            Per-session totals from the database
+  ullage sessions            Per-session totals, grouped by project
+  ullage agents <session>    The subagent tree for a session, with each one's window
   ullage latest              The single row that drives the menu bar
   ullage env <session>       The configuration snapshot for a session
   ullage history [--days N]  Activity per day and project (default: 30 days)
@@ -124,6 +125,7 @@ func report(_ stats: IngestStats) {
     calls      \(stats.callsUpserted) upserted
     tools      \(stats.toolCallsUpserted) invocations, \(stats.toolResultsMatched) results joined, \(stats.toolResultsOrphaned) unmatched
     events     \(stats.eventsInserted) inserted
+    agents     \(stats.agentsSeen) subagents, \(stats.agentSpawnsLinked) spawns linked to a parent turn
     sessions   \(stats.sessionEnvSnapshots) environment snapshots captured
     """)
 }
@@ -134,14 +136,35 @@ func printSessions(_ store: Store) throws {
         print("No sessions in the database yet. Run: ullage ingest")
         return
     }
+    // Grouped by project, most recently active project first: a session id is
+    // not a name, and neither is an agent's — the project is the one label the
+    // person reading this already knows.
+    var lastActivity: [String: String] = [:]
+    for row in totals {
+        let project = row.project ?? "—"
+        lastActivity[project] = max(lastActivity[project] ?? "", row.lastTs)
+    }
+    let grouped = totals.sorted { left, right in
+        let leftProject = left.project ?? "—", rightProject = right.project ?? "—"
+        if leftProject != rightProject {
+            let leftLast = lastActivity[leftProject] ?? "", rightLast = lastActivity[rightProject] ?? ""
+            return leftLast != rightLast ? leftLast > rightLast : leftProject < rightProject
+        }
+        return left.lastTs > right.lastTs
+    }
+
     print(pad("PROJECT", 22) + pad("SESSION", 10) + padLeft("CALLS", 6) + padLeft("TOOLS", 6)
+        + padLeft("AGENTS", 7)
         + padLeft("CONTEXT", 10) + padLeft("OCC", 6) + padLeft("IN", 10) + padLeft("OUT", 10)
         + padLeft("CACHE R", 16) + padLeft("CACHE W", 12) + "  LAST")
-    for totals in totals {
-        let line = pad(totals.project ?? "—", 22)
+    var lastProject = ""
+    for totals in grouped {
+        let project = totals.project ?? "—"
+        let line = pad(project == lastProject ? "" : project, 22)
             + pad(String(totals.sessionId.prefix(8)), 10)
             + padLeft(String(totals.calls), 6)
             + padLeft(String(totals.toolCalls), 6)
+            + padLeft(totals.agents > 0 ? String(totals.agents) : "—", 7)
             + padLeft(thousands(totals.lastContextTokens), 10)
             + padLeft(percent(totals.occupancy), 6)
             + padLeft(thousands(totals.input), 10)
@@ -150,11 +173,13 @@ func printSessions(_ store: Store) throws {
             + padLeft(thousands(totals.cacheWrite), 12)
             + "  " + totals.lastTs
         print(line + (totals.compactions > 0 ? "  ⟲\(totals.compactions)" : ""))
+        lastProject = project
     }
     print("""
 
     CONTEXT is the last turn's prompt tokens, not a sum: the cached prefix is
     re-sent every turn, so summing prompt counters across turns is meaningless.
+    It is the main thread's window; each agent has its own — see `ullage agents`.
     OUT is a mid-stream snapshot and undercounts (plan §9 trap 2).
     """)
 }
@@ -220,6 +245,57 @@ func printComposition(_ store: Store, sessionPrefix: String) throws {
     }
 }
 
+/// The tree the menu bar's popover draws, in text: who spawned whom, and how
+/// full each one's own window got.
+func printAgents(_ store: Store, sessionPrefix: String) throws {
+    let matches = try store.sessionTotals().filter { $0.sessionId.hasPrefix(sessionPrefix) }
+    guard let session = matches.first else {
+        print("no session starting with \(sessionPrefix)")
+        return
+    }
+    let tree = try store.agentTree(sessionId: session.sessionId)
+    print("""
+    session    \(session.sessionId)
+    project    \(session.project ?? "—")
+    """)
+    print("")
+    print(pad("AGENT", 42) + pad("TYPE", 19) + padLeft("TURNS", 6) + padLeft("CONTEXT", 10)
+        + padLeft("OCC", 6) + padLeft("PEAK", 10) + padLeft("TOOLS", 6) + "  STATUS")
+
+    // The main thread is the root of the tree it spawned, and its window is the
+    // one the menu bar shows.
+    print(pad("main thread", 42) + pad(session.model ?? "—", 19)
+        + padLeft(String(session.calls - tree.flattened.reduce(0) { $0 + $1.agent.calls }), 6)
+        + padLeft(thousands(session.lastContextTokens), 10)
+        + padLeft(percent(session.occupancy), 6)
+        + padLeft("", 10) + padLeft(String(session.toolCalls), 6))
+
+    guard !tree.isEmpty else {
+        print("")
+        print("No subagents in this session.")
+        return
+    }
+    for node in tree.flattened {
+        let agent = node.agent
+        let indent = String(repeating: "  ", count: node.depth + 1)
+        print(pad(indent + agent.displayName, 42)
+            + pad(agent.agentType ?? "—", 19)
+            + padLeft(String(agent.calls), 6)
+            + padLeft(agent.lastContextTokens.map(thousands) ?? "—", 10)
+            + padLeft(percent(agent.occupancy), 6)
+            + padLeft(agent.peakContextTokens.map(thousands) ?? "—", 10)
+            + padLeft(String(agent.toolCalls), 6)
+            + "  " + (agent.statusLabel ?? "completed"))
+    }
+    print("""
+
+    Each agent's occupancy is its own window, never the session's: a subagent
+    starts from an empty context and is named by the agent that spawned it.
+    AGENT is that name — the description the parent wrote — falling back to the
+    agent type when the spawn is not on disk.
+    """)
+}
+
 func printLatest(_ store: Store) throws {
     guard let call = try store.latestCall() else {
         print("No calls in the database yet. Run: ullage ingest")
@@ -244,7 +320,7 @@ func warnAboutRetention() {
 
 func targetURLs(_ options: Options) -> [URL] {
     options.paths.isEmpty
-        ? ClaudePaths.projectsDirectories()
+        ? TranscriptSources.roots()
         : options.paths.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
 }
 
@@ -306,6 +382,7 @@ do {
         transcripts on disk       \(transcripts.count)
         transcripts with rows     \(ingested)
         sessions in database      \(try store.sessionTotals().count)
+        subagents in database     \(try store.agentCount())
         environment snapshots     \(try store.sessionEnvCount())\(missingEnv.isEmpty ? "" : "  (\(missingEnv.count) sessions without one)")
         """)
         if transcripts.count != ingested {
@@ -362,6 +439,13 @@ do {
     case "sessions":
         try printSessions(Store(path: options.databasePath))
 
+    case "agents":
+        guard let needle = options.paths.first else {
+            print("usage: ullage agents <session-id or prefix>")
+            break
+        }
+        try printAgents(Store(path: options.databasePath), sessionPrefix: needle)
+
     case "latest":
         try printLatest(Store(path: options.databasePath))
 
@@ -379,10 +463,10 @@ do {
         let store = try Store(path: options.databasePath)
         print("""
         database   \(options.databasePath)
-        projects   \(ClaudePaths.projectsDirectories().map(\.path).joined(separator: ", "))
+        sources    \(TranscriptSources.roots().map(\.path).joined(separator: ", "))
         parser     v\(ClaudeCodeParser.version)
         retention  \(Retention.status())
-        rows       \(try store.callCount()) calls, \(try store.toolCallCount()) tool calls, \(try store.eventCount()) events, \(try store.sessionEnvCount()) env snapshots
+        rows       \(try store.callCount()) calls, \(try store.toolCallCount()) tool calls, \(try store.eventCount()) events, \(try store.agentCount()) agents, \(try store.sessionEnvCount()) env snapshots
         menu bar   \(try menuBarLine(store))
         """)
         warnAboutRetention()

@@ -40,7 +40,7 @@ final class CompositionTests: XCTestCase {
         XCTAssertFalse(c.estimatesOvershoot)
         XCTAssertEqual(c.tools.map(\.name), ["Read", "Bash"])
         XCTAssertEqual(c.tools[1].calls, 2)
-        XCTAssertEqual(c.segments.map(\.name), ["Baseline", "Tool results", "Assistant output", "Other"])
+        XCTAssertEqual(c.segments.map(\.name), ["Baseline", "Tool results", "Output", "Other"])
         XCTAssertEqual(c.segments.map(\.tokens).reduce(0, +), 70_000)
     }
 
@@ -60,6 +60,27 @@ final class CompositionTests: XCTestCase {
         XCTAssertEqual(c.toolResults, 4_000, "pre-compaction results are gone from the window")
         XCTAssertEqual(c.assistantOutput, 300)
         XCTAssertEqual(c.other, 130_000 - 120_000 - 4_000 - 300)
+    }
+
+    /// One boundary is written as two lines a fraction of a second apart, so
+    /// counting events reports twice as many compactions as happened — and
+    /// disagrees with the chart, which marks the turn the window restarted at.
+    func testPairedBoundaryLinesAreOneCompaction() {
+        let calls = [
+            call(0, at: "2026-09-12T10:00:00.000Z", context: 40_000, output: 100),
+            call(1, at: "2026-09-12T10:01:00.000Z", context: 900_000, output: 100),
+            call(2, at: "2026-09-12T10:02:00.000Z", context: 120_000, output: 300),
+        ]
+        let events = [
+            EventRow(id: "boundary", sessionId: "s", ts: "2026-09-12T10:01:30.000Z", kind: "compaction"),
+            EventRow(id: "summary", sessionId: "s", ts: "2026-09-12T10:01:30.339Z", kind: "compaction"),
+        ]
+        let c = ContextComposition.build(sessionId: "s", calls: calls, toolCalls: [], events: events)!
+        XCTAssertEqual(c.compactions, 1)
+        XCTAssertEqual(c.windowStartTurn, 2)
+        // The chart counts the same way, and the popover shows both numbers.
+        let history = ContextHistory.build(sessionId: "s", calls: calls, events: events)
+        XCTAssertEqual(history.compactionTurns.count, c.compactions)
     }
 
     func testOvershootClampsOtherAndSaysSo() {
