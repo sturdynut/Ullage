@@ -11,6 +11,7 @@ struct PopoverContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            toolbar
             header
             if let tree = model.agents, !tree.isEmpty {
                 SectionRule("Agents") { agentsTrailing }
@@ -43,12 +44,8 @@ struct PopoverContent: View {
                     .foregroundStyle(.red)
                     .lineLimit(3)
             }
-            // The controls live together at the foot: the picker chooses the
-            // subject, the buttons act on it, and neither interrupts the
-            // reading between the answer and the evidence.
-            sessionPicker
-                .padding(.top, 2)
             actions
+                .padding(.top, 2)
         }
         .padding(14)
         .frame(width: 360)
@@ -107,6 +104,18 @@ struct PopoverContent: View {
         ].compactMap { $0 }.joined(separator: " · ")
     }
 
+    /// Every control the popover has, in one strip at the top: which session to
+    /// follow, and the app's own housekeeping. Nothing between the answer and
+    /// the evidence below it.
+    private var toolbar: some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+            sessionMenu
+            overflowMenu
+        }
+        .frame(height: 14)
+    }
+
     // MARK: Header
 
     /// The headline is the room left, not the percentage.
@@ -143,6 +152,12 @@ struct PopoverContent: View {
                         // It used to be two grey words after the model name.
                         if agent == nil, state.modelWindowIsAssumed, state.status != .empty {
                             assumedWindowBadge
+                        }
+                        if model.pinFellBack {
+                            Text("· pinned session has no turns")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                     }
                 }
@@ -231,9 +246,14 @@ struct PopoverContent: View {
 
     // MARK: Session picker
 
-    /// Full width, at the foot with the other controls.
-    private var sessionPicker: some View {
-        VStack(alignment: .leading, spacing: 3) {
+    /// Most recent is the default and needs no control; switching sessions is
+    /// rare enough to live behind the title it already names, rather than a
+    /// full-width field competing with the answer.
+    ///
+    /// The chevron takes the accent colour while a session is pinned, so the
+    /// one state that is not the default announces itself.
+    private var sessionMenu: some View {
+        Menu {
             Picker("Session", selection: $model.selection) {
                 Text("Most recent").tag(SessionSelection.automatic)
                 // Grouped by project: a session id is not a name, and the
@@ -247,15 +267,16 @@ struct PopoverContent: View {
                     }
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(maxWidth: .infinity)
-            if model.pinFellBack {
-                Text("pinned session has no turns; showing most recent")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            .pickerStyle(.inline)
+        } label: {
+            Image(systemName: "chevron.down.circle")
+                .font(.system(size: 11, weight: .semibold))
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(model.selection == .automatic ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.accentColor))
+        .help(model.selection == .automatic ? "Following the most recent session — click to pin one" : "Pinned; click to change or follow the most recent again")
     }
 
     /// Inside a project section, the project name is already the header.
@@ -347,22 +368,28 @@ struct PopoverContent: View {
             }
             .buttonStyle(.borderedProminent)
             Spacer()
-            Menu {
-                Button(model.isWatching ? "Refresh now" : "Start watching") {
-                    if model.isWatching { model.refreshNow() } else { model.start() }
-                }
-                Button("Show database in Finder") { model.openDatabaseFolder() }
-                Divider()
-                Button("Quit Ullage") { NSApplication.shared.terminate(nil) }
-                    .keyboardShortcut("q")
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
         }
         .controlSize(.small)
+    }
+
+    private var overflowMenu: some View {
+        Menu {
+            Button(model.isWatching ? "Refresh now" : "Start watching") {
+                if model.isWatching { model.refreshNow() } else { model.start() }
+            }
+            Button("Show database in Finder") { model.openDatabaseFolder() }
+            Divider()
+            Button("Quit Ullage") { NSApplication.shared.terminate(nil) }
+                .keyboardShortcut("q")
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(.tertiary)
+        .help("Refresh, show the database, quit")
     }
 }
 #endif
