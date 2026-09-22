@@ -14,7 +14,9 @@ call as a row in a local SQLite database, and shows how full the live session's
 context window is. A macOS menu bar app backed by a Swift-package collector and
 a debug CLI. Everything is local; nothing is uploaded. The single exception is
 `ullage otlp`, which exports to an OpenTelemetry collector when invoked — never
-in the background, never from the app.
+in the background, never from the app. `ullage serve` makes the gauge
+*reachable* rather than sending it anywhere: a page bound to 127.0.0.1, which
+`tailscale serve` can front so a phone on your own tailnet can read it.
 
 ### Harness support
 
@@ -34,13 +36,14 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 79 tests; pass on Linux and macOS
+swift test                 # 121 tests; pass on Linux and macOS
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
 
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
-`composition <session>`, `agents <session>`, `env <session>`, `otlp`, `info`.
+`composition <session>`, `agents <session>`, `env <session>`, `serve`, `otlp`,
+`info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
   have no macOS-only imports. `Sources/UllageApp` is `#if os(macOS)` throughout.
@@ -142,6 +145,15 @@ plausible and are wrong.
   than by taking a dependency: the package has none beyond system SQLite, and an
   exporter should not drag gRPC into a menu bar app. Metrics are cumulative and
   therefore idempotent; spans are not, so they follow a per-endpoint cursor.
+- **`serve` binds loopback and offers no way not to.** Reaching it from a
+  phone is `tailscale serve`'s job, which means exposure is granted and revoked
+  outside Ullage and there is no flag anyone can leave switched on by accident.
+  The page is a string constant in Core (`WebPage.swift`) so the CLI and the app
+  can both serve it without a resource bundle, and it fetches `state.json`,
+  whose shape is built by `ServeSnapshot` from the *same* `MenuBarFormatter` the
+  menu bar uses — a second set of display rules would be a second set of bugs.
+  The host allowlist is not decoration: a loopback server with no `Host` check
+  is readable by any web page the user visits, via DNS rebinding.
 - **`session_env` is the one irreproducible table.** MCP servers, skills and
   CLAUDE.md are snapshotted at ingest because nothing on disk records what they
   were when a session ran. It is Claude-Code-only; other vendors skip it.

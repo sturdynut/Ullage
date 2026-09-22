@@ -21,12 +21,15 @@ USAGE
   ullage env <session>       The configuration snapshot for a session
   ullage history [--days N]  Activity per day and project (default: 30 days)
   ullage composition <sess>  What a session's context window is made of
+  ullage serve [--port N]    Serve the gauge to a browser on 127.0.0.1
   ullage otlp                Export everything measured to an OTLP collector
   ullage info                Resolved paths and row counts
 
 OPTIONS
   --db <path>       Database file (default: $ULLAGE_DB or the app support path)
   --days <n>        Window for `history`, and for `otlp` spans
+  --port <n>        Port for `serve` (default: 7878)
+  --no-watch        `serve` reads the database without tailing transcripts
   --endpoint <url>  OTLP collector base URL, e.g. http://localhost:4318
   --dry-run         Print the OTLP payloads instead of sending them
   --metrics-only    Export metrics but no spans
@@ -49,6 +52,10 @@ struct Options {
     var verbose = false
     var days = 30
     var endpoint: String?
+    var port: UInt16 = 7878
+    /// `serve` tails by default so it is useful with the app closed; off when
+    /// the app is already running and doing the same work.
+    var watch = true
     var dryRun = false
     var metricsOnly = false
     var tracesOnly = false
@@ -76,6 +83,10 @@ func parseArguments(_ arguments: [String]) -> Options {
             }
         case "--endpoint":
             if let value = rest.first { options.endpoint = value; rest.removeFirst() }
+        case "--port":
+            if let value = rest.first, let port = UInt16(value) { options.port = port; rest.removeFirst() }
+        case "--no-watch":
+            options.watch = false
         case "--dry-run":
             options.dryRun = true
         case "--metrics-only":
@@ -487,6 +498,45 @@ do {
             break
         }
         try printComposition(Store(path: options.databasePath), sessionPrefix: needle)
+
+    case "serve":
+        warnAboutRetention()
+        let readStore = try Store(path: options.databasePath)
+        let router = ServeRouter(store: readStore)
+        let server = HTTPServer(port: options.port) { router.respond(to: $0) }
+
+        // Tailing here means `serve` is useful on its own, with the app closed
+        // — otherwise the page would faithfully render a database nobody is
+        // updating. Two writers on one WAL file is fine: both ingests are
+        // idempotent and SQLite has a 5s busy timeout.
+        var liveTailer: SessionTailer?
+        if options.watch {
+            let writeStore = try Store(path: options.databasePath)
+            let ingestor = Ingestor(store: writeStore)
+            if options.verbose {
+                ingestor.onWarning = { FileHandle.standardError.write(Data(("warning: " + $0 + "\n").utf8)) }
+            }
+            let tailer = SessionTailer(ingestor: ingestor)
+            tailer.onError = { FileHandle.standardError.write(Data("error: \($0)\n".utf8)) }
+            try tailer.start(roots: targetURLs(options))
+            liveTailer = tailer
+        }
+
+        do {
+            try server.start()
+        } catch {
+            FileHandle.standardError.write(Data("error: cannot serve on port \(options.port): \(error)\n".utf8))
+            exit(1)
+        }
+
+        print("""
+        serving  http://127.0.0.1:\(server.port)   (ctrl-c to stop)
+        tailing  \(options.watch ? targetURLs(options).map(\.path).joined(separator: ", ") : "no — reading the database only")
+
+        Loopback only, by design. To reach it from a phone on your tailnet:
+          tailscale serve --bg \(server.port)
+        """)
+        withExtendedLifetime((server, liveTailer, readStore)) { dispatchMain() }
 
     case "otlp":
         let store = try Store(path: options.databasePath)

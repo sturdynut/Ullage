@@ -117,6 +117,7 @@ ullage agents <session>      # the subagent tree, each agent's own window
 ullage latest                # the single row driving the menu bar
 ullage history [--days N]    # activity per day and project (default 30)
 ullage composition <session> # what a session's window is made of
+ullage serve [--port N]      # serve the gauge to a browser on 127.0.0.1
 ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
 ullage info                  # resolved paths, retention, row counts
@@ -160,6 +161,39 @@ The database is at
 `--db <path>` or `$ULLAGE_DB` moves it; `$CLAUDE_CONFIG_DIR` moves the transcript
 source. Ingestion is incremental and idempotent: re-running it over the same
 transcripts changes nothing.
+
+### Reading it from a phone
+
+A menu bar is only useful in front of the Mac. `ullage serve` puts the same
+gauge on a web page — the live occupancy, what it is made of, and every recent
+session — so a session you are driving from somewhere else is still visible.
+
+```bash
+ullage serve                 # http://127.0.0.1:7878, and tails transcripts too
+ullage serve --no-watch      # when the app is already running and ingesting
+```
+
+It binds **127.0.0.1 and nothing else**, and there is deliberately no flag to
+change that. To reach it from a phone, put [Tailscale](https://tailscale.com) in
+front:
+
+```bash
+tailscale serve --bg 7878    # https://<machine>.<tailnet>.ts.net
+```
+
+That gives a real HTTPS certificate for the machine's tailnet name, reachable
+only from your own devices — no port forwarding, no LAN exposure, and revoking
+it is `tailscale serve --https=443 off`. Ullage itself never opens a socket the
+rest of the network can see, so who may reach the page is Tailscale's decision
+rather than a flag you have to remember you set.
+
+The page reuses the display rules rather than reimplementing them: the same
+floored percentage, the same amber threshold, and the same refusal to show a
+number that has gone stale — if the Mac sleeps or drops off the tailnet, the
+gauge dims and says so instead of leaving a confident percentage on screen.
+Sessions whose harness reports no window show a dash, never `0%`.
+
+[`docs/PHONE.md`](docs/PHONE.md) has the setup in full.
 
 ## How the number is computed
 
