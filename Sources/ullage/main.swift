@@ -22,6 +22,7 @@ USAGE
   ullage history [--days N]  Activity per day and project (default: 30 days)
   ullage composition <sess>  What a session's context window is made of
   ullage serve [--port N]    Serve the gauge to a browser on 127.0.0.1
+  ullage push [--test]       Devices subscribed to alerts; --test buzzes them
   ullage otlp                Export everything measured to an OTLP collector
   ullage info                Resolved paths and row counts
 
@@ -30,6 +31,7 @@ OPTIONS
   --days <n>        Window for `history`, and for `otlp` spans
   --port <n>        Port for `serve` (default: 7878)
   --no-watch        `serve` reads the database without tailing transcripts
+  --test            Send a test notification to every subscribed device
   --endpoint <url>  OTLP collector base URL, e.g. http://localhost:4318
   --dry-run         Print the OTLP payloads instead of sending them
   --metrics-only    Export metrics but no spans
@@ -56,6 +58,7 @@ struct Options {
     /// `serve` tails by default so it is useful with the app closed; off when
     /// the app is already running and doing the same work.
     var watch = true
+    var test = false
     var dryRun = false
     var metricsOnly = false
     var tracesOnly = false
@@ -87,6 +90,8 @@ func parseArguments(_ arguments: [String]) -> Options {
             if let value = rest.first, let port = UInt16(value) { options.port = port; rest.removeFirst() }
         case "--no-watch":
             options.watch = false
+        case "--test":
+            options.test = true
         case "--dry-run":
             options.dryRun = true
         case "--metrics-only":
@@ -502,7 +507,19 @@ do {
     case "serve":
         warnAboutRetention()
         let readStore = try Store(path: options.databasePath)
+
+        // Alerts are opt-in by construction: nothing is sent until a device has
+        // subscribed from the page, and with none subscribed the rule is not
+        // even evaluated — otherwise it would quietly mark thresholds as
+        // announced, and the first real subscriber would hear nothing until the
+        // window crossed them again.
+        #if canImport(CryptoKit)
+        let pushService = PushService(store: try Store(path: options.databasePath))
+        let pushQueue = DispatchQueue(label: "com.sturdynut.ullage.push")
+        let router = ServeRouter(store: readStore, push: pushService)
+        #else
         let router = ServeRouter(store: readStore)
+        #endif
         let server = HTTPServer(port: options.port) { router.respond(to: $0) }
 
         // Tailing here means `serve` is useful on its own, with the app closed
@@ -518,6 +535,26 @@ do {
             }
             let tailer = SessionTailer(ingestor: ingestor)
             tailer.onError = { FileHandle.standardError.write(Data("error: \($0)\n".utf8)) }
+            #if canImport(CryptoKit)
+            // Set before `start`: the tailer reads its callbacks on its own
+            // queue and says so.
+            tailer.onIngest = { stats in
+                guard stats.callsUpserted > 0 else { return }
+                // Off the tailer's queue, because a push is a network call and
+                // ingestion must not wait on a sleeping phone.
+                pushQueue.async {
+                    do {
+                        guard try pushService.subscriptionCount() > 0 else { return }
+                        for alert in try pushService.pendingAlerts() {
+                            let report = try pushService.deliver(alert)
+                            print("alert \(alert.title) — sent \(report.sent), failed \(report.failed), dropped \(report.removed)")
+                        }
+                    } catch {
+                        FileHandle.standardError.write(Data("push error: \(error)\n".utf8))
+                    }
+                }
+            }
+            #endif
             try tailer.start(roots: targetURLs(options))
             liveTailer = tailer
         }
@@ -536,7 +573,43 @@ do {
         Loopback only, by design. To reach it from a phone on your tailnet:
           tailscale serve --bg \(server.port)
         """)
+        #if canImport(CryptoKit)
+        let subscribed = (try? pushService.subscriptionCount()) ?? 0
+        print(subscribed > 0
+            ? "alerts   \(subscribed) device(s) subscribed\n"
+            : "alerts   none yet — open the page on the phone and tap Enable alerts\n")
+        withExtendedLifetime((server, liveTailer, readStore, pushService)) { dispatchMain() }
+        #else
         withExtendedLifetime((server, liveTailer, readStore)) { dispatchMain() }
+        #endif
+
+    case "push":
+        #if canImport(CryptoKit)
+        let store = try Store(path: options.databasePath)
+        let service = PushService(store: store)
+        let subscriptions = try store.pushSubscriptions()
+        let key = try store.vapidKey()
+        print("application key  \(key.map { String($0.publicKey.prefix(24)) + "… (created " + $0.createdAt + ")" } ?? "none yet")")
+        if subscriptions.isEmpty {
+            print("devices          none — open the page on the device and tap Enable alerts")
+        } else {
+            print("devices          \(subscriptions.count)")
+            for subscription in subscriptions {
+                let host = URL(string: subscription.endpoint)?.host ?? "?"
+                let last = subscription.lastSentAt.map { "last \($0) → \(subscription.lastStatus.map(String.init) ?? "?")" } ?? "never sent"
+                print("  \(host)  added \(subscription.createdAt)  \(last)")
+            }
+        }
+        if options.test {
+            let report = try service.deliverTest()
+            print("test sent \(report.sent), failed \(report.failed), dropped \(report.removed)")
+            if report.sent == 0 && report.failed == 0 && report.removed == 0 {
+                print("nothing to send to — subscribe a device first")
+            }
+        }
+        #else
+        print("push notifications need CryptoKit; this build cannot send them")
+        #endif
 
     case "otlp":
         let store = try Store(path: options.databasePath)

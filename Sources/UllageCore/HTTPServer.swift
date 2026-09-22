@@ -51,6 +51,7 @@ public final class HTTPServer: @unchecked Sendable {
         public var method: String
         public var path: String
         public var host: String?
+        public var body: Data = Data()
     }
 
     public typealias Handler = (Request) -> Response
@@ -159,12 +160,13 @@ public final class HTTPServer: @unchecked Sendable {
 
     private func serve(_ descriptor: Int32) {
         defer { close(descriptor) }
-        guard let head = readHead(descriptor), let request = HTTPServer.parse(head) else {
+        guard let (head, body) = readRequest(descriptor), var request = HTTPServer.parse(head) else {
             write(descriptor, .text(400, "bad request"))
             return
         }
-        guard request.method == "GET" else {
-            write(descriptor, .text(405, "only GET"))
+        request.body = body
+        guard request.method == "GET" || request.method == "POST" else {
+            write(descriptor, .text(405, "only GET and POST"))
             return
         }
         guard HTTPServer.isAllowedHost(request.host) else {
@@ -174,19 +176,39 @@ public final class HTTPServer: @unchecked Sendable {
         write(descriptor, handler(request))
     }
 
-    /// Reads until the blank line that ends the headers. Bodies are not read
-    /// because nothing here accepts one, and the cap means a client that never
-    /// sends the blank line cannot hold memory hostage.
-    private func readHead(_ descriptor: Int32) -> String? {
+    /// The only body this accepts is a push subscription, which is a few
+    /// hundred bytes; the cap is what stops a client that promises more than it
+    /// sends from holding memory open.
+    static let maximumBody = 64 * 1024
+
+    private func readRequest(_ descriptor: Int32) -> (head: String, body: Data)? {
         var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 2048)
-        while data.count < 16_384 {
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        let separator = Data("\r\n\r\n".utf8)
+        var headEnd: Int?
+        var expected = 0
+
+        while true {
+            if headEnd == nil, let range = data.range(of: separator) {
+                headEnd = range.upperBound
+                expected = HTTPServer.contentLength(String(decoding: data[..<range.lowerBound], as: UTF8.self)) ?? 0
+                if expected > HTTPServer.maximumBody { return nil }
+            }
+            if let end = headEnd, data.count - end >= expected {
+                let head = String(decoding: data[..<(end - separator.count)], as: UTF8.self)
+                return (head, Data(data[end..<(end + expected)]))
+            }
+            if data.count > HTTPServer.maximumBody + 16_384 { return nil }
             let count = recv(descriptor, &buffer, buffer.count, 0)
-            if count <= 0 { break }
+            if count <= 0 { return nil }   // the client hung up mid-request
             data.append(contentsOf: buffer[0..<count])
-            if let text = String(data: data, encoding: .utf8), text.contains("\r\n\r\n") { return text }
         }
-        return String(data: data, encoding: .utf8)
+    }
+
+    static func contentLength(_ head: String) -> Int? {
+        head.components(separatedBy: "\r\n")
+            .first { $0.lowercased().hasPrefix("content-length:") }
+            .flatMap { Int($0.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)) }
     }
 
     private func write(_ descriptor: Int32, _ response: Response) {
@@ -252,6 +274,8 @@ public final class HTTPServer: @unchecked Sendable {
         case 403: return "Forbidden"
         case 404: return "Not Found"
         case 405: return "Method Not Allowed"
+        case 500: return "Internal Server Error"
+        case 501: return "Not Implemented"
         default: return "Error"
         }
     }

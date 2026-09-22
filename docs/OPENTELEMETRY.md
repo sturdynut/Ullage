@@ -14,7 +14,9 @@ OTEL_EXPORTER_OTLP_HEADERS="api-key=…" ullage otlp    # the standard variables
 
 Nothing is sent unless you run this. There is no background exporter, no
 telemetry about Ullage itself, and `--dry-run` prints the payloads instead of
-sending them so you can read what would leave before it does.
+sending them so you can read what would leave before it does. (The one other
+thing that ever leaves the machine is a push notification, and only to a device
+you have explicitly subscribed — see [`PHONE.md`](PHONE.md).)
 
 ## The one thing to get right
 

@@ -118,6 +118,7 @@ ullage latest                # the single row driving the menu bar
 ullage history [--days N]    # activity per day and project (default 30)
 ullage composition <session> # what a session's window is made of
 ullage serve [--port N]      # serve the gauge to a browser on 127.0.0.1
+ullage push [--test]         # devices subscribed to alerts; --test buzzes them
 ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
 ullage info                  # resolved paths, retention, row counts
@@ -192,6 +193,29 @@ floored percentage, the same amber threshold, and the same refusal to show a
 number that has gone stale — if the Mac sleeps or drops off the tailnet, the
 gauge dims and says so instead of leaving a confident percentage on screen.
 Sessions whose harness reports no window show a dash, never `0%`.
+
+### Alerts
+
+Watching a gauge on a phone is the wrong shape for the thing you actually want,
+which is to be told at 85% and otherwise left alone. Add the page to the phone's
+Home Screen, open it from there, and tap **Enable alerts**; the device is then
+notified when a window crosses 85% and again at 95%.
+
+Once per crossing, not once per turn — a notification on every turn from 85% to
+the end teaches you to swipe them away. A compaction re-arms it. Subagents never
+alert (their window is not the one about to run out), and a harness that reports
+no window never alerts at all.
+
+The Home Screen step is not optional: iOS only permits notifications inside an
+installed web app, never a plain Safari tab, which is also why the HTTPS from
+Tailscale matters. Nothing is sent until a device subscribes — there is no
+default recipient — and the notification body is encrypted to that device's own
+key, so the push service relaying it (Apple's, for an iPhone) cannot read it.
+
+```bash
+ullage push            # which devices are subscribed, and how the last send went
+ullage push --test     # buzz them all, to prove it works
+```
 
 [`docs/PHONE.md`](docs/PHONE.md) has the setup in full.
 

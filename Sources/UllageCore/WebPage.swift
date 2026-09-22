@@ -18,6 +18,10 @@ public enum WebPage {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#13181d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
 <title>Ullage</title>
 <style>
   :root {
@@ -87,6 +91,17 @@ public enum WebPage {
     background: var(--rule); color: var(--dim); font-size: 13px;
   }
   body.stale .card { opacity: .5; }
+  #alerts {
+    margin-top: 14px; padding: 13px 15px; border: 1px solid var(--rule);
+    border-radius: 12px; display: flex; gap: 12px; align-items: center;
+    justify-content: space-between; font-size: 13px; color: var(--dim);
+  }
+  #alerts button {
+    font: inherit; font-weight: 600; color: var(--bg); background: var(--ink);
+    border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+    flex: none; -webkit-appearance: none;
+  }
+  #alerts button:disabled { opacity: .45; cursor: default; }
   footer { margin-top: 26px; color: var(--quiet); font-size: 12px; }
   [hidden] { display: none !important; }
 </style>
@@ -103,6 +118,11 @@ public enum WebPage {
   </section>
 
   <p id="stale" hidden></p>
+
+  <div id="alerts" hidden>
+    <span id="alerts-text"></span>
+    <button id="alerts-button" hidden></button>
+  </div>
 
   <h2>Sessions</h2>
   <ol id="sessions"></ol>
@@ -210,9 +230,155 @@ public enum WebPage {
 
   document.addEventListener('visibilitychange', schedule);
   schedule();
+
+  // ---- Alerts -------------------------------------------------------------
+  // Web Push, so the phone is told at 85% with this page closed and in a
+  // pocket. iOS only allows any of this inside a web app installed to the home
+  // screen — in a plain Safari tab Notification.requestPermission does not even
+  // exist — so the first thing this does is work out which of those it is in,
+  // and say so rather than failing silently.
+
+  var alertsBox = el('alerts'), alertsText = el('alerts-text'), alertsButton = el('alerts-button');
+
+  function installed() {
+    return window.navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  }
+
+  function isApple() { return /iPad|iPhone|iPod/.test(navigator.userAgent); }
+
+  function say(text, action, handler) {
+    alertsBox.hidden = false;
+    alertsText.textContent = text;
+    alertsButton.hidden = !action;
+    alertsButton.disabled = false;
+    if (action) { alertsButton.textContent = action; alertsButton.onclick = handler; }
+  }
+
+  function keyBytes(base64url) {
+    var padded = (base64url + '==='.slice((base64url.length + 3) % 4))
+      .replace(/-/g, '+').replace(/_/g, '/');
+    var raw = atob(padded), bytes = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) { bytes[i] = raw.charCodeAt(i); }
+    return bytes;
+  }
+
+  function enable() {
+    alertsButton.disabled = true;
+    alertsText.textContent = 'Asking…';
+    navigator.serviceWorker.register('sw.js')
+      .then(function (reg) {
+        return Notification.requestPermission().then(function (permission) {
+          if (permission !== 'granted') { throw new Error('Permission denied.'); }
+          return fetch('push-key.json').then(function (r) { return r.json(); })
+            .then(function (conf) {
+              return reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: keyBytes(conf.publicKey)
+              });
+            });
+        });
+      })
+      .then(function (sub) {
+        return fetch('subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub)
+        });
+      })
+      .then(function (r) {
+        if (!r.ok) { throw new Error('Server refused the subscription.'); }
+        say('Alerts on for this device.');
+      })
+      .catch(function (e) { say(e.message || 'Could not enable alerts.', 'Try again', enable); });
+  }
+
+  function initAlerts() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      // On iOS this is what a plain Safari tab looks like, and the fix is not
+      // obvious unless someone says it.
+      if (isApple() && !installed()) {
+        say('For alerts, add this page to your Home Screen, then open it from there.');
+      } else {
+        say('This browser cannot do push notifications.');
+      }
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      say('Notifications are blocked for this site in browser settings.');
+      return;
+    }
+    navigator.serviceWorker.getRegistration().then(function (reg) {
+      if (!reg) { say('Get told when a window fills up.', 'Enable alerts', enable); return; }
+      reg.pushManager.getSubscription().then(function (sub) {
+        if (sub && Notification.permission === 'granted') { say('Alerts on for this device.'); }
+        else { say('Get told when a window fills up.', 'Enable alerts', enable); }
+      });
+    });
+  }
+
+  initAlerts();
 })();
 </script>
 </body>
 </html>
+"""#
+
+    public static let manifest = #"""
+{
+  "name": "Ullage",
+  "short_name": "Ullage",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#13181d",
+  "theme_color": "#13181d",
+  "icons": [
+    { "src": "icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+  ]
+}
+"""#
+
+    /// The service worker. Its only real job is to exist when a push arrives —
+    /// the page is closed by then, and this is the only thing left running.
+    ///
+    /// No caching: the whole point of the page is a number that is true now, and
+    /// a cached gauge is worse than no gauge. The `fetch` listener is here
+    /// because some browsers will not treat a worker without one as installable,
+    /// and it deliberately does nothing.
+    public static let serviceWorker = #"""
+self.addEventListener('install', function (event) { self.skipWaiting(); });
+self.addEventListener('activate', function (event) { event.waitUntil(self.clients.claim()); });
+self.addEventListener('fetch', function (event) { /* network only, on purpose */ });
+
+self.addEventListener('push', function (event) {
+  var data = {};
+  try { data = event.data ? event.data.json() : {}; }
+  catch (e) { data = { title: 'Ullage', body: event.data ? event.data.text() : '' }; }
+
+  event.waitUntil(self.registration.showNotification(data.title || 'Ullage', {
+    body: data.body || '',
+    icon: 'icon.png',
+    badge: 'icon.png',
+    // One tag per stream, so a session that climbs past 85% and then 95%
+    // replaces its own notification instead of stacking two. You want the
+    // current number, not a history of it.
+    tag: data.tag || 'ullage',
+    renotify: true,
+    data: { url: data.url || '.' }
+  }));
+});
+
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (windows) {
+      for (var i = 0; i < windows.length; i++) {
+        if ('focus' in windows[i]) { return windows[i].focus(); }
+      }
+      if (self.clients.openWindow) { return self.clients.openWindow(event.notification.data.url); }
+    })
+  );
+});
 """#
 }
