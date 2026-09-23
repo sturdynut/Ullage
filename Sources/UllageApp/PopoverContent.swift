@@ -38,6 +38,9 @@ struct PopoverContent: View {
                 SectionRule("Details", scope: scopeName)
             }
             stats
+            // Last: the account's allowance, not this session's window — the
+            // sections above all describe the session.
+            planLimitsSection
             if let errorMessage = model.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
@@ -153,6 +156,17 @@ struct PopoverContent: View {
                     Text(agent?.displayName ?? state.project ?? "No sessions ingested yet")
                         .font(.headline)
                         .lineLimit(1)
+                    // The basename alone is ambiguous across worktrees and
+                    // same-named checkouts; the full path is not.
+                    if let path = MenuBarFormatter.displayPath(state.cwd) {
+                        Text(path)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                            .help(state.cwd ?? path)
+                            .textSelection(.enabled)
+                    }
                     HStack(spacing: 5) {
                         if let subtitle = subtitle(agent: agent, state: state) {
                             Text(subtitle)
@@ -303,7 +317,8 @@ struct PopoverContent: View {
         let agents = session.agents == 0
             ? ""
             : " · \(session.agents) agent\(session.agents == 1 ? "" : "s")"
-        return "\(session.sessionId.prefix(8)) · \(occupancy)\(agents) · \(when)"
+        let path = MenuBarFormatter.displayPath(session.cwd).map { " · \($0)" } ?? ""
+        return "\(session.sessionId.prefix(8)) · \(occupancy)\(agents) · \(when)\(path)"
     }
 
     private static let relative: RelativeDateTimeFormatter = {
@@ -371,6 +386,36 @@ struct PopoverContent: View {
         }
     }
 
+    // MARK: Plan limits
+
+    @ViewBuilder
+    private var planLimitsSection: some View {
+        let hasClaude = model.planLimits.contains { $0.vendor == Vendor.claudeCode }
+        if !model.planLimits.isEmpty || !model.checksClaudeLimits || model.claudeLimitsError != nil {
+            SectionRule("Plan limits")
+            if !model.planLimits.isEmpty {
+                PlanLimitsView(limits: model.planLimits, usage: model.planLimitUsage)
+            }
+            if let error = model.claudeLimitsError {
+                Text("Claude: " + error)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            } else if !model.checksClaudeLimits, !hasClaude {
+                Button("Show Claude's plan limits") { model.checksClaudeLimits = true }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                    .help(Self.claudeLimitsExplanation)
+            }
+        }
+    }
+
+    static let claudeLimitsExplanation = """
+    Asks Anthropic every 5 minutes, the way Claude Code's /usage does, using \
+    Claude Code's own sign-in from the Keychain. Sends that token to \
+    api.anthropic.com and nothing else. Turn off from the ⋯ menu.
+    """
+
     // MARK: Actions
 
     /// One button for the thing you might actually want next; the app's own
@@ -394,6 +439,9 @@ struct PopoverContent: View {
                 if model.isWatching { model.refreshNow() } else { model.start() }
             }
             Button("Show database in Finder") { model.openDatabaseFolder() }
+            Divider()
+            Toggle("Check Claude plan limits", isOn: $model.checksClaudeLimits)
+                .help(Self.claudeLimitsExplanation)
             Divider()
             Button("Quit Ullage") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")

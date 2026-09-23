@@ -15,7 +15,7 @@ import Foundation
 /// keep their meaning and still sum to the prompt size (`context_tokens`). All
 /// counts are real, so rows are `exact`; only tool-result sizes are estimates.
 public final class CodexParser: TranscriptLineParser {
-    public static let version = 1
+    public static let version = 2
 
     private var sourceFile = ""
     private var sessionId: String?
@@ -124,7 +124,15 @@ public final class CodexParser: TranscriptLineParser {
             return nil
 
         case "token_count":
-            return makeCall(info: JSONAccess.dict(payload, "info"), ts: ts, ordinal: ordinal, session: session)
+            let limits = CodexRateLimits.parse(
+                JSONAccess.dict(payload, "rate_limits"),
+                observedAt: Timestamps.normalize(ts) ?? ts
+            )
+            guard case .call(var parsed)? = makeCall(info: JSONAccess.dict(payload, "info"), ts: ts, ordinal: ordinal, session: session) else {
+                return limits.isEmpty ? nil : .planLimits(limits)
+            }
+            parsed.planLimits = limits
+            return .call(parsed)
 
         default:
             return nil

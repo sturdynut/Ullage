@@ -252,3 +252,57 @@ from the outermost project directory down to the cwd, with `@path` imports
 expanded inline (depth-bounded, cycle-safe). A line is treated as an import only
 when it is exactly `@path` — an email address or a mention inside prose is left
 alone.
+
+## Plan limits (2026-09-23)
+
+Subscription limits, reported as percentages used. Neither harness states a
+limit in tokens.
+
+**Codex** writes them into the rollout on every `event_msg` / `token_count`
+line, beside `info` (which can be null on these lines):
+
+```json
+"rate_limits": {
+  "limit_id": "codex", "limit_name": null,
+  "primary":   {"used_percent": 9.0,  "window_minutes": 300,   "resets_at": 1790146000},
+  "secondary": {"used_percent": 68.0, "window_minutes": 10080, "resets_at": 1790416067},
+  "credits": {"has_credits": false, "unlimited": false, "balance": "0"},
+  "plan_type": "plus", "rate_limit_reached_type": null
+}
+```
+
+`resets_at` is epoch seconds. A second `limit_id` (seen: `base_model_inference`,
+named `gpt-reserve`) is a per-model allowance with its own primary/secondary.
+Older rollouts (2025-12) have the same shape with `limit_id: null`.
+
+**Claude Code** records nothing about limits in transcripts until one is hit;
+then a synthetic assistant line (`model: "<synthetic>"`, `error: "rate_limit"`,
+`apiErrorStatus: 429`) carries
+`quotaLimits: {status: "rejected", resetsAt: <epoch s>, rateLimitType: "seven_day_overage_included", ...}`.
+Not parsed yet.
+
+Live figures come from `GET https://api.anthropic.com/api/oauth/usage` with
+`Authorization: Bearer <claudeAiOauth.accessToken>` and
+`anthropic-beta: oauth-2025-04-20` — what `/usage` calls (Claude Code 2.1.280).
+The token lives in the Keychain item `Claude Code-credentials` (JSON:
+`claudeAiOauth.{accessToken, refreshToken, expiresAt (ms), subscriptionType}`),
+or `~/.claude/.credentials.json` where there is no Keychain. The body:
+
+```json
+{
+  "five_hour": {"utilization": 73.0, "resets_at": "2026-09-23T06:50:00.313012+00:00", ...},
+  "seven_day": {"utilization": 29.0, "resets_at": "2026-09-28T08:00:00.313033+00:00", ...},
+  "seven_day_opus": null, "seven_day_sonnet": null, "<code-named keys>": ...,
+  "limits": [
+    {"kind": "session",       "group": "session", "percent": 73, "resets_at": "...", "scope": null, "is_active": true},
+    {"kind": "weekly_all",    "group": "weekly",  "percent": 29, "resets_at": "...", "scope": null},
+    {"kind": "weekly_scoped", "group": "weekly",  "percent": 42, "resets_at": "...",
+     "scope": {"model": {"id": null, "display_name": "Fable"}, "surface": null}}
+  ],
+  "extra_usage": {...}, "spend": {...}, "seven_day_breakdown": {...}
+}
+```
+
+`limits` is parsed; the top-level windows are the fallback. `utilization` and
+`percent` are 0–100. Code-named keys (`nimbus_quill`, `tangelo`, …) are ignored.
+

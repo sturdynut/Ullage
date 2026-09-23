@@ -13,6 +13,7 @@ final class SessionHistoryTests: XCTestCase {
             ts: ts,
             sessionId: session,
             project: project,
+            cwd: "/work/\(project)",
             model: "claude-opus-5",
             contextTokens: context,
             windowLimit: limit,
@@ -43,6 +44,7 @@ final class SessionHistoryTests: XCTestCase {
         XCTAssertEqual(a.lastContextTokens, 120_000)   // the last turn, not the peak
         XCTAssertEqual(a.calls, 3)
         XCTAssertEqual(a.project, "proj")
+        XCTAssertEqual(a.cwd, "/work/proj")
         XCTAssertEqual(a.occupancy.map { Int($0 * 100) }, 12)
         XCTAssertEqual(try store.recentSessions(limit: 1).map(\.sessionId), ["b"])
     }

@@ -49,6 +49,7 @@ final class MenuBarModel: ObservableObject {
         popoverIsOpen = true
         heldSessionId = nil      // re-latch onto whatever is current right now
         refresh()
+        fetchClaudeLimits()
     }
 
     func popoverDidClose() {
@@ -70,6 +71,66 @@ final class MenuBarModel: ObservableObject {
     @Published private(set) var pinFellBack = false
 
     static let pickerLimit = 12
+
+    // MARK: Plan limits
+
+    /// Every plan limit on record, Codex's from its transcripts and Claude's
+    /// from Anthropic when that is switched on.
+    @Published private(set) var planLimits: [PlanLimitDisplay] = []
+    /// What Ullage itself saw in each plan-wide limit's window, by display id.
+    @Published private(set) var planLimitUsage: [String: Store.WindowUsage] = [:]
+    @Published private(set) var claudeLimitsError: String?
+
+    static let checksClaudeLimitsKey = "checksClaudePlanLimits"
+    static let claudeLimitsInterval: TimeInterval = 5 * 60
+
+    /// Off by default: it is the one request Ullage makes on its own — Claude
+    /// Code's token to Anthropic, the same place Claude Code sends it.
+    @Published var checksClaudeLimits = UserDefaults.standard.bool(forKey: MenuBarModel.checksClaudeLimitsKey) {
+        didSet {
+            guard checksClaudeLimits != oldValue else { return }
+            UserDefaults.standard.set(checksClaudeLimits, forKey: Self.checksClaudeLimitsKey)
+            if checksClaudeLimits {
+                fetchClaudeLimits(force: true)
+            } else {
+                // A number that is no longer being checked must not sit there
+                // looking current.
+                // Its own connection: the tailer's belongs to the tailer's queue.
+                try? Store(path: databasePath)
+                    .replacePlanLimits(vendor: Vendor.claudeCode, source: PlanLimitSource.api, with: [])
+                claudeLimitsError = nil
+                refresh()
+            }
+        }
+    }
+
+    private var lastClaudeFetch: Date?
+    private var claudeFetchInFlight = false
+    private var claudeLimitsTimer: Timer?
+
+    func fetchClaudeLimits(force: Bool = false) {
+        guard checksClaudeLimits, !claudeFetchInFlight else { return }
+        if !force, let last = lastClaudeFetch, Date().timeIntervalSince(last) < 60 { return }
+        claudeFetchInFlight = true
+        lastClaudeFetch = Date()
+        let path = databasePath
+        Task.detached {
+            let failure: String?
+            do {
+                // Its own connection: the fetch blocks for up to the timeout,
+                // and it must hold neither the reader nor the tailer's writer.
+                try ClaudeUsageClient.refresh(into: try Store(path: path))
+                failure = nil
+            } catch {
+                failure = "\(error)"
+            }
+            await MainActor.run {
+                self.claudeFetchInFlight = false
+                self.claudeLimitsError = failure
+                self.refresh()
+            }
+        }
+    }
 
     private var readStore: Store?
     private var tailer: SessionTailer?
@@ -103,6 +164,12 @@ final class MenuBarModel: ObservableObject {
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.refresh() }
             }
+            // The endpoint rate-limits; five minutes is plenty for windows
+            // measured in hours and days.
+            claudeLimitsTimer = Timer.scheduledTimer(withTimeInterval: Self.claudeLimitsInterval, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.fetchClaudeLimits(force: true) }
+            }
+            fetchClaudeLimits(force: true)
         } catch {
             errorMessage = "\(error)"
             isWatching = false
@@ -156,6 +223,15 @@ final class MenuBarModel: ObservableObject {
 
             history = try shown.map { try readStore.contextHistory(sessionId: $0.sessionId, scope: focus) }
             composition = try shown.flatMap { try readStore.composition(sessionId: $0.sessionId, scope: focus) }
+
+            let limits = PlanLimitFormatter.displays(for: try readStore.planLimits())
+            planLimits = limits
+            var usage: [String: Store.WindowUsage] = [:]
+            for limit in limits {
+                guard let start = limit.windowStart else { continue }
+                usage[limit.id] = try readStore.windowUsage(vendor: limit.vendor, since: Timestamps.string(from: start))
+            }
+            planLimitUsage = usage
             errorMessage = nil
         } catch {
             errorMessage = "\(error)"

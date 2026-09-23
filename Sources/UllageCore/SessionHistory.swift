@@ -8,6 +8,7 @@ import Foundation
 public struct SessionSummary: Equatable, Identifiable {
     public var sessionId: String
     public var project: String?
+    public var cwd: String?
     public var model: String?
     public var lastTs: String
     public var lastContextTokens: Int
@@ -27,6 +28,7 @@ public struct SessionSummary: Equatable, Identifiable {
     public init(
         sessionId: String,
         project: String? = nil,
+        cwd: String? = nil,
         model: String? = nil,
         lastTs: String,
         lastContextTokens: Int,
@@ -36,6 +38,7 @@ public struct SessionSummary: Equatable, Identifiable {
     ) {
         self.sessionId = sessionId
         self.project = project
+        self.cwd = cwd
         self.model = model
         self.lastTs = lastTs
         self.lastContextTokens = lastContextTokens
