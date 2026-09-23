@@ -42,6 +42,9 @@ you set it up.
   has been idle for 30 minutes, so a stale figure is never mistaken for a live
   one.
 - **Popover** — click the menu bar item for:
+  - **which session**: its project, the full working directory (so two
+    worktrees or checkouts with the same folder name are told apart), and the
+    model;
   - **the room left in the window**, in tokens, over a bar marked at 85% and at
     the session's own peak, with the exact `used / window` beneath it;
   - the **subagents that session spawned**, as the tree that spawned them, each
@@ -57,7 +60,7 @@ you set it up.
     (CLAUDE.md, MCP servers, skills) and a per-tool table of what is sitting in
     the window;
   - the last turn's change, turn count and last-active time;
-  - **plan limits**: one line per harness with the limit that will stop you
+  - at the bottom, **plan limits**: one line per harness with the limit that will stop you
     first — how much is left and which window it is. Expand it for every limit
     (Claude's 5-hour and weekly, per-model ones like Fable's, and Codex's) with
     when each resets and what Ullage itself saw in that window. See
@@ -65,11 +68,12 @@ you set it up.
 
   It follows the most recently active session and holds still on it while the
   popover is open. The chevron at the top switches session — grouped by
-  project, since a session id is not a name — and stays accented while one is
-  pinned.
+  project, since a session id is not a name, with each entry's path — and
+  stays accented while one is pinned.
 - **History window** — the History button opens activity per day stacked by
   project over 7, 30, 90, or 365 days, switchable between turns, output tokens,
-  and cache reads; a table of every session in range with its agent count; and
+  and cache reads; a table of every session in range with its path and agent
+  count; and
   the selected session's agent tree, chart and full composition.
 
 ## Install
