@@ -32,7 +32,7 @@ you set it up.
 
 <div align="center">
 
-<img src="docs/screenshots/popover.png" alt="The Ullage popover: 546k left in a 1M window over a marked occupancy bar, the session's agents each with their own window, a context-per-turn chart whose upper band is the room left, and a breakdown of what the window holds" width="380">
+<img src="docs/screenshots/popover.png" alt="The Ullage popover: the session's project, path and model; 784k left in a 1M window over a marked occupancy bar; a context-per-turn chart whose upper band is the room left; a breakdown of what the window holds; and, at the bottom, the tightest plan limit for Claude and for Codex" width="380">
 
 </div>
 
