@@ -6,16 +6,79 @@ import UllageCore
 /// resets. A plan limit is a percentage, never tokens — neither vendor states
 /// one in tokens — so the only token figures here are Ullage's own count of
 /// what it saw in the window, and they say so.
+///
+/// Disclosed in two steps. Collapsed, one line per harness: the limit that
+/// will stop you first — the answer to "how much do I have left". Expanded,
+/// every limit with its reset and what Ullage saw in it; hover for the four
+/// counters. Remembered across launches, like any other view preference.
 struct PlanLimitsView: View {
     let limits: [PlanLimitDisplay]
     let usage: [String: Store.WindowUsage]
+    @AppStorage("planLimitsExpanded") private var expanded = false
 
     var body: some View {
+        let summaries = PlanLimitFormatter.summaries(limits)
         VStack(alignment: .leading, spacing: 7) {
-            ForEach(limits) { limit in
-                row(limit)
+            if expanded {
+                ForEach(limits) { limit in
+                    row(limit)
+                }
+            } else {
+                ForEach(summaries) { summary in
+                    summaryRow(summary)
+                }
+            }
+            if limits.count > summaries.count {
+                disclosure
             }
         }
+    }
+
+    /// Same shape as the composition's "What's inside": the whole row is the
+    /// target, the chevron is the affordance.
+    private var disclosure: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+                Text(expanded ? "Hide details" : "All \(limits.count) limits — resets & usage")
+                    .font(.caption)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Which limit it is stays on the line: "71% left" means nothing until
+    /// you know whether it is the 5-hour window or the week.
+    private func summaryRow(_ summary: PlanLimitSummary) -> some View {
+        let limit = summary.binding
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(summary.vendorName)
+                    .font(.caption.weight(.semibold))
+                Text(limit.label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                percentLeft(limit)
+            }
+            LimitBar(used: limit.usedFraction, dimmed: limit.isStale)
+        }
+        .help(PlanLimitFormatter.caption(for: limit) + (summary.count > 1 ? "\nTightest of \(summary.count) limits" : ""))
+    }
+
+    private func percentLeft(_ limit: PlanLimitDisplay) -> some View {
+        Text(limit.remainingFraction.map { MenuBarFormatter.percentage($0) + " left" } ?? "—")
+            .font(.caption.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(limit.isWarning ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.primary))
     }
 
     private func row(_ limit: PlanLimitDisplay) -> some View {
@@ -28,10 +91,7 @@ struct PlanLimitsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text(limit.remainingFraction.map { MenuBarFormatter.percentage($0) + " left" } ?? "—")
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(limit.isWarning ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.primary))
+                percentLeft(limit)
             }
             LimitBar(used: limit.usedFraction, dimmed: limit.isStale)
             Text(caption(limit))

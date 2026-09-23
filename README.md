@@ -57,10 +57,11 @@ you set it up.
     (CLAUDE.md, MCP servers, skills) and a per-tool table of what is sitting in
     the window;
   - the last turn's change, turn count and last-active time;
-  - **plan limits**: how much of each subscription window is left and when it
-    resets — Claude's 5-hour and weekly limits (and per-model ones like
-    Fable's), and Codex's. Beside each plan-wide limit is what Ullage itself saw
-    in that window. See [Plan limits](#plan-limits).
+  - **plan limits**: one line per harness with the limit that will stop you
+    first — how much is left and which window it is. Expand it for every limit
+    (Claude's 5-hour and weekly, per-model ones like Fable's, and Codex's) with
+    when each resets and what Ullage itself saw in that window. See
+    [Plan limits](#plan-limits).
 
   It follows the most recently active session and holds still on it while the
   popover is open. The chevron at the top switches session — grouped by

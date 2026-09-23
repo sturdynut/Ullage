@@ -206,4 +206,33 @@ final class PlanLimitTests: XCTestCase {
         XCTAssertEqual(PlanLimitFormatter.duration(4 * 86_400 + 3 * 3_600 + 59 * 60), "4d 3h")
         XCTAssertEqual(PlanLimitFormatter.duration(-5), "<1m")
     }
+
+    func testSummaryPicksTheLimitWithTheLeastLeftPerHarness() {
+        let now = Date(timeIntervalSince1970: 1_790_150_000)
+        let at = Timestamps.string(from: now)
+        var reset = row("codex:primary", used: 99, at: at)
+        reset.resetsAt = Timestamps.string(from: now.addingTimeInterval(-60))
+        let rows = [
+            row("session", used: 25, at: at, vendor: Vendor.claudeCode),
+            row("weekly_all", used: 43, at: at, vendor: Vendor.claudeCode),
+            row("weekly_scoped:Fable", used: 43, at: at, vendor: Vendor.claudeCode),
+            reset,
+            row("codex:secondary", used: 68, at: at),
+        ].enumerated().map { index, row -> PlanLimitRow in
+            var row = row
+            row.sortOrder = index
+            return row
+        }
+        let summaries = PlanLimitFormatter.summaries(PlanLimitFormatter.displays(for: rows, now: now))
+        XCTAssertEqual(summaries.map(\.vendor), [Vendor.claudeCode, Vendor.codex])
+        // A tie goes to the one listed first: the plan-wide weekly, not Fable's.
+        XCTAssertEqual(summaries[0].binding.limitKey, "weekly_all")
+        XCTAssertEqual(summaries[0].count, 3)
+        // 99% used but already reset: it has nothing left to compare.
+        XCTAssertEqual(summaries[1].binding.limitKey, "codex:secondary")
+
+        let onlyReset = PlanLimitFormatter.summaries(PlanLimitFormatter.displays(for: [reset], now: now))
+        XCTAssertEqual(onlyReset.first?.binding.limitKey, "codex:primary")
+        XCTAssertTrue(PlanLimitFormatter.summaries([]).isEmpty)
+    }
 }

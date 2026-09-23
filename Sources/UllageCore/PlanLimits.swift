@@ -200,7 +200,40 @@ public struct PlanLimitDisplay: Equatable, Identifiable {
     public var isWarning: Bool { (usedFraction ?? 0) >= MenuBarFormatter.warningThreshold }
 }
 
+/// One harness at a glance: the limit that will stop you first.
+public struct PlanLimitSummary: Equatable, Identifiable {
+    public var id: String { vendor }
+    public var vendor: String
+    public var vendorName: String
+    /// The limit with the least left; the first listed when none has a
+    /// current reading.
+    public var binding: PlanLimitDisplay
+    /// How many limits the summary stands in for, the binding one included.
+    public var count: Int
+}
+
 public enum PlanLimitFormatter {
+    /// The collapsed view: per harness, in display order, the limit with the
+    /// least left. A reset reading has nothing left to compare, so it only
+    /// wins when nothing else has a number — the tightest *known* limit is the
+    /// one that matters.
+    public static func summaries(_ displays: [PlanLimitDisplay]) -> [PlanLimitSummary] {
+        var order: [String] = []
+        var groups: [String: [PlanLimitDisplay]] = [:]
+        for display in displays {
+            if groups[display.vendor] == nil { order.append(display.vendor) }
+            groups[display.vendor, default: []].append(display)
+        }
+        return order.map { vendor in
+            let limits = groups[vendor]!
+            let binding = limits
+                .filter { $0.remainingFraction != nil }
+                .min { $0.remainingFraction! < $1.remainingFraction! }   // first wins ties
+                ?? limits[0]
+            return PlanLimitSummary(vendor: vendor, vendorName: binding.vendorName, binding: binding, count: limits.count)
+        }
+    }
+
     /// Older than this, a reading is shown with its age.
     public static let staleAfter: TimeInterval = 15 * 60
 
