@@ -13,7 +13,6 @@ struct PopoverContent: View {
         VStack(alignment: .leading, spacing: 8) {
             toolbar
             header
-            planLimitsSection
             if let tree = model.agents, !tree.isEmpty {
                 SectionRule("Agents") { agentsTrailing }
                 AgentTreeView(
@@ -39,6 +38,9 @@ struct PopoverContent: View {
                 SectionRule("Details", scope: scopeName)
             }
             stats
+            // Last: the account's allowance, not this session's window — the
+            // sections above all describe the session.
+            planLimitsSection
             if let errorMessage = model.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
