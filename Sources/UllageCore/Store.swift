@@ -6,7 +6,7 @@ public final class Store {
     public let database: SQLiteDatabase
     public let path: String
 
-    public static let schemaVersion = 3
+    public static let schemaVersion = 4
 
     public init(path: String) throws {
         self.path = path
@@ -49,6 +49,10 @@ public final class Store {
         if current < 3 {
             try database.execute(Store.schemaV3)
             try database.execute("PRAGMA user_version=3;")
+        }
+        if current < 4 {
+            try database.execute(Store.schemaV4)
+            try database.execute("PRAGMA user_version=4;")
         }
     }
 
@@ -266,6 +270,35 @@ public final class Store {
       endpoint  TEXT PRIMARY KEY,
       last_ts   TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+    """
+
+    /// v4 — who to notify, with what identity, and what they have been told.
+    ///
+    /// `push_alert` is the part that is easy to leave out and expensive to miss:
+    /// without it, every turn above the threshold is another notification, and
+    /// restarting `serve` re-announces a window it already announced.
+    static let schemaV4 = """
+    CREATE TABLE IF NOT EXISTS push_subscription (
+      endpoint     TEXT PRIMARY KEY,
+      p256dh       TEXT NOT NULL,
+      auth         TEXT NOT NULL,
+      created_at   TEXT NOT NULL,
+      label        TEXT,
+      last_sent_at TEXT,
+      last_status  INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS push_key (
+      id          TEXT PRIMARY KEY,
+      private_key TEXT NOT NULL,
+      public_key  TEXT NOT NULL,
+      created_at  TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS push_alert (
+      stream_key     TEXT PRIMARY KEY,
+      threshold      REAL NOT NULL,
+      fired_at       TEXT NOT NULL,
+      context_tokens INTEGER NOT NULL
     );
     """
 

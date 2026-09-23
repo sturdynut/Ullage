@@ -16,9 +16,11 @@ and see what is actually taking up the window. A separate history window charts
 your activity across days and projects.
 
 Everything stays on your machine. Nothing is uploaded, and nothing is sent
-anywhere unless you ask for it: there is one command that exports — `ullage
-otlp`, for aggregating across machines — it runs only when you run it, and
-`--dry-run` prints exactly what would leave first.
+anywhere unless you ask for it. Two things can: `ullage otlp` exports for
+aggregating across machines, runs only when you run it, and `--dry-run` prints
+exactly what would leave first; and once you subscribe a phone to alerts, a
+notification goes to that phone — encrypted to it, via its push service — when
+a window fills up. Neither happens until you set it up.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
@@ -117,6 +119,8 @@ ullage agents <session>      # the subagent tree, each agent's own window
 ullage latest                # the single row driving the menu bar
 ullage history [--days N]    # activity per day and project (default 30)
 ullage composition <session> # what a session's window is made of
+ullage serve [--port N]      # serve the gauge to a browser on 127.0.0.1
+ullage push [--test]         # devices subscribed to alerts; --test buzzes them
 ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
 ullage info                  # resolved paths, retention, row counts
@@ -147,8 +151,9 @@ ullage otlp --dry-run --days 1        # read exactly what would be sent
 ullage otlp --endpoint http://localhost:4318
 ```
 
-Nothing leaves the machine unless you run that command: there is no background
-exporter and no telemetry about Ullage itself. Two details matter and are
+Nothing leaves the machine through this unless you run that command: there is
+no background exporter and no telemetry about Ullage itself. (The only other
+thing that ever leaves is an alert to a phone you subscribed — see below.) Two details matter and are
 covered in [`docs/OPENTELEMETRY.md`](docs/OPENTELEMETRY.md) — the export sends
 the *whole prompt* as `gen_ai.usage.input_tokens` (Claude's own `input_tokens`
 is just the uncached remainder, and exporting that under the standard name would
@@ -160,6 +165,62 @@ The database is at
 `--db <path>` or `$ULLAGE_DB` moves it; `$CLAUDE_CONFIG_DIR` moves the transcript
 source. Ingestion is incremental and idempotent: re-running it over the same
 transcripts changes nothing.
+
+### Reading it from a phone
+
+A menu bar is only useful in front of the Mac. `ullage serve` puts the same
+gauge on a web page — the live occupancy, what it is made of, and every recent
+session — so a session you are driving from somewhere else is still visible.
+
+```bash
+ullage serve                 # http://127.0.0.1:7878, and tails transcripts too
+ullage serve --no-watch      # when the app is already running and ingesting
+```
+
+It binds **127.0.0.1 and nothing else**, and there is deliberately no flag to
+change that. To reach it from a phone, put [Tailscale](https://tailscale.com) in
+front:
+
+```bash
+tailscale serve --bg 7878    # https://<machine>.<tailnet>.ts.net
+```
+
+That gives a real HTTPS certificate for the machine's tailnet name, reachable
+only from your own devices — no port forwarding, no LAN exposure, and revoking
+it is `tailscale serve --https=443 off`. Ullage itself never opens a socket the
+rest of the network can see, so who may reach the page is Tailscale's decision
+rather than a flag you have to remember you set.
+
+The page reuses the display rules rather than reimplementing them: the same
+floored percentage, the same amber threshold, and the same refusal to show a
+number that has gone stale — if the Mac sleeps or drops off the tailnet, the
+gauge dims and says so instead of leaving a confident percentage on screen.
+Sessions whose harness reports no window show a dash, never `0%`.
+
+### Alerts
+
+Watching a gauge on a phone is the wrong shape for the thing you actually want,
+which is to be told at 85% and otherwise left alone. Add the page to the phone's
+Home Screen, open it from there, and tap **Enable alerts**; the device is then
+notified when a window crosses 85% and again at 95%.
+
+Once per crossing, not once per turn — a notification on every turn from 85% to
+the end teaches you to swipe them away. A compaction re-arms it. Subagents never
+alert (their window is not the one about to run out), and a harness that reports
+no window never alerts at all.
+
+The Home Screen step is not optional: iOS only permits notifications inside an
+installed web app, never a plain Safari tab, which is also why the HTTPS from
+Tailscale matters. Nothing is sent until a device subscribes — there is no
+default recipient — and the notification body is encrypted to that device's own
+key, so the push service relaying it (Apple's, for an iPhone) cannot read it.
+
+```bash
+ullage push            # which devices are subscribed, and how the last send went
+ullage push --test     # buzz them all, to prove it works
+```
+
+[`docs/PHONE.md`](docs/PHONE.md) has the setup in full.
 
 ## How the number is computed
 

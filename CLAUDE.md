@@ -12,9 +12,14 @@ is the original plan and is historical — the milestones in it are all done.
 Ullage reads AI coding-agent session transcripts from disk, persists every API
 call as a row in a local SQLite database, and shows how full the live session's
 context window is. A macOS menu bar app backed by a Swift-package collector and
-a debug CLI. Everything is local; nothing is uploaded. The single exception is
-`ullage otlp`, which exports to an OpenTelemetry collector when invoked — never
-in the background, never from the app.
+a debug CLI. Everything is local; nothing is uploaded, with two deliberate exceptions and
+no others. `ullage otlp` exports to an OpenTelemetry collector when invoked —
+never in the background, never from the app. And `ullage serve`, *once a device
+has subscribed to alerts*, sends a notification through that device's push
+service; the body is encrypted to the device's own key, so the relay carries
+ciphertext, but the fact and timing of a send are visible to it. Nothing
+subscribes by default. Serving itself uploads nothing: the page is bound to
+127.0.0.1 and `tailscale serve` fronts it for your own devices.
 
 ### Harness support
 
@@ -34,16 +39,19 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 79 tests; pass on Linux and macOS
+swift test                 # 144 tests on macOS; 138 on Linux (six need CryptoKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
 
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
-`composition <session>`, `agents <session>`, `env <session>`, `otlp`, `info`.
+`composition <session>`, `agents <session>`, `env <session>`, `serve`,
+`push [--test]`, `otlp`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
-  have no macOS-only imports. `Sources/UllageApp` is `#if os(macOS)` throughout.
+  have no macOS-only imports, with one guarded exception: `WebPush.swift` is
+  `#if canImport(CryptoKit)` and everything that calls into it is guarded the
+  same way. `Sources/UllageApp` is `#if os(macOS)` throughout.
   Any rule that can live in Core does, so it is testable without a UI.
 - **Run the app via `scripts/install-app.sh`, not `swift run`** — a menu bar item
   needs the `.app` bundle (LSUIElement, bundle id, icon). The script quits a
@@ -136,12 +144,39 @@ plausible and are wrong.
   overwrites the other with nil, and the *parent agent* is derived on read from
   `tool_call` → `call.agent_id` so ingest order cannot strand an edge. Nesting
   falls out of that join for free.
-- **The export is pulled, never pushed.** `ullage otlp` is the only thing that
-  sends anything anywhere, it runs when invoked, and `--dry-run` prints the
-  exact payloads. OTLP JSON is written by hand (`OpenTelemetry.swift`) rather
-  than by taking a dependency: the package has none beyond system SQLite, and an
-  exporter should not drag gRPC into a menu bar app. Metrics are cumulative and
-  therefore idempotent; spans are not, so they follow a per-endpoint cursor.
+- **Two things send, and both are pulled or opted into.** `ullage otlp` is
+  the export: it runs when invoked, `--dry-run` prints the exact payloads, and
+  nothing runs it in the background. OTLP JSON is written by hand
+  (`OpenTelemetry.swift`) rather than by taking a dependency: the package has
+  none beyond system SQLite, and an exporter should not drag gRPC into a menu
+  bar app. Metrics are cumulative and therefore idempotent; spans are not, so
+  they follow a per-endpoint cursor. The other sender is `serve`'s alert push,
+  which only exists once a device has subscribed from the page, and only ever
+  goes to that device's push service, encrypted to that device's key. There is
+  no third.
+- **`serve` binds loopback and offers no way not to.** Reaching it from a
+  phone is `tailscale serve`'s job, which means exposure is granted and revoked
+  outside Ullage and there is no flag anyone can leave switched on by accident.
+  The page is a string constant in Core (`WebPage.swift`) so the CLI and the app
+  can both serve it without a resource bundle, and it fetches `state.json`,
+  whose shape is built by `ServeSnapshot` from the *same* `MenuBarFormatter` the
+  menu bar uses — a second set of display rules would be a second set of bugs.
+  The host allowlist is not decoration: a loopback server with no `Host` check
+  is readable by any web page the user visits, via DNS rebinding.
+- **Alerts are edge-triggered, and the edge is persisted.** Level-triggered is
+  the obvious implementation and the wrong one: it notifies on every turn above
+  the threshold. `AlertRule` fires once per rung per stream, re-arms when a
+  compaction drops the window below all of them, and records what it said in
+  `push_alert` so restarting `serve` does not re-announce. Main thread only
+  (rule 1), measured rows only (rule 3), and recent rows only — a backfill
+  crosses 85% thousands of times and none of it is news.
+- **Push crypto is the one macOS-only thing in Core.** `WebPush.swift` is behind
+  `#if canImport(CryptoKit)` rather than taking `swift-crypto` as the package's
+  first dependency; a Linux box serves the gauge and cannot push, which is the
+  right trade for a machine with no menu bar either. It was verified against
+  node's `http_ece` — the library `web-push` uses — which decrypts what it
+  produces, and the VAPID JWT against `crypto.verify`. Note `UllageCore` ships
+  its own `SHA256`, so CryptoKit's needs qualifying as `CryptoKit.SHA256`.
 - **`session_env` is the one irreproducible table.** MCP servers, skills and
   CLAUDE.md are snapshotted at ingest because nothing on disk records what they
   were when a session ran. It is Claude-Code-only; other vendors skip it.
