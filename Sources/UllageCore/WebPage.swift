@@ -78,10 +78,16 @@ public enum WebPage {
     padding: 11px 0; border-bottom: 1px solid var(--rule); align-items: baseline;
   }
   li:last-child { border-bottom: 0; }
-  .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sub { grid-column: 1; color: var(--dim); font-size: 12px; }
+  /* Every cell placed explicitly. An item with a definite row but no column
+     is placed *before* the auto-placed ones and takes column 1, which put the
+     percentage on the left and the name on the right. */
+  .name {
+    grid-column: 1; grid-row: 1; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  }
+  .sub { grid-column: 1; grid-row: 2; color: var(--dim); font-size: 12px; }
   .share {
-    grid-row: 1 / span 2; align-self: center; text-align: right;
+    grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right;
     font-variant-numeric: tabular-nums; font-size: 17px;
   }
   .share.none { color: var(--quiet); font-size: 15px; }
