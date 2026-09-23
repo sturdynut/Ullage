@@ -12,13 +12,16 @@ is the original plan and is historical — the milestones in it are all done.
 Ullage reads AI coding-agent session transcripts from disk, persists every API
 call as a row in a local SQLite database, and shows how full the live session's
 context window is. A macOS menu bar app backed by a Swift-package collector and
-a debug CLI. Everything is local; nothing is uploaded, with two deliberate exceptions and
+a debug CLI. Everything is local; nothing is uploaded, with three deliberate exceptions and
 no others. `ullage otlp` exports to an OpenTelemetry collector when invoked —
 never in the background, never from the app. And `ullage serve`, *once a device
 has subscribed to alerts*, sends a notification through that device's push
 service; the body is encrypted to the device's own key, so the relay carries
 ciphertext, but the fact and timing of a send are visible to it. Nothing
-subscribes by default. Serving itself uploads nothing: the page is bound to
+subscribes by default. And with *Check Claude plan limits* switched on (off by
+default), the app asks `api.anthropic.com/api/oauth/usage` for plan limits every
+5 minutes with Claude Code's own OAuth token, read from the Keychain and never
+refreshed; `ullage limits --fetch` does the same once. Serving itself uploads nothing: the page is bound to
 127.0.0.1 and `tailscale serve` fronts it for your own devices.
 
 ### Harness support
@@ -39,14 +42,14 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 144 tests on macOS; 138 on Linux (six need CryptoKit)
+swift test                 # 160 tests on macOS; 154 on Linux (six need CryptoKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
 
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
 `composition <session>`, `agents <session>`, `env <session>`, `serve`,
-`push [--test]`, `otlp`, `info`.
+`push [--test]`, `otlp`, `limits [--fetch]`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
   have no macOS-only imports, with one guarded exception: `WebPush.swift` is
@@ -112,6 +115,13 @@ plausible and are wrong.
 8. **If the disk disagrees with the parser, the disk wins.** After a harness
    upgrade, re-run `scripts/recon.sh`, record divergences in
    `docs/OBSERVED-FORMAT.md`, fix the parser, and bump its `version`.
+9. **Plan limits are percentages, never tokens.** Neither vendor states a
+   subscription limit in tokens, so none is derived. A reading taken before
+   its window reset says nothing about now and is shown as reset, not as a
+   number; the tokens shown beside a limit are Ullage's own count, a floor, and
+   only beside plan-wide limits (a per-model limit's window would count every
+   model). Claude's come from the undocumented `/api/oauth/usage` — parse it
+   like a transcript, and never refresh Claude Code's token.
 
 ## Architecture and conventions
 

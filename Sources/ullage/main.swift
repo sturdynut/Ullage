@@ -24,6 +24,7 @@ USAGE
   ullage serve [--port N]    Serve the gauge to a browser on 127.0.0.1
   ullage push [--test]       Devices subscribed to alerts; --test buzzes them
   ullage otlp                Export everything measured to an OTLP collector
+  ullage limits [--fetch]    Plan limits left: Codex from disk; --fetch asks Anthropic for Claude's
   ullage info                Resolved paths and row counts
 
 OPTIONS
@@ -37,6 +38,7 @@ OPTIONS
   --metrics-only    Export metrics but no spans
   --traces-only     Export spans but no metrics
   --all             Export every span on disk, not just the window
+  --fetch           `limits`: fetch Claude's plan limits (sends Claude Code's token to Anthropic)
   --verbose         Report malformed lines and skipped files
   -h, --help        This text
 
@@ -63,6 +65,7 @@ struct Options {
     var metricsOnly = false
     var tracesOnly = false
     var everything = false
+    var fetch = false
     /// `--days` was given explicitly, so it wins over the export cursor.
     var daysWasSet = false
 }
@@ -100,6 +103,8 @@ func parseArguments(_ arguments: [String]) -> Options {
             options.tracesOnly = true
         case "--all":
             options.everything = true
+        case "--fetch":
+            options.fetch = true
         case "-h", "--help", "help":
             positional.append("help")
         default:
@@ -397,6 +402,29 @@ func menuBarLine(_ store: Store) throws -> String {
     return "[\(Timestamps.now())] \(pad(title, 10)) \(detail)"
 }
 
+/// One line per limit: what is left, when it resets, and what Ullage itself
+/// saw in that window — the four counters apart, never summed.
+func printLimits(_ store: Store, now: Date = Date(), fetched: Bool) throws {
+    let displays = PlanLimitFormatter.displays(for: try store.planLimits(), now: now)
+    if displays.isEmpty {
+        print("No plan limits recorded yet. Codex's arrive with its transcripts; run `ullage limits --fetch` for Claude's.")
+        return
+    }
+    for display in displays {
+        let name = pad(display.vendorName + " " + display.label, 24)
+        print("\(name) \(PlanLimitFormatter.caption(for: display, now: now))")
+        if let start = display.windowStart {
+            let usage = try store.windowUsage(vendor: display.vendor, since: Timestamps.string(from: start))
+            if usage.calls > 0 {
+                print(pad("", 24) + " seen here: \(thousands(usage.calls)) turns · in \(thousands(usage.input)) · out \(thousands(usage.output)) · cache read \(thousands(usage.cacheRead)) · cache write \(thousands(usage.cacheWrite))")
+            }
+        }
+    }
+    if !fetched, !displays.contains(where: { $0.vendor == Vendor.claudeCode }) {
+        print("\nClaude: run `ullage limits --fetch` to ask Anthropic (sends Claude Code's own token to api.anthropic.com).")
+    }
+}
+
 let options = parseArguments(Array(CommandLine.arguments.dropFirst()))
 
 do {
@@ -667,6 +695,17 @@ do {
         the convention means by it. Rows from a harness that reports no tokens
         export activity only.
         """)
+
+    case "limits":
+        let store = try Store(path: options.databasePath)
+        if options.fetch {
+            do {
+                try ClaudeUsageClient.refresh(into: store)
+            } catch {
+                FileHandle.standardError.write(Data("claude: \(error)\n".utf8))
+            }
+        }
+        try printLimits(store, fetched: options.fetch)
 
     case "info":
         let store = try Store(path: options.databasePath)

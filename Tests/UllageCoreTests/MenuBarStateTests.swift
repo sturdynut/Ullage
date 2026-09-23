@@ -96,4 +96,21 @@ final class MenuBarStateTests: XCTestCase {
         let state = MenuBarFormatter.state(for: latest, now: Date())
         XCTAssertEqual(state.sessionId, "sess-abc123")
     }
+
+    func testStateCarriesTheFullWorkingDirectory() {
+        let now = Date()
+        var row = call(context: 1_000, minutesAgo: 1, now: now)
+        row.cwd = "/Users/me/worktrees/app/feature-x"
+        XCTAssertEqual(MenuBarFormatter.state(for: row, now: now).cwd, "/Users/me/worktrees/app/feature-x")
+        XCTAssertNil(MenuBarFormatter.state(for: nil, now: now).cwd)
+    }
+
+    func testDisplayPathFoldsHomeToTilde() {
+        XCTAssertEqual(MenuBarFormatter.displayPath("/Users/me/Code/app", home: "/Users/me"), "~/Code/app")
+        XCTAssertEqual(MenuBarFormatter.displayPath("/Users/me", home: "/Users/me/"), "~")
+        XCTAssertEqual(MenuBarFormatter.displayPath("/Users/meta/app", home: "/Users/me"), "/Users/meta/app")
+        XCTAssertEqual(MenuBarFormatter.displayPath("/srv/app", home: "/Users/me"), "/srv/app")
+        XCTAssertNil(MenuBarFormatter.displayPath(nil, home: "/Users/me"))
+        XCTAssertNil(MenuBarFormatter.displayPath("", home: "/Users/me"))
+    }
 }

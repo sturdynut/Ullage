@@ -26,6 +26,8 @@ public struct ParsedCall: Equatable {
     /// Claude Code's own version string, carried on the entry. Not a `call`
     /// column — it belongs to the session snapshot (`session_env`).
     public var claudeVersion: String?
+    /// Subscription limits reported on the same line (Codex only).
+    public var planLimits: [PlanLimitRow] = []
 }
 
 /// A `tool_result` block seen on a later `type: "user"` line, to be joined back
@@ -87,6 +89,8 @@ public enum ParsedLine: Equatable {
     case call(ParsedCall)
     case toolResults([ToolResultObservation])
     case event(EventRow)
+    /// Limits on a line that carried no model request.
+    case planLimits([PlanLimitRow])
 }
 
 /// Pure function from a transcript line to rows. No I/O, no database, no UI.

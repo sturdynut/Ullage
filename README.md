@@ -16,11 +16,14 @@ and see what is actually taking up the window. A separate history window charts
 your activity across days and projects.
 
 Everything stays on your machine. Nothing is uploaded, and nothing is sent
-anywhere unless you ask for it. Two things can: `ullage otlp` exports for
+anywhere unless you ask for it. Three things can: `ullage otlp` exports for
 aggregating across machines, runs only when you run it, and `--dry-run` prints
-exactly what would leave first; and once you subscribe a phone to alerts, a
+exactly what would leave first; once you subscribe a phone to alerts, a
 notification goes to that phone — encrypted to it, via its push service — when
-a window fills up. Neither happens until you set it up.
+a window fills up; and if you switch on Claude plan limits, Ullage asks
+Anthropic for them the way Claude Code's `/usage` does, sending Claude Code's
+own sign-in to api.anthropic.com and nothing else. None of these happens until
+you set it up.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
@@ -53,7 +56,11 @@ a window fills up. Neither happens until you set it up.
     and a "What's inside" button that expands to the baseline's parts
     (CLAUDE.md, MCP servers, skills) and a per-tool table of what is sitting in
     the window;
-  - the last turn's change, turn count and last-active time.
+  - the last turn's change, turn count and last-active time;
+  - **plan limits**: how much of each subscription window is left and when it
+    resets — Claude's 5-hour and weekly limits (and per-model ones like
+    Fable's), and Codex's. Beside each plan-wide limit is what Ullage itself saw
+    in that window. See [Plan limits](#plan-limits).
 
   It follows the most recently active session and holds still on it while the
   popover is open. The chevron at the top switches session — grouped by
@@ -123,6 +130,7 @@ ullage serve [--port N]      # serve the gauge to a browser on 127.0.0.1
 ullage push [--test]         # devices subscribed to alerts; --test buzzes them
 ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
+ullage limits [--fetch]      # plan limits left; --fetch asks Anthropic for Claude's
 ullage info                  # resolved paths, retention, row counts
 ```
 
@@ -136,6 +144,29 @@ schemas, skills, CLAUDE.md, and the opening prompt — or the summary after a
 compaction), tool results, assistant output, and the remainder, then lists the
 tools whose results are in the window. Every figure but the window total is an
 estimate and is labelled as one.
+
+### Plan limits
+
+Subscriptions meter usage in rolling windows — a 5-hour one and a weekly one,
+plus per-model allowances — and both vendors report them only as a percentage
+used. Neither states a limit in tokens, so Ullage shows **% left and when it
+resets**, never an invented token budget. Beside each plan-wide limit it shows
+what it saw you use in that window, with the four counters kept apart; that is a
+floor, since the limit also counts usage Ullage cannot see (chat, other
+machines).
+
+- **Codex** writes its limits into its own transcripts on every turn, so they
+  appear with no setup and no network. They are as fresh as your last Codex
+  turn; an older reading says how old it is, and one from before the window
+  reset says so instead of showing a number that is no longer true.
+- **Claude** records nothing about limits on disk until you hit one. Switch on
+  *Check Claude plan limits* (popover ⋯ menu, off by default) and Ullage asks
+  `api.anthropic.com/api/oauth/usage` — the undocumented endpoint behind
+  `/usage` — every 5 minutes, with Claude Code's own sign-in from the Keychain.
+  It only reads that sign-in and never renews it; if it has expired, the popover
+  says so until Claude Code's next request renews it. The endpoint is not a
+  public API and may change; if it does, the limits disappear rather than show
+  a wrong number.
 
 ### Aggregating across machines and harnesses
 
