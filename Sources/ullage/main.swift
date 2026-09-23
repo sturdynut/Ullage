@@ -513,9 +513,26 @@ do {
         // even evaluated — otherwise it would quietly mark thresholds as
         // announced, and the first real subscriber would hear nothing until the
         // window crossed them again.
+        //
+        // Evaluated on a timer against the database, not from this process's
+        // ingest callback: with `--no-watch` the app is the one ingesting, and
+        // an alert that only fires when *we* wrote the row is an alert that
+        // never fires in the configuration the docs recommend.
         #if canImport(CryptoKit)
         let pushService = PushService(store: try Store(path: options.databasePath))
-        let pushQueue = DispatchQueue(label: "com.sturdynut.ullage.push")
+        let pushTimer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.sturdynut.ullage.push"))
+        pushTimer.schedule(deadline: .now() + 5, repeating: 5)
+        pushTimer.setEventHandler {
+            do {
+                guard try pushService.subscriptionCount() > 0 else { return }
+                for (alert, report) in try pushService.announce() {
+                    print("alert \(alert.title) — sent \(report.sent), failed \(report.failed), dropped \(report.removed)")
+                }
+            } catch {
+                FileHandle.standardError.write(Data("push error: \(error)\n".utf8))
+            }
+        }
+        pushTimer.resume()
         let router = ServeRouter(store: readStore, push: pushService)
         #else
         let router = ServeRouter(store: readStore)
@@ -535,26 +552,6 @@ do {
             }
             let tailer = SessionTailer(ingestor: ingestor)
             tailer.onError = { FileHandle.standardError.write(Data("error: \($0)\n".utf8)) }
-            #if canImport(CryptoKit)
-            // Set before `start`: the tailer reads its callbacks on its own
-            // queue and says so.
-            tailer.onIngest = { stats in
-                guard stats.callsUpserted > 0 else { return }
-                // Off the tailer's queue, because a push is a network call and
-                // ingestion must not wait on a sleeping phone.
-                pushQueue.async {
-                    do {
-                        guard try pushService.subscriptionCount() > 0 else { return }
-                        for alert in try pushService.pendingAlerts() {
-                            let report = try pushService.deliver(alert)
-                            print("alert \(alert.title) — sent \(report.sent), failed \(report.failed), dropped \(report.removed)")
-                        }
-                    } catch {
-                        FileHandle.standardError.write(Data("push error: \(error)\n".utf8))
-                    }
-                }
-            }
-            #endif
             try tailer.start(roots: targetURLs(options))
             liveTailer = tailer
         }
@@ -578,7 +575,7 @@ do {
         print(subscribed > 0
             ? "alerts   \(subscribed) device(s) subscribed\n"
             : "alerts   none yet — open the page on the phone and tap Enable alerts\n")
-        withExtendedLifetime((server, liveTailer, readStore, pushService)) { dispatchMain() }
+        withExtendedLifetime((server, liveTailer, readStore, pushService, pushTimer)) { dispatchMain() }
         #else
         withExtendedLifetime((server, liveTailer, readStore)) { dispatchMain() }
         #endif

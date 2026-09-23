@@ -167,7 +167,144 @@ final class PushTests: XCTestCase {
         XCTAssertNil(HTTPServer.contentLength("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"))
     }
 
+
+    // MARK: - Things a review found
+
+    func testAssumedWindowNeverBuzzes() {
+        let now = Date()
+        var mystery = call(context: 190_000, now: now)
+        mystery.model = "claude-mystery-9"          // not in WindowLimits.table → fallback 200k
+        XCTAssertEqual(AlertRule.decide(call: mystery, firedThreshold: nil, now: now), .nothing)
+
+        // Codex reports its window on every turn; an unknown Codex model is
+        // measured, not assumed, and still alerts.
+        var codex = call(context: 250_000, limit: 272_000, now: now)
+        codex.vendor = Vendor.codex
+        codex.model = "gpt-5-codex"
+        guard case .fire = AlertRule.decide(call: codex, firedThreshold: nil, now: now) else {
+            return XCTFail("a measured Codex window should alert")
+        }
+    }
+
+    func testCompactionEventReArmsEvenWhenNobodySampledTheDip() throws {
+        let workspace = try TempWorkspace()
+        let now = Date()
+        let key = AlertRule.streamKey(sessionId: "sess-1", agentId: nil)
+        // Said 95% two minutes ago…
+        try workspace.store.setFiredThreshold(
+            streamKey: key, threshold: 0.95,
+            at: Timestamps.string(from: now.addingTimeInterval(-120)), contextTokens: 190_000
+        )
+        // …then a compaction a minute ago that was never the newest row when
+        // anyone looked, and now the window is back at 90%.
+        _ = try workspace.store.insert(event: EventRow(
+            id: "evt-compact", sessionId: "sess-1",
+            ts: Timestamps.string(from: now.addingTimeInterval(-60)),
+            kind: EventKind.compaction.rawValue
+        ))
+        try workspace.store.upsert(call: call(context: 180_000, minutesAgo: 0.5, now: now))
+
+        let alerts = try PushService(store: workspace.store).pendingAlerts(now: now)
+        XCTAssertEqual(alerts.map(\.threshold), [0.85], "the climb after a compaction is news again")
+    }
+
+    func testPushEndpointMustBeAnHTTPSService() {
+        XCTAssertTrue(ServeRouter.isPushEndpoint("https://web.push.apple.com/QOx1…"))
+        XCTAssertTrue(ServeRouter.isPushEndpoint("https://fcm.googleapis.com/fcm/send/abc"))
+        XCTAssertFalse(ServeRouter.isPushEndpoint("http://web.push.apple.com/x"))
+        XCTAssertFalse(ServeRouter.isPushEndpoint("https://localhost:7878/subscribe"))
+        XCTAssertFalse(ServeRouter.isPushEndpoint("https://127.0.0.1/x"))
+        XCTAssertFalse(ServeRouter.isPushEndpoint("https://[::1]/x"))
+        XCTAssertFalse(ServeRouter.isPushEndpoint("https://mac.local/x"))
+        XCTAssertFalse(ServeRouter.isPushEndpoint("not a url"))
+    }
+
+    func testNegativeContentLengthIsRefusedNotFatal() throws {
+        let workspace = try TempWorkspace()
+        let router = ServeRouter(store: workspace.store)
+        let server = HTTPServer(port: 0) { router.respond(to: $0) }
+        try server.start()
+        defer { server.stop() }
+
+        let reply = RawClient.exchange(
+            port: server.port,
+            "POST /subscribe HTTP/1.1\r\nHost: localhost\r\nContent-Length: -1\r\n\r\n"
+        )
+        XCTAssertTrue(reply.hasPrefix("HTTP/1.1 400"), "got: \(reply.prefix(40))")
+        // And the process is still here to answer the next one.
+        XCTAssertTrue(RawClient.exchange(port: server.port, "GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .hasPrefix("HTTP/1.1 200"))
+    }
+
+    func testAStalledClientDoesNotBlockTheOthers() throws {
+        let workspace = try TempWorkspace()
+        let router = ServeRouter(store: workspace.store)
+        let server = HTTPServer(port: 0) { router.respond(to: $0) }
+        try server.start()
+        defer { server.stop() }
+
+        // Half a request, then silence — a phone that walked out of range.
+        let stalled = RawClient.open(port: server.port)
+        RawClient.send(stalled, "GET / HTTP/1.1\r\nHost: localhost\r\n")
+        defer { RawClient.close(stalled) }
+
+        let started = Date()
+        let reply = RawClient.exchange(port: server.port, "GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        XCTAssertTrue(reply.hasPrefix("HTTP/1.1 200"), "got: \(reply.prefix(40))")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3, "the healthy client waited on the stalled one")
+    }
+
     #if canImport(CryptoKit)
+
+    func testRungIsRecordedOnlyOnceADeviceWasTold() throws {
+        let workspace = try TempWorkspace()
+        let now = Date()
+        try workspace.store.upsert(call: call(context: 172_000, now: now))
+        try workspace.store.upsert(subscription: PushSubscription(
+            endpoint: "https://web.push.apple.com/dev", p256dh: devicePublicKey(), auth: deviceAuth(),
+            createdAt: "2026-01-01T00:00:00Z"
+        ))
+        var status = 503
+        let service = PushService(store: workspace.store) { _, completion in completion(status) }
+
+        // The push service is down: nothing reached the phone, so nothing is
+        // recorded as said, and the same rung is offered again next pass.
+        var results = try service.announce(now: now)
+        XCTAssertEqual(results.map(\.1), [PushService.Report(failed: 1)])
+        XCTAssertNil(try workspace.store.firedThreshold(streamKey: "sess-1|main"))
+
+        status = 201
+        results = try service.announce(now: now)
+        XCTAssertEqual(results.map(\.1), [PushService.Report(sent: 1)])
+        XCTAssertEqual(try workspace.store.firedThreshold(streamKey: "sess-1|main"), 0.85)
+
+        // And now it has been said.
+        XCTAssertTrue(try service.announce(now: now).isEmpty)
+    }
+
+    func testDeadSubscriptionIsDroppedEvenWhenTheAnswerIsLate() throws {
+        let workspace = try TempWorkspace()
+        try workspace.store.upsert(subscription: PushSubscription(
+            endpoint: "https://web.push.apple.com/gone", p256dh: devicePublicKey(), auth: deviceAuth(),
+            createdAt: "2026-01-01T00:00:00Z"
+        ))
+        let answered = expectation(description: "late 410")
+        let service = PushService(store: workspace.store) { _, completion in
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { completion(410); answered.fulfill() }
+        }
+        // The wait gives up before the push service answers…
+        let report = try service.deliverTest(timeout: 0.1)
+        XCTAssertEqual(report, PushService.Report())
+        // …but the answer still counts when it arrives.
+        wait(for: [answered], timeout: 5)
+        XCTAssertTrue(try workspace.store.pushSubscriptions().isEmpty, "a 410 is a 410 however late")
+    }
+
+    private func devicePublicKey() -> String {
+        Base64URL.encode(P256.KeyAgreement.PrivateKey().publicKey.x963Representation)
+    }
+
+    private func deviceAuth() -> String { Base64URL.encode(Data(repeating: 9, count: 16)) }
 
     func testSubscribingStoresTheDeviceAndMintsAKeyOnce() throws {
         let workspace = try TempWorkspace()

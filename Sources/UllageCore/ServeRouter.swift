@@ -55,8 +55,9 @@ public struct ServeRouter {
         case ("GET", "/icon.png"):
             return HTTPServer.Response(contentType: "image/png", body: WebIcon.png)
 
+        #if canImport(CryptoKit)
         case ("GET", "/push-key.json"):
-            guard let push else { return .text(501, "this build cannot send push notifications") }
+            guard let push else { return .text(501, "alerts are not enabled in this process") }
             do {
                 let key = try push.applicationKey(now: now())
                 return .json(Data(#"{"publicKey":"\#(key.publicKey)"}"#.utf8))
@@ -65,9 +66,14 @@ public struct ServeRouter {
             }
 
         case ("POST", "/subscribe"):
-            guard push != nil else { return .text(501, "this build cannot send push notifications") }
+            guard push != nil else { return .text(501, "alerts are not enabled in this process") }
             do {
                 let incoming = try JSONDecoder().decode(IncomingSubscription.self, from: request.body)
+                // Every alert becomes a signed POST to this URL, so it has to
+                // be a push service and not whatever a request said it was.
+                guard ServeRouter.isPushEndpoint(incoming.endpoint) else {
+                    return .text(400, "endpoint must be an https URL")
+                }
                 try store.upsert(subscription: PushSubscription(
                     endpoint: incoming.endpoint,
                     p256dh: incoming.keys.p256dh,
@@ -78,6 +84,10 @@ public struct ServeRouter {
             } catch {
                 return .text(400, "not a push subscription: \(error)")
             }
+        #else
+        case ("GET", "/push-key.json"), ("POST", "/subscribe"):
+            return .text(501, "this build cannot send push notifications")
+        #endif
 
         case ("GET", "/healthz"):
             return .text(200, "ok")
@@ -85,6 +95,18 @@ public struct ServeRouter {
         default:
             return .text(404, "no such path")
         }
+    }
+
+    /// A browser only ever hands out `https://` endpoints, and a push service
+    /// is never on loopback or a bare IP. Anything else is not a subscription.
+    static func isPushEndpoint(_ endpoint: String) -> Bool {
+        guard let url = URL(string: endpoint), url.scheme == "https", let host = url.host?.lowercased() else {
+            return false
+        }
+        if host == "localhost" || host.hasSuffix(".local") { return false }
+        // Dotted quads and bracketed v6 literals are not push services.
+        if host.allSatisfy({ $0.isNumber || $0 == "." }) || host.contains(":") { return false }
+        return host.contains(".")
     }
 
     /// The shape `PushSubscription.toJSON()` produces in a browser.

@@ -120,9 +120,15 @@ What never alerts:
 - **Backfills.** Only rows newer than the idle threshold count, because
   re-reading a month of transcripts crosses 85% thousands of times and none of
   it is news.
+- **Assumed windows.** A Claude model the lookup table does not know falls
+  back to 200k and is flagged "assumed" on screen. A buzz cannot carry that flag
+  in a way anyone reads, so it does not buzz; the gauge still shows it, flagged.
 
-The state is persisted in `push_alert`, so restarting `serve` does not
-re-announce a window it already announced.
+A rung counts as said only once a device has actually been told: a delivery
+that fails is retried on the next pass, never swallowed. The state is persisted
+in `push_alert`, so restarting `serve` does not re-announce a window it already
+announced. Evaluation runs every five seconds against the database, so it works
+the same with `--no-watch` while the app does the ingesting.
 
 ### What leaves the machine
 

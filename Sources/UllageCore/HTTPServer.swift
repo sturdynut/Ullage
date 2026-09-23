@@ -67,13 +67,28 @@ public final class HTTPServer: @unchecked Sendable {
         }
     }
 
+    /// The only body this accepts is a push subscription, which is a few
+    /// hundred bytes; the cap is what stops a client that promises more than it
+    /// sends from holding memory open.
+    static let maximumBody = 64 * 1024
+
+    /// How long one connection may take to send its request or take our
+    /// response. A phone that walks out of Wi-Fi range mid-request must not
+    /// hold anything open past this.
+    static let socketTimeout: TimeInterval = 10
+
     private let requestedPort: UInt16
     private let handler: Handler
     private let acceptQueue = DispatchQueue(label: "com.sturdynut.ullage.http.accept")
+    /// Socket reads and writes happen here, concurrently, so a slow client
+    /// only ever costs itself. Only the handler is serialised (below).
+    private let connectionQueue = DispatchQueue(label: "com.sturdynut.ullage.http.io", attributes: .concurrent)
     /// Serial on purpose: a `Store` is one SQLite connection and is not thread
     /// safe, so every handler call is serialised rather than trusting whatever
-    /// the handler happens to close over.
-    private let workQueue = DispatchQueue(label: "com.sturdynut.ullage.http.work")
+    /// the handler happens to close over. The handler is the *only* thing that
+    /// goes through here — never a socket read — so a stalled connection cannot
+    /// block the others.
+    private let handlerQueue = DispatchQueue(label: "com.sturdynut.ullage.http.handler")
     private var listenDescriptor: Int32 = -1
     private var isRunning = false
 
@@ -141,9 +156,14 @@ public final class HTTPServer: @unchecked Sendable {
     public func stop() {
         guard isRunning else { return }
         isRunning = false
-        // Closing the listening socket is what wakes `accept` up; there is no
-        // portable way to interrupt it otherwise.
-        if listenDescriptor >= 0 { close(listenDescriptor) }
+        // `close` alone wakes a blocked `accept` on macOS but not on Linux,
+        // where the syscall holds its own reference to the file and keeps
+        // waiting. `shutdown` first is what works on both; on macOS it returns
+        // ENOTCONN for a listening socket, which is harmless.
+        if listenDescriptor >= 0 {
+            shutdown(listenDescriptor, Int32(SHUT_RDWR))
+            close(listenDescriptor)
+        }
         listenDescriptor = -1
     }
 
@@ -154,8 +174,21 @@ public final class HTTPServer: @unchecked Sendable {
                 if errno == EINTR { continue }
                 break   // the socket was closed by `stop`, or the kernel gave up
             }
-            workQueue.async { [weak self] in self?.serve(client) }
+            HTTPServer.applyTimeouts(client)
+            connectionQueue.async { [weak self] in self?.serve(client) }
         }
+    }
+
+    /// Reads and writes on an accepted socket give up after `socketTimeout`, so
+    /// one client that stops mid-request costs only its own connection.
+    private static func applyTimeouts(_ descriptor: Int32) {
+        var timeout = timeval(tv_sec: Int(socketTimeout), tv_usec: 0)
+        setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        #if canImport(Darwin)
+        var yes: Int32 = 1
+        setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout<Int32>.size))
+        #endif
     }
 
     private func serve(_ descriptor: Int32) {
@@ -173,13 +206,11 @@ public final class HTTPServer: @unchecked Sendable {
             write(descriptor, .text(403, "host not allowed"))
             return
         }
-        write(descriptor, handler(request))
+        // Only this hop is serialised: the socket is fully read by now and the
+        // write happens after, both on the concurrent queue.
+        let response = handlerQueue.sync { handler(request) }
+        write(descriptor, response)
     }
-
-    /// The only body this accepts is a push subscription, which is a few
-    /// hundred bytes; the cap is what stops a client that promises more than it
-    /// sends from holding memory open.
-    static let maximumBody = 64 * 1024
 
     private func readRequest(_ descriptor: Int32) -> (head: String, body: Data)? {
         var data = Data()
@@ -191,8 +222,11 @@ public final class HTTPServer: @unchecked Sendable {
         while true {
             if headEnd == nil, let range = data.range(of: separator) {
                 headEnd = range.upperBound
-                expected = HTTPServer.contentLength(String(decoding: data[..<range.lowerBound], as: UTF8.self)) ?? 0
-                if expected > HTTPServer.maximumBody { return nil }
+                let declared = HTTPServer.contentLength(String(decoding: data[..<range.lowerBound], as: UTF8.self)) ?? 0
+                // A negative length is not "no body", it is a malformed
+                // request, and building a range from it would trap.
+                guard declared >= 0, declared <= HTTPServer.maximumBody else { return nil }
+                expected = declared
             }
             if let end = headEnd, data.count - end >= expected {
                 let head = String(decoding: data[..<(end - separator.count)], as: UTF8.self)
@@ -200,7 +234,7 @@ public final class HTTPServer: @unchecked Sendable {
             }
             if data.count > HTTPServer.maximumBody + 16_384 { return nil }
             let count = recv(descriptor, &buffer, buffer.count, 0)
-            if count <= 0 { return nil }   // the client hung up mid-request
+            if count <= 0 { return nil }   // hung up, or the socket timeout fired
             data.append(contentsOf: buffer[0..<count])
         }
     }

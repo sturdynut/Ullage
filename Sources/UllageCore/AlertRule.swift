@@ -53,6 +53,12 @@ public enum AlertRule {
         // Rule 3: no window, no occupancy, no alert. An unmeasured harness does
         // not get a guessed percentage, least of all one that buzzes.
         guard let windowLimit = call.windowLimit, let occupancy = call.occupancy else { return .nothing }
+        // Rule 6, and harder here than in the menu bar: a Claude model the
+        // lookup table does not know falls back to 200k, and the resulting
+        // percentage is flagged "assumed" on screen. A phone buzz cannot carry
+        // that flag in a way anyone reads, so it does not buzz at all. Codex
+        // reports its window on every turn and is never assumed.
+        if call.vendor == Vendor.claudeCode, !WindowLimits.isKnown(call.model) { return .nothing }
         // A backfill re-reads months of transcripts. Every one of those sessions
         // crossed 85% at some point and none of them is news.
         guard let timestamp = Timestamps.date(from: call.ts),

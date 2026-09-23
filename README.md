@@ -16,9 +16,11 @@ and see what is actually taking up the window. A separate history window charts
 your activity across days and projects.
 
 Everything stays on your machine. Nothing is uploaded, and nothing is sent
-anywhere unless you ask for it: there is one command that exports — `ullage
-otlp`, for aggregating across machines — it runs only when you run it, and
-`--dry-run` prints exactly what would leave first.
+anywhere unless you ask for it. Two things can: `ullage otlp` exports for
+aggregating across machines, runs only when you run it, and `--dry-run` prints
+exactly what would leave first; and once you subscribe a phone to alerts, a
+notification goes to that phone — encrypted to it, via its push service — when
+a window fills up. Neither happens until you set it up.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
@@ -149,8 +151,9 @@ ullage otlp --dry-run --days 1        # read exactly what would be sent
 ullage otlp --endpoint http://localhost:4318
 ```
 
-Nothing leaves the machine unless you run that command: there is no background
-exporter and no telemetry about Ullage itself. Two details matter and are
+Nothing leaves the machine through this unless you run that command: there is
+no background exporter and no telemetry about Ullage itself. (The only other
+thing that ever leaves is an alert to a phone you subscribed — see below.) Two details matter and are
 covered in [`docs/OPENTELEMETRY.md`](docs/OPENTELEMETRY.md) — the export sends
 the *whole prompt* as `gen_ai.usage.input_tokens` (Claude's own `input_tokens`
 is just the uncached remainder, and exporting that under the standard name would

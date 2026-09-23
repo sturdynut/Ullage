@@ -13,9 +13,8 @@ import Foundation
 enum WebIcon {
     /// `.ignoreUnknownCharacters` because the blob below is wrapped across
     /// lines to stay readable, and the newlines are not base64.
-    static var png: Data {
+    static let png: Data =
         Data(base64Encoded: base64, options: [.ignoreUnknownCharacters]) ?? Data()
-    }
 
     private static let base64 = """
     iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAMAAABlApw1AAAAYFBMVEXwwVrisE3XpETLmT64hDJ8XC8qLzMiJyweIycbICUa

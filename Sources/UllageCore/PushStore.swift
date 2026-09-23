@@ -98,6 +98,11 @@ extension Store {
         }
     }
 
+    /// A count, not a decode of every row: this runs on a timer.
+    public func pushSubscriptionCount() throws -> Int {
+        try database.query("SELECT COUNT(*) FROM push_subscription;") { $0.int(0) }.first ?? 0
+    }
+
     public func deletePushSubscription(endpoint: String) throws {
         _ = try database.run("DELETE FROM push_subscription WHERE endpoint = ?1;", [.text(endpoint)])
     }
@@ -139,10 +144,17 @@ extension Store {
     /// last below all of them. Persisted rather than held in memory so that
     /// restarting `serve` does not re-announce a window it already announced.
     public func firedThreshold(streamKey: String) throws -> Double? {
+        try firedAlert(streamKey: streamKey)?.threshold
+    }
+
+    /// With *when*, so a compaction recorded after it can be recognised as the
+    /// thing that makes it stale — even one that was never the newest row at
+    /// the moment anyone looked.
+    public func firedAlert(streamKey: String) throws -> (threshold: Double, firedAt: String)? {
         try database.query(
-            "SELECT threshold FROM push_alert WHERE stream_key = ?1;",
+            "SELECT threshold, fired_at FROM push_alert WHERE stream_key = ?1;",
             [.text(streamKey)]
-        ) { $0.double(0) }.first
+        ) { ($0.double(0), $0.text(1)) }.first
     }
 
     public func setFiredThreshold(streamKey: String, threshold: Double, at: String, contextTokens: Int) throws {
