@@ -95,6 +95,13 @@ public struct CompositionTreemap: Equatable {
     public static let segmentGap = 2.0
     public static let partGap = 1.0
     public static let minimumSegmentWidth = 3.0
+    /// Narrower than this and no part could carry a label, so a segment is
+    /// drawn whole: one tile that can at least be hovered, instead of a stack
+    /// of unlabelled slivers that adds noise and no information.
+    public static let minimumSplitWidth = 34.0
+    /// A part thinner than this is folded into "N more" (tools) or cancels the
+    /// split (baseline): a hairline is neither readable nor hoverable.
+    public static let minimumPartExtent = 8.0
     /// Tools beyond this many fold into one "N more" tile rather than being
     /// drawn as slivers nobody can read or hover.
     public static let maximumToolTiles = 5
@@ -103,6 +110,11 @@ public struct CompositionTreemap: Equatable {
     public var width: Double
     public var height: Double
     public var tiles: [Tile]
+    /// Segment totals that no tile shows — a whole tile too small for its
+    /// value, or a split segment without room for a header. The key prints
+    /// these beside the segment's name, so a figure is never reachable only by
+    /// hovering.
+    public var hiddenTotals: [String: String] = [:]
 
     public static func layout(
         _ composition: ContextComposition,
@@ -121,10 +133,25 @@ public struct CompositionTreemap: Equatable {
         for (segment, segmentWidth) in zip(live, widths) {
             let rect = Rect(x: x, y: 0, width: segmentWidth, height: height)
             x += segmentWidth + segmentGap
-            let parts = self.parts(of: segment, in: composition)
+            let total = (ContextComposition.isEstimate(segment: segment.name) ? "≈" : "")
+                + TokenFormat.compact(segment.tokens)
+            let parts = rect.width >= minimumSplitWidth
+                ? fold(self.parts(of: segment, in: composition), segment: segment.name,
+                       body: frames(for: rect, metrics: metrics).body)
+                : []
             if parts.count > 1 {
-                map.tiles += split(segment, parts: parts, rect: rect, composition: composition, metrics: metrics)
+                let tiles = split(segment, parts: parts, rect: rect, composition: composition, metrics: metrics)
+                map.tiles += tiles
+                if !tiles.contains(where: { $0.role == .header && shows(total, in: $0.label) }) {
+                    map.hiddenTotals[segment.name] = total
+                }
             } else {
+                let label = label(
+                    name: segment.name,
+                    values: segmentValues(segment, composition),
+                    rect: rect,
+                    metrics: metrics
+                )
                 map.tiles.append(
                     Tile(
                         id: segment.name,
@@ -137,18 +164,23 @@ public struct CompositionTreemap: Equatable {
                         role: .segment,
                         shade: 0,
                         rect: rect,
-                        label: label(
-                            name: segment.name,
-                            values: segmentValues(segment, composition),
-                            rect: rect,
-                            metrics: metrics
-                        ),
+                        label: label,
                         detail: nil
                     )
                 )
+                if !shows(total, in: label) { map.hiddenTotals[segment.name] = total }
             }
         }
         return map
+    }
+
+    /// Whether a label carries the segment's total, alone or beside its share
+    /// or name.
+    static func shows(_ total: String, in label: Label) -> Bool {
+        switch label {
+        case .none: return false
+        case .value(let text), .name(let text), .nameAndValue(_, let text): return text.hasPrefix(total) || text.hasSuffix(total)
+        }
     }
 
     // MARK: - Segment widths
@@ -180,6 +212,23 @@ public struct CompositionTreemap: Equatable {
         var tokens: Int
         var calls: Int?
         var detail: String?
+        /// For the "N more" part: the tools it stands for, largest first.
+        var members: [String] = []
+    }
+
+    static let moreID = "more"
+
+    static func more(_ members: [Part]) -> Part {
+        let names = members.flatMap { $0.members.isEmpty ? [$0.fullName] : $0.members }
+        return Part(
+            id: moreID,
+            name: "\(names.count) more",
+            fullName: names.joined(separator: ", "),
+            tokens: members.reduce(0) { $0 + $1.tokens },
+            calls: members.reduce(0) { $0 + ($1.calls ?? 0) },
+            detail: nil,
+            members: names
+        )
     }
 
     /// The parts a segment splits into, largest first. Only tool results and
@@ -198,19 +247,11 @@ public struct CompositionTreemap: Equatable {
                     detail: nil
                 )
             }
-            let rest = tools.dropFirst(maximumToolTiles)
-            if !rest.isEmpty {
-                parts.append(
-                    Part(
-                        id: "more",
-                        name: "\(rest.count) more",
-                        fullName: rest.map(\.name).joined(separator: ", "),
-                        tokens: rest.reduce(0) { $0 + $1.resultTokens },
-                        calls: rest.reduce(0) { $0 + $1.calls },
-                        detail: nil
-                    )
-                )
+            let rest = tools.dropFirst(maximumToolTiles).map { tool in
+                Part(id: tool.name, name: tool.name, fullName: tool.name,
+                     tokens: tool.resultTokens, calls: tool.calls, detail: nil)
             }
+            if !rest.isEmpty { parts.append(more(Array(rest))) }
             return parts
 
         case ContextComposition.baselineName:
@@ -254,6 +295,54 @@ public struct CompositionTreemap: Equatable {
         return pieces.isEmpty ? name : pieces.joined(separator: " · ")
     }
 
+    /// Once a segment is in pieces, a header band keeps its name on screen —
+    /// if there is room for one without starving the parts.
+    static func frames(for rect: Rect, metrics: Metrics) -> (header: Rect?, body: Rect) {
+        guard rect.height >= metrics.headerHeight * 3, rect.width >= minimumSplitWidth else { return (nil, rect) }
+        let header = Rect(x: rect.x, y: rect.y, width: rect.width, height: metrics.headerHeight)
+        let body = Rect(
+            x: rect.x,
+            y: rect.y + metrics.headerHeight + partGap,
+            width: rect.width,
+            height: rect.height - metrics.headerHeight - partGap
+        )
+        return (header, body)
+    }
+
+    /// Stripes across a wide, short column; a stack down a tall one.
+    static func isHorizontal(_ body: Rect) -> Bool { body.width > body.height * 2.2 }
+
+    static func extents(_ parts: [Part], along body: Rect) -> [Double] {
+        let length = isHorizontal(body) ? body.width : body.height
+        let available = max(0, length - partGap * Double(parts.count - 1))
+        let total = Double(parts.reduce(0) { $0 + $1.tokens })
+        return parts.map { total > 0 ? available * Double($0.tokens) / total : 0 }
+    }
+
+    /// Parts that would be too thin to see are not drawn as parts. Tools fold,
+    /// smallest first, into "N more"; the baseline's two parts are either both
+    /// worth drawing or not split at all — a "1 more" standing for CLAUDE.md
+    /// would say less than the whole baseline tile does.
+    static func fold(_ parts: [Part], segment: String, body: Rect) -> [Part] {
+        guard parts.count > 1 else { return parts }
+        if segment != ContextComposition.toolResultsName {
+            return extents(parts, along: body).allSatisfy { $0 >= minimumPartExtent } ? parts : []
+        }
+        var parts = parts
+        while parts.count > 1,
+              let last = parts.lastIndex(where: { $0.id != moreID }),
+              extents(parts, along: body)[last] < minimumPartExtent {
+            let thin = parts.remove(at: last)
+            if let index = parts.firstIndex(where: { $0.id == moreID }) {
+                parts[index] = more([thin, parts[index]])
+            } else {
+                parts.append(more([thin]))
+            }
+        }
+        // Everything folded: nothing left to split into.
+        return parts.contains { $0.id != moreID } ? parts : []
+    }
+
     static func split(
         _ segment: ContextComposition.Segment,
         parts: [Part],
@@ -262,13 +351,10 @@ public struct CompositionTreemap: Equatable {
         metrics: Metrics
     ) -> [Tile] {
         var tiles: [Tile] = []
-        var body = rect
         let isEstimate = ContextComposition.isEstimate(segment: segment.name)
+        let (headerRect, body) = frames(for: rect, metrics: metrics)
 
-        // Once a segment is in pieces, a header band keeps its name on screen —
-        // if there is room for one without starving the parts.
-        if rect.height >= metrics.headerHeight * 3, rect.width >= 34 {
-            let header = Rect(x: rect.x, y: rect.y, width: rect.width, height: metrics.headerHeight)
+        if let header = headerRect {
             let total = (isEstimate ? "≈" : "") + TokenFormat.compact(segment.tokens)
             tiles.append(
                 Tile(
@@ -286,18 +372,11 @@ public struct CompositionTreemap: Equatable {
                     detail: nil
                 )
             )
-            body.y += metrics.headerHeight + partGap
-            body.height -= metrics.headerHeight + partGap
         }
 
-        // Stripes across a wide, short column; a stack down a tall one.
-        let horizontal = body.width > body.height * 2.2
-        let length = horizontal ? body.width : body.height
-        let available = max(0, length - partGap * Double(parts.count - 1))
-        let total = Double(parts.reduce(0) { $0 + $1.tokens })
+        let horizontal = isHorizontal(body)
         var offset = 0.0
-        for part in parts {
-            let extent = total > 0 ? available * Double(part.tokens) / total : 0
+        for (part, extent) in zip(parts, extents(parts, along: body)) {
             let partRect = horizontal
                 ? Rect(x: body.x + offset, y: body.y, width: extent, height: body.height)
                 : Rect(x: body.x, y: body.y + offset, width: body.width, height: extent)

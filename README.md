@@ -58,8 +58,11 @@ you set it up.
     output, and everything else, in that fixed order so the tiles hold still as
     the session grows. Tool results split into the tools that produced them
     (the top five, then "N more") and the baseline into CLAUDE.md and the rest,
-    each tile labelled where it fits and with `≈` on every estimate. Hover a
-    tile for its exact figure; the button below expands to the table view —
+    each tile labelled where it fits and with `≈` on every estimate. A segment
+    too narrow to label is drawn whole rather than sliced into slivers, a part
+    too thin to see folds into "N more", and any total no tile has room for is
+    printed in the key. Hover a tile for its exact figure; the button below
+    expands to the table view —
     the four totals, the baseline's parts (CLAUDE.md, MCP servers, skills) and
     every tool sitting in the window;
   - the last turn's change, turn count and last-active time;

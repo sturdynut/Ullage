@@ -109,7 +109,8 @@ final class CompositionTreemapTests: XCTestCase {
             ("Glob", 19, 1_800), ("Edit", 27, 900), ("WebFetch", 2, 700), ("Skill", 1, 30),
         ]
         let c = composition(tools: tools)
-        let map = CompositionTreemap.layout(c, width: 332, height: 88)
+        // Tall enough that no part is thin: this isolates the five-tile cap.
+        let map = CompositionTreemap.layout(c, width: 332, height: 600)
         let parts = map.tiles.filter { $0.segment == "Tool results" && $0.role == .part }
         XCTAssertEqual(parts.map(\.name), ["Read", "Bash", "Grep", "Task", "Glob", "3 more"])
         let more = parts.last!
@@ -133,15 +134,16 @@ final class CompositionTreemapTests: XCTestCase {
     }
 
     func testTheBaselineSplitsOnlyAroundAClaudeMdEstimateSmallerThanItself() {
-        // 14,560 bytes ≈ 3,640 tokens, carved out of a 48,000 baseline.
-        let split = CompositionTreemap.layout(composition(claudeMdBytes: 14_560), width: 332, height: 88)
+        // 14,560 bytes ≈ 3,640 tokens, carved out of a 48,000 baseline — at
+        // the History window's height, where the CLAUDE.md part is ~11pt.
+        let split = CompositionTreemap.layout(composition(claudeMdBytes: 14_560), width: 620, height: 160)
         let parts = split.tiles.filter { $0.segment == "Baseline" && $0.role == .part }
         XCTAssertEqual(parts.map(\.name), ["System + prompt", "CLAUDE.md"])
         XCTAssertEqual(parts.map(\.tokens), [48_000 - 3_640, 3_640])
         XCTAssertTrue(parts.allSatisfy(\.isEstimate), "a part carved with an estimate is an estimate")
 
         let afterCompaction = CompositionTreemap.layout(
-            composition(claudeMdBytes: 14_560, windowStartTurn: 58), width: 332, height: 88
+            composition(claudeMdBytes: 14_560, windowStartTurn: 58), width: 620, height: 160
         )
         XCTAssertTrue(afterCompaction.tiles.contains { $0.name == "System + summary" })
 
@@ -166,14 +168,15 @@ final class CompositionTreemapTests: XCTestCase {
 
     func testAToolKeepsItsShadeWhenItChangesRank() {
         let before = CompositionTreemap.layout(
-            composition(tools: [("Read", 1, 9_000), ("Bash", 1, 4_000)]), width: 332, height: 88
+            composition(tools: [("Read", 1, 9_000), ("Bash", 1, 4_000)]), width: 620, height: 160
         )
         let after = CompositionTreemap.layout(
-            composition(tools: [("Bash", 1, 20_000), ("Read", 1, 9_000)]), width: 332, height: 88
+            composition(tools: [("Bash", 1, 20_000), ("Read", 1, 9_000)]), width: 620, height: 160
         )
         func shade(_ map: CompositionTreemap, _ tool: String) -> Int? {
             map.tiles.first { $0.id == "Tool results/" + tool }?.shade
         }
+        XCTAssertNotNil(shade(before, "Read"), "the column must actually be split for this to test anything")
         XCTAssertEqual(shade(before, "Read"), shade(after, "Read"))
         XCTAssertEqual(shade(before, "Bash"), shade(after, "Bash"))
     }
@@ -183,7 +186,7 @@ final class CompositionTreemapTests: XCTestCase {
         XCTAssertEqual(CompositionTreemap.shortToolName("Read"), "Read")
         let map = CompositionTreemap.layout(
             composition(tools: [("mcp__github__pull_request_read", 2, 9_000), ("Bash", 1, 4_000)]),
-            width: 332, height: 88
+            width: 620, height: 160
         )
         let tile = map.tiles.first { $0.id == "Tool results/mcp__github__pull_request_read" }
         XCTAssertEqual(tile?.name, "github · pull request read")
@@ -243,6 +246,85 @@ final class CompositionTreemapTests: XCTestCase {
         let popover = CompositionTreemap.layout(c, width: 332, height: 88)
         let history = CompositionTreemap.layout(c, width: 620, height: 160)
         XCTAssertGreaterThanOrEqual(labelled(history), labelled(popover))
+    }
+
+    // MARK: - Splitting only where the parts can be seen
+
+    /// This repo's first build session: tool results are 3% of the window, a
+    /// ~10pt column. Cut into six parts it was a stack of unlabelled slivers
+    /// and its total appeared nowhere.
+    private var smallToolShare: ContextComposition {
+        composition(
+            baseline: 70_434,
+            tools: [("Bash", 84, 9_618), ("mcp__github__pull_request_read", 1, 1_401), ("Artifact", 2, 540),
+                    ("AskUserQuestion", 1, 58), ("mcp__github__create_pull_request", 1, 18), ("Skill", 2, 14)],
+            output: 199_816,
+            other: 56_264
+        )
+    }
+
+    func testASegmentTooNarrowToLabelIsDrawnWhole() {
+        let map = CompositionTreemap.layout(smallToolShare, width: 332, height: 88)
+        let tools = map.tiles.filter { $0.segment == "Tool results" }
+        XCTAssertEqual(tools.map(\.role), [.segment], "one tile, not six slivers")
+        XCTAssertLessThan(tools[0].rect.width, CompositionTreemap.minimumSplitWidth)
+        XCTAssertEqual(tools[0].tokens, 11_649)
+    }
+
+    func testATotalNoTileShowsIsHandedToTheKey() {
+        let map = CompositionTreemap.layout(smallToolShare, width: 332, height: 88)
+        XCTAssertEqual(map.hiddenTotals["Tool results"], "≈11k")
+        // Segments whose tiles carry their figure are not repeated in the key.
+        XCTAssertNil(map.hiddenTotals["Output"])
+        XCTAssertNil(map.hiddenTotals["Baseline"])
+    }
+
+    func testAHeaderWithRoomForTheTotalKeepsItOutOfTheKey() {
+        // Wide enough for "Tool results  ≈39k" in the header band.
+        let wide = CompositionTreemap.layout(composition(), width: 900, height: 160)
+        XCTAssertEqual(wide.tiles.first { $0.role == .header }?.label, .name("Tool results  ≈39k"))
+        XCTAssertNil(wide.hiddenTotals["Tool results"])
+
+        // At 620pt the band fits the name alone, so the key carries the figure.
+        let narrower = CompositionTreemap.layout(composition(), width: 620, height: 160)
+        XCTAssertEqual(narrower.tiles.first { $0.role == .header }?.label, .name("Tool results"))
+        XCTAssertEqual(narrower.hiddenTotals["Tool results"], "≈39k")
+    }
+
+    func testPartsTooThinToSeeFoldIntoMore() {
+        let tools: [(String, Int, Int)] = [
+            ("Read", 38, 21_400), ("Bash", 61, 11_900), ("Grep", 44, 6_100), ("mcp__github__pull_request_read", 5, 4_200),
+            ("Glob", 19, 1_800), ("Edit", 27, 900), ("WebFetch", 2, 700),
+        ]
+        let c = composition(baseline: 48_212, tools: tools, output: 81_340, other: 39_309)
+        let map = CompositionTreemap.layout(c, width: 332, height: 88)
+        let parts = map.tiles.filter { $0.segment == "Tool results" && $0.role == .part }
+        XCTAssertEqual(parts.map(\.name), ["Read", "Bash", "Grep", "4 more"])
+        XCTAssertEqual(parts.last?.fullName, "mcp__github__pull_request_read, Glob, Edit, WebFetch", "largest first")
+        XCTAssertEqual(parts.last?.calls, 5 + 19 + 27 + 2)
+        XCTAssertEqual(parts.reduce(0) { $0 + $1.tokens }, c.toolResults, "folding moves tokens, never drops them")
+        for part in parts where part.name != "4 more" {
+            XCTAssertGreaterThanOrEqual(part.rect.height, CompositionTreemap.minimumPartExtent, part.name)
+        }
+    }
+
+    func testTheBaselineIsNotSplitAroundASliver() {
+        // In the popover the CLAUDE.md part would be ~5pt: the baseline stays whole.
+        let map = CompositionTreemap.layout(composition(claudeMdBytes: 14_560), width: 332, height: 88)
+        let baseline = map.tiles.filter { $0.segment == "Baseline" }
+        XCTAssertEqual(baseline.map(\.role), [.segment])
+        XCTAssertEqual(baseline.first?.label, .nameAndValue("Baseline", "48k  23%"))
+    }
+
+    func testFoldingEverythingMeansNotSplitting() {
+        // One sizeable tool and a crowd of crumbs in a short column: after
+        // folding, if no named part is left the segment is simply drawn whole.
+        let parts = [
+            CompositionTreemap.Part(id: "A", name: "A", fullName: "A", tokens: 5, calls: 1),
+            CompositionTreemap.Part(id: "B", name: "B", fullName: "B", tokens: 5, calls: 1),
+        ]
+        let body = CompositionTreemap.Rect(x: 0, y: 0, width: 10, height: 12)   // ~5.5pt each
+        XCTAssertTrue(CompositionTreemap.fold(parts, segment: "Tool results", body: body).isEmpty)
     }
 
     func testCompactTokenFormat() {
