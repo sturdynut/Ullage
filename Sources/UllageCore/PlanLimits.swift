@@ -213,6 +213,21 @@ public struct PlanLimitSummary: Equatable, Identifiable {
 }
 
 public enum PlanLimitFormatter {
+    /// The label squeezed for the collapsed row, where every limit of a harness
+    /// shares one line: "5-hour" → "5h", "Weekly" → "week", "3-day" → "3d".
+    /// A scoped limit ("Weekly · Fable") is named by its scope alone — the
+    /// plan-wide weekly limit beside it already says "week".
+    public static func shortLabel(_ label: String) -> String {
+        let parts = label.components(separatedBy: " · ")
+        if parts.count > 1 { return parts.dropFirst().joined(separator: " · ") }
+        if label == "Weekly" { return "week" }
+        for (suffix, unit) in [("-hour", "h"), ("-day", "d"), ("-minute", "m")] where label.hasSuffix(suffix) {
+            let number = label.dropLast(suffix.count)
+            if Int(number) != nil { return number + unit }
+        }
+        return label
+    }
+
     /// The collapsed view: per harness, in display order, the limit with the
     /// least left. A reset reading has nothing left to compare, so it only
     /// wins when nothing else has a number — the tightest *known* limit is the

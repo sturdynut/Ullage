@@ -7,71 +7,58 @@ import UllageCore
 /// one in tokens — so the only token figures here are Ullage's own count of
 /// what it saw in the window, and they say so.
 ///
-/// Disclosed in two steps. Collapsed, one line per harness: the limit that
-/// will stop you first — the answer to "how much do I have left". Expanded,
-/// every limit with its reset and what Ullage saw in it; hover for the four
-/// counters. Remembered across launches, like any other view preference.
+/// Disclosed in two steps, toggled by the section rule above it. Collapsed,
+/// one line per harness with what is left in every one of its limits, the
+/// tightest in bold. Expanded, every limit with its bar, reset and what Ullage
+/// saw in it; hover for the four counters.
 struct PlanLimitsView: View {
     let limits: [PlanLimitDisplay]
     let usage: [String: Store.WindowUsage]
-    @AppStorage("planLimitsExpanded") private var expanded = false
+    var expanded = false
 
     var body: some View {
-        let summaries = PlanLimitFormatter.summaries(limits)
         VStack(alignment: .leading, spacing: 7) {
             if expanded {
                 ForEach(limits) { limit in
                     row(limit)
                 }
             } else {
-                ForEach(summaries) { summary in
-                    summaryRow(summary)
+                ForEach(PlanLimitFormatter.summaries(limits)) { summary in
+                    compactRow(summary)
                 }
             }
-            if limits.count > summaries.count {
-                disclosure
-            }
         }
     }
 
-    /// Same shape as the composition's "What's inside": the whole row is the
-    /// target, the chevron is the affordance.
-    private var disclosure: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .rotationEffect(.degrees(expanded ? 90 : 0))
-                Text(expanded ? "Hide details" : "All \(limits.count) limits — resets & usage")
-                    .font(.caption)
-                Spacer(minLength: 0)
+    /// Every limit of one harness on one line: short label, then what is left.
+    /// The binding limit — the one that stops you first — is set in bold.
+    private func compactRow(_ summary: PlanLimitSummary) -> some View {
+        let own = limits.filter { $0.vendor == summary.vendor }
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(summary.vendorName)
+                .font(.caption.weight(.semibold))
+                .frame(width: 48, alignment: .leading)
+            ForEach(own) { limit in
+                let isBinding = limit.id == summary.binding.id && own.count > 1
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(PlanLimitFormatter.shortLabel(limit.label))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text(limit.remainingFraction.map { MenuBarFormatter.percentage($0) } ?? "—")
+                        .fontWeight(isBinding ? .semibold : .regular)
+                        .monospacedDigit()
+                        .foregroundStyle(limit.isWarning ? AnyShapeStyle(Color.orange)
+                                         : limit.isStale ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
+                }
+                .font(.caption)
+                .fixedSize()
+                .help(limit.vendorName + " " + limit.label + "\n" + PlanLimitFormatter.caption(for: limit))
             }
-            .foregroundStyle(.secondary)
-            .contentShape(Rectangle())
+            Spacer(minLength: 0)
+            Text("left")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
-        .buttonStyle(.plain)
-    }
-
-    /// Which limit it is stays on the line: "71% left" means nothing until
-    /// you know whether it is the 5-hour window or the week.
-    private func summaryRow(_ summary: PlanLimitSummary) -> some View {
-        let limit = summary.binding
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(summary.vendorName)
-                    .font(.caption.weight(.semibold))
-                Text(limit.label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                percentLeft(limit)
-            }
-            LimitBar(used: limit.usedFraction, dimmed: limit.isStale)
-        }
-        .help(PlanLimitFormatter.caption(for: limit) + (summary.count > 1 ? "\nTightest of \(summary.count) limits" : ""))
     }
 
     private func percentLeft(_ limit: PlanLimitDisplay) -> some View {

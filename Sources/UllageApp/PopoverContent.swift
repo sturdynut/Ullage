@@ -12,6 +12,9 @@ struct PopoverContent: View {
     /// exactly as tall as its content until the screen runs out.
     @State private var sectionsHeight: CGFloat = 0
     @State private var headerHeight: CGFloat = 0
+    @AppStorage("compositionExpanded") private var compositionExpanded = false
+    @AppStorage("detailsExpanded") private var detailsExpanded = false
+    @AppStorage("planLimitsExpanded") private var planLimitsExpanded = false
 
     var body: some View {
         // A MenuBarExtra window taller than the screen is clipped at the top,
@@ -21,6 +24,12 @@ struct PopoverContent: View {
             VStack(alignment: .leading, spacing: 8) {
                 toolbar
                 header
+                // Next to the headline it explains, not below the charts.
+                if model.state.status != .empty {
+                    CollapsibleSectionRule("Details", scope: scopeName, isExpanded: $detailsExpanded,
+                                           help: ("Collapse to one line", "Show every detail"))
+                    if detailsExpanded { stats } else { statsSummary }
+                }
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
             ScrollView(.vertical) {
@@ -63,15 +72,22 @@ struct PopoverContent: View {
                     .frame(height: 84)
             }
             if let composition = model.composition {
-                SectionRule("What the window holds", scope: scopeName) {
+                // Collapsed is the overview bar and legend, expanded the
+                // treemap and every table under it.
+                CollapsibleSectionRule("What the window holds", scope: scopeName, isExpanded: $compositionExpanded,
+                                       help: ("Collapse to the overview", "Expand to the treemap, baseline and every tool")) {
                     if composition.estimatesOvershoot { overshootBadge }
+                    Button { openExplorer() } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tertiary)
+                    .help("Open a large treemap you can drill into")
                 }
-                CompositionView(composition: composition, showsTitle: false)
+                CompositionView(composition: composition, expanded: compositionExpanded, showsTitle: false,
+                                onOpen: openExplorer)
             }
-            if model.state.status != .empty {
-                SectionRule("Details", scope: scopeName)
-            }
-            stats
             // Last: the account's allowance, not this session's window — the
             // sections above all describe the session.
             planLimitsSection
@@ -84,6 +100,11 @@ struct PopoverContent: View {
             actions
                 .padding(.top, 2)
         }
+    }
+
+    private func openExplorer() {
+        openWindow(id: CompositionExplorer.id)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: Scope
@@ -405,6 +426,30 @@ struct PopoverContent: View {
         }
     }
 
+    /// The collapsed Details: the same figures as `stats`, on one line.
+    @ViewBuilder
+    private var statsSummary: some View {
+        let state = model.state
+        let agent = model.focusedAgent
+        let delta = agent == nil ? state.contextDelta : model.history?.points.last?.contextDelta
+        let lastActivity = agent.flatMap { $0.lastTs.flatMap(Timestamps.date(from:)) } ?? state.lastActivity
+        let parts: [String] = [
+            delta.map { (($0 >= 0 ? "+" : "") + $0.formatted()) + " last turn" },
+            model.history.map { "\($0.points.count) turn\($0.points.count == 1 ? "" : "s")"
+                + ($0.compactionTurns.isEmpty ? "" : " · \($0.compactionTurns.count) compacted") },
+            agent == nil ? state.sessionId.map { String($0.prefix(8)) } : agent?.statusLabel,
+            lastActivity.map { (state.isIdle && agent == nil ? "idle since " : "")
+                + $0.formatted(date: .omitted, time: .shortened) },
+        ].compactMap { $0 }
+        Text(parts.joined(separator: "  ·  "))
+            .font(.caption)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .textSelection(.enabled)
+    }
+
     private func row(_ name: String, _ value: String) -> some View {
         GridRow {
             Text(name).foregroundStyle(.secondary)
@@ -422,9 +467,12 @@ struct PopoverContent: View {
     private var planLimitsSection: some View {
         let hasClaude = model.planLimits.contains { $0.vendor == Vendor.claudeCode }
         if !model.planLimits.isEmpty || !model.checksClaudeLimits || model.claudeLimitsError != nil {
-            SectionRule("Plan limits")
-            if !model.planLimits.isEmpty {
-                PlanLimitsView(limits: model.planLimits, usage: model.planLimitUsage)
+            if model.planLimits.isEmpty {
+                SectionRule("Plan limits")
+            } else {
+                CollapsibleSectionRule("Plan limits", isExpanded: $planLimitsExpanded,
+                                       help: ("Collapse to what is left", "Show every limit, its reset and usage"))
+                PlanLimitsView(limits: model.planLimits, usage: model.planLimitUsage, expanded: planLimitsExpanded)
             }
             if let error = model.claudeLimitsError {
                 Text("Claude: " + error)

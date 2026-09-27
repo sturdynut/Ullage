@@ -50,6 +50,54 @@ struct SectionRule<Trailing: View>: View {
     }
 }
 
+/// A `SectionRule` that is also the section's toggle: the whole rule is the
+/// target and a chevron at its end says which way it is. Collapsed sections
+/// show a one-glance summary; expanded, everything.
+struct CollapsibleSectionRule<Trailing: View>: View {
+    let title: String
+    var scope: String?
+    @Binding var isExpanded: Bool
+    var help: (collapse: String, expand: String) = ("Collapse", "Expand")
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Only the caption, hairline and chevron toggle; trailing items
+            // sit outside so a button among them gets its own clicks.
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() }
+            } label: {
+                SectionRule(title, scope: scope) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? help.collapse : help.expand)
+            trailing()
+                .fixedSize()
+        }
+    }
+}
+
+extension CollapsibleSectionRule {
+    init(_ title: String, scope: String? = nil, isExpanded: Binding<Bool>,
+         help: (collapse: String, expand: String) = ("Collapse", "Expand"),
+         @ViewBuilder trailing: @escaping () -> Trailing) {
+        self.init(title: title, scope: scope, isExpanded: isExpanded, help: help, trailing: trailing)
+    }
+}
+
+extension CollapsibleSectionRule where Trailing == EmptyView {
+    init(_ title: String, scope: String? = nil, isExpanded: Binding<Bool>,
+         help: (collapse: String, expand: String) = ("Collapse", "Expand")) {
+        self.init(title: title, scope: scope, isExpanded: isExpanded, help: help) { EmptyView() }
+    }
+}
+
 extension SectionRule where Trailing == EmptyView {
     init(_ title: String, scope: String? = nil) {
         self.init(title: title, scope: scope) { EmptyView() }

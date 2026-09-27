@@ -31,6 +31,12 @@ struct UllageApp: App {
             HistoryWindow()
         }
         .defaultSize(width: 980, height: 680)
+
+        // The popover's treemap, big enough to open every tile.
+        Window("What the Window Holds", id: CompositionExplorer.id) {
+            CompositionExplorer(model: model)
+        }
+        .defaultSize(width: 1000, height: 640)
     }
 }
 

@@ -2,24 +2,26 @@
 import SwiftUI
 import UllageCore
 
-/// M7 — a treemap of what the current window holds, and an expandable table
-/// view of it: the four totals, the baseline's known components (CLAUDE.md,
-/// MCP servers, skills) and every tool whose results are sitting in the window.
+/// M7 — what the current window holds. Collapsed, one bar of the four shares
+/// and a legend; expanded, a treemap and the table view of it: the four
+/// totals, the baseline's known components (CLAUDE.md, MCP servers, skills)
+/// and every tool whose results are sitting in the window.
 ///
 /// The layout is `CompositionTreemap`, computed and tested in Core. It is
 /// ordered rather than squarified so the tiles hold still while the popover
 /// redraws every turn; this view only draws the rectangles it is given.
 struct CompositionView: View {
     let composition: ContextComposition
-    /// Start with the breakdown open (the History window); the popover starts collapsed.
-    var startExpanded = false
+    /// The treemap and every table (the History window, or the popover's
+    /// section when opened), or just the distribution bar and its legend.
+    var expanded = true
     /// 88pt fits the popover; the History window has room to label more tiles.
     var treemapHeight: CGFloat = 88
     /// The popover names the block in its section rule; the history window has
     /// no such rule, so it keeps the name in the caption.
     var showsTitle = true
-
-    @State private var expanded = false
+    /// When set, clicking the treemap or the bar opens the explorer window.
+    var onOpen: (() -> Void)?
 
     /// Fixed per segment: a segment keeps its colour whatever its size.
     ///
@@ -65,29 +67,12 @@ struct CompositionView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            treemapAndKey
-
-            // A full-width button, not a bare DisclosureGroup label: the whole
-            // row is the target and the chevron makes the affordance obvious.
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-                    Text(expanded ? "Hide details" : "Totals, baseline & every tool")
-                        .font(.caption)
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            // The table view of the treemap: every figure a tile was too small
-            // to label is here, so nothing is reachable only by hovering.
             if expanded {
+                // The full view: the treemap, and the table view of it — every
+                // figure a tile was too small to label is here, so nothing is
+                // reachable only by hovering.
+                treemapAndKey
+                    .onTapGesture { onOpen?() }
                 VStack(alignment: .leading, spacing: 10) {
                     totals
                     baseline
@@ -95,9 +80,47 @@ struct CompositionView: View {
                 }
                 .padding(.top, 2)
                 .transition(.opacity)
+            } else {
+                // The overview: one bar of the four shares, and the legend
+                // that names and sizes them.
+                distributionBar
+                    .onTapGesture { onOpen?() }
+                totals
+                    .transition(.opacity)
             }
         }
-        .onAppear { expanded = startExpanded }
+    }
+
+    // MARK: - Distribution bar
+
+    private static let barHeight: CGFloat = 10
+    private static let barGap: CGFloat = 1.5
+
+    /// The four segments end to end, each as wide as its share. Same colours,
+    /// same fixed order as the treemap, so collapsing changes the view and not
+    /// the vocabulary.
+    private var distributionBar: some View {
+        let segments = composition.segments.filter { $0.tokens > 0 }
+        let total = segments.reduce(0) { $0 + $1.tokens }
+        return GeometryReader { geometry in
+            let usable = max(0, geometry.size.width - Self.barGap * CGFloat(max(segments.count - 1, 0)))
+            HStack(spacing: Self.barGap) {
+                ForEach(segments) { segment in
+                    Rectangle()
+                        .fill(Self.color(for: segment.name))
+                        .frame(width: total > 0 ? max(2, usable * CGFloat(segment.tokens) / CGFloat(total)) : 0)
+                        .help(segment.name + " · " + (Self.isEstimated(segment.name) ? "≈" : "")
+                              + segment.tokens.formatted() + " tokens · "
+                              + MenuBarFormatter.percentage(composition.share(segment.tokens)))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        }
+        .frame(height: Self.barHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(segments.map {
+            $0.name + " " + MenuBarFormatter.percentage(composition.share($0.tokens))
+        }.joined(separator: ", "))
     }
 
     // MARK: - Treemap

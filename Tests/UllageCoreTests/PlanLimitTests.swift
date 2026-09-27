@@ -235,4 +235,13 @@ final class PlanLimitTests: XCTestCase {
         XCTAssertEqual(onlyReset.first?.binding.limitKey, "codex:primary")
         XCTAssertTrue(PlanLimitFormatter.summaries([]).isEmpty)
     }
+
+    func testShortLabelsForTheCollapsedRow() {
+        XCTAssertEqual(PlanLimitFormatter.shortLabel("5-hour"), "5h")
+        XCTAssertEqual(PlanLimitFormatter.shortLabel("Weekly"), "week")
+        XCTAssertEqual(PlanLimitFormatter.shortLabel("3-day"), "3d")
+        XCTAssertEqual(PlanLimitFormatter.shortLabel("90-minute"), "90m")
+        XCTAssertEqual(PlanLimitFormatter.shortLabel("Weekly · Fable"), "Fable")
+        XCTAssertEqual(PlanLimitFormatter.shortLabel("Secondary"), "Secondary")
+    }
 }

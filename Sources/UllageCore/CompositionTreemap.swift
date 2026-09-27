@@ -405,7 +405,7 @@ public struct CompositionTreemap: Equatable {
     }
 
     /// Stable per name, so a part's shade follows it rather than its rank.
-    static func shade(for id: String) -> Int {
+    public static func shade(for id: String) -> Int {
         var hash: UInt32 = 2_166_136_261
         for byte in id.utf8 {
             hash ^= UInt32(byte)
