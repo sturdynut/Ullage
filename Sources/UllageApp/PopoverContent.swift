@@ -8,11 +8,45 @@ import UllageCore
 struct PopoverContent: View {
     @ObservedObject var model: MenuBarModel
     @Environment(\.openWindow) private var openWindow
+    /// Height of everything below the header, measured, so the scroll view is
+    /// exactly as tall as its content until the screen runs out.
+    @State private var sectionsHeight: CGFloat = 0
+    @State private var headerHeight: CGFloat = 0
 
     var body: some View {
+        // A MenuBarExtra window taller than the screen is clipped at the top,
+        // which is where the session name and model live. The toolbar and
+        // header stay pinned; the sections below scroll once they don't fit.
         VStack(alignment: .leading, spacing: 8) {
-            toolbar
-            header
+            VStack(alignment: .leading, spacing: 8) {
+                toolbar
+                header
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
+            ScrollView(.vertical) {
+                sections
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { sectionsHeight = $0 }
+            }
+            .scrollIndicators(.automatic)
+            .frame(height: min(sectionsHeight, maxSectionsHeight))
+        }
+        .padding(14)
+        .frame(width: 360)
+        .onAppear { model.popoverDidOpen() }
+        .onDisappear { model.popoverDidClose() }
+    }
+
+    /// The room left under the menu bar once the pinned header and padding are
+    /// placed, with a margin so the window never touches the bottom edge.
+    private var maxSectionsHeight: CGFloat {
+        let screen = NSScreen.main?.visibleFrame.height ?? 800
+        return max(200, screen - headerHeight - 14 * 2 - 8 - 24)
+    }
+
+    @ViewBuilder
+    private var sections: some View {
+        VStack(alignment: .leading, spacing: 8) {
             if let tree = model.agents, !tree.isEmpty {
                 SectionRule("Agents") { agentsTrailing }
                 AgentTreeView(
@@ -50,10 +84,6 @@ struct PopoverContent: View {
             actions
                 .padding(.top, 2)
         }
-        .padding(14)
-        .frame(width: 360)
-        .onAppear { model.popoverDidOpen() }
-        .onDisappear { model.popoverDidClose() }
     }
 
     // MARK: Scope
