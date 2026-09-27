@@ -65,8 +65,7 @@ struct CompositionView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            treemap
-            key
+            treemapAndKey
 
             // A full-width button, not a bare DisclosureGroup label: the whole
             // row is the target and the chevron makes the affordance obvious.
@@ -103,23 +102,33 @@ struct CompositionView: View {
 
     // MARK: - Treemap
 
-    private var treemap: some View {
+    /// Height of the one-line key under the treemap (caption2 and its swatch).
+    private static let keyHeight: CGFloat = 14
+    private static let keySpacing: CGFloat = 6
+
+    /// The treemap and its key come from one layout pass: the key prints the
+    /// totals the layout could not fit on any tile.
+    private var treemapAndKey: some View {
         GeometryReader { geometry in
             let map = CompositionTreemap.layout(
                 composition,
                 width: Double(geometry.size.width),
-                height: Double(geometry.size.height)
+                height: Double(treemapHeight)
             )
-            ZStack(alignment: .topLeading) {
-                ForEach(map.tiles) { tile in
-                    tileView(tile)
-                        .frame(width: CGFloat(max(tile.rect.width, 1)), height: CGFloat(max(tile.rect.height, 1)))
-                        .offset(x: CGFloat(tile.rect.x), y: CGFloat(tile.rect.y))
+            VStack(alignment: .leading, spacing: Self.keySpacing) {
+                ZStack(alignment: .topLeading) {
+                    ForEach(map.tiles) { tile in
+                        tileView(tile)
+                            .frame(width: CGFloat(max(tile.rect.width, 1)), height: CGFloat(max(tile.rect.height, 1)))
+                            .offset(x: CGFloat(tile.rect.x), y: CGFloat(tile.rect.y))
+                    }
                 }
+                .frame(width: geometry.size.width, height: treemapHeight, alignment: .topLeading)
+                key(hiddenTotals: map.hiddenTotals)
+                    .frame(height: Self.keyHeight)
             }
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         }
-        .frame(height: treemapHeight)
+        .frame(height: treemapHeight + Self.keySpacing + Self.keyHeight)
     }
 
     /// Lightness steps for the parts of a split segment: same hue, so the
@@ -193,14 +202,19 @@ struct CompositionView: View {
             + MenuBarFormatter.percentage(composition.share(tile.tokens)) + " of context"
     }
 
-    /// Tiles carry their own figures, so the key only maps colour to name.
-    private var key: some View {
+    /// Maps colour to name. A segment's figure appears here only when no tile
+    /// had room for it — typically a thin tool-results column.
+    private func key(hiddenTotals: [String: String]) -> some View {
         HStack(spacing: 11) {
             ForEach(composition.segments.filter { $0.tokens > 0 }) { segment in
                 HStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 1.5).fill(Self.color(for: segment.name)).frame(width: 8, height: 8)
                     Text(segment.name).foregroundStyle(.secondary).lineLimit(1)
+                    if let total = hiddenTotals[segment.name] {
+                        Text(total).monospacedDigit().foregroundStyle(.primary).lineLimit(1)
+                    }
                 }
+                .fixedSize()
                 .help(Self.note(for: segment.name))
             }
             Spacer(minLength: 0)
