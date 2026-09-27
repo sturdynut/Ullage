@@ -23,6 +23,13 @@ enum JSONAccess {
         return nil
     }
 
+    static func double(_ dict: [String: Any]?, _ key: String) -> Double? {
+        guard let value = dict?[key] else { return nil }
+        if let n = value as? NSNumber { return n.doubleValue }
+        if let s = value as? String { return Double(s) }
+        return nil
+    }
+
     /// Missing counters default to 0 (plan §9 trap 3).
     static func intOrZero(_ dict: [String: Any]?, _ key: String) -> Int {
         int(dict, key) ?? 0

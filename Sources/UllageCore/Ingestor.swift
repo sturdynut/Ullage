@@ -17,6 +17,7 @@ public struct IngestStats: Equatable {
     /// asked for them. Counted once each, not once per turn.
     public var agentsSeen = 0
     public var agentSpawnsLinked = 0
+    public var planLimitsSeen = 0
     /// A trailing partial line is normal — Claude Code is mid-write.
     public var partialTailBytes = 0
     public var restartedFromZero = 0
@@ -39,6 +40,7 @@ public struct IngestStats: Equatable {
         result.sessionEnvSnapshots += rhs.sessionEnvSnapshots
         result.agentsSeen += rhs.agentsSeen
         result.agentSpawnsLinked += rhs.agentSpawnsLinked
+        result.planLimitsSeen += rhs.planLimitsSeen
         result.partialTailBytes += rhs.partialTailBytes
         result.restartedFromZero += rhs.restartedFromZero
         return result
@@ -282,6 +284,16 @@ public final class Ingestor {
                 try store.upsert(toolCall: toolCall)
                 stats.toolCallsUpserted += 1
             }
+            for limit in parsedCall.planLimits {
+                try store.upsert(planLimit: limit)
+                stats.planLimitsSeen += 1
+            }
+
+        case .planLimits(let limits):
+            for limit in limits {
+                try store.upsert(planLimit: limit)
+                stats.planLimitsSeen += 1
+            }
 
         case .toolResults(let results):
             for result in results {
@@ -387,6 +399,7 @@ public final class Ingestor {
         switch parsed {
         case .call(let parsedCall): return parsedCall.call.ts
         case .event(let event): return event.ts
+        case .planLimits(let limits): return limits.first?.observedAt
         case .toolResults: return nil
         }
     }

@@ -191,6 +191,12 @@ struct HistoryWindow: View {
     private var sessionTable: some View {
         Table(model.sessions, selection: $model.selectedSession) {
             TableColumn("Project") { Text($0.project ?? "—").lineLimit(1) }
+            TableColumn("Path") { row in
+                Text(MenuBarFormatter.displayPath(row.cwd) ?? "—")
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .help(row.cwd ?? "")
+            }
             TableColumn("Session") { Text($0.sessionId.prefix(8)).monospaced() }.width(78)
             TableColumn("Last active") { row in
                 Text(Timestamps.date(from: row.lastTs).map { $0.formatted(date: .abbreviated, time: .shortened) } ?? row.lastTs)

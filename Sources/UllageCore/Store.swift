@@ -6,7 +6,7 @@ public final class Store {
     public let database: SQLiteDatabase
     public let path: String
 
-    public static let schemaVersion = 4
+    public static let schemaVersion = 5
 
     public init(path: String) throws {
         self.path = path
@@ -53,6 +53,19 @@ public final class Store {
         if current < 4 {
             try database.execute(Store.schemaV4)
             try database.execute("PRAGMA user_version=4;")
+        }
+        if current < 5 {
+            try database.execute(Store.schemaV5)
+            // Codex limits ride on lines already ingested; rewind Codex files
+            // once so the limits on disk show up without waiting for Codex to
+            // run again. Rows dedupe by ordinal, so the re-read is idempotent.
+            if current > 0 {
+                let paths = try database.query("SELECT path FROM file_cursor;") { $0.text(0) }
+                for path in paths where TranscriptFormat.detect(path: path) == .codex {
+                    try database.run("UPDATE file_cursor SET byte_offset = 0 WHERE path = ?1;", [.text(path)])
+                }
+            }
+            try database.execute("PRAGMA user_version=5;")
         }
     }
 
@@ -299,6 +312,23 @@ public final class Store {
       threshold      REAL NOT NULL,
       fired_at       TEXT NOT NULL,
       context_tokens INTEGER NOT NULL
+    );
+    """
+
+    /// Latest reading per subscription limit. Not history: a limit is a
+    /// rolling window, and only the newest reading of it means anything.
+    static let schemaV5 = """
+    CREATE TABLE IF NOT EXISTS plan_limit (
+      vendor         TEXT NOT NULL,
+      limit_key      TEXT NOT NULL,
+      label          TEXT NOT NULL,
+      used_percent   REAL NOT NULL,
+      resets_at      TEXT,
+      window_minutes INTEGER,
+      observed_at    TEXT NOT NULL,
+      source         TEXT NOT NULL,
+      sort_order     INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (vendor, limit_key)
     );
     """
 
@@ -794,13 +824,15 @@ public final class Store {
                (SELECT window_limit FROM call l WHERE l.session_id = s.session_id AND l.agent_id IS NULL
                  ORDER BY l.ts DESC, l.turn_index DESC LIMIT 1),
                (SELECT COUNT(*) FROM call n WHERE n.session_id = s.session_id AND n.agent_id IS NULL),
-               (SELECT COUNT(*) FROM agent a WHERE a.session_id = s.session_id)
+               (SELECT COUNT(*) FROM agent a WHERE a.session_id = s.session_id),
+               (SELECT cwd FROM call w WHERE w.session_id = s.session_id AND w.cwd IS NOT NULL
+                 ORDER BY w.ts DESC LIMIT 1)
         FROM (SELECT session_id, MAX(ts) AS last_ts FROM call GROUP BY session_id) s
         ORDER BY s.last_ts DESC
         LIMIT ?1;
         """
         return try database.query(sql, [.integer(Int64(limit))]) { row in
-            SessionSummary(
+            var summary = SessionSummary(
                 sessionId: row.text(0),
                 project: row.optionalText(1),
                 model: row.optionalText(2),
@@ -810,6 +842,8 @@ public final class Store {
                 calls: row.int(6),
                 agents: row.int(7)
             )
+            summary.cwd = row.optionalText(8)
+            return summary
         }
     }
 
@@ -1087,6 +1121,7 @@ public final class Store {
         public var id: String { sessionId }
         public var sessionId: String
         public var project: String?
+        public var cwd: String?
         public var model: String?
         public var calls: Int
         public var input: Int
@@ -1126,7 +1161,8 @@ public final class Store {
           MIN(c.ts), MAX(c.ts),
           (SELECT COUNT(*) FROM tool_call t WHERE t.session_id = c.session_id),
           (SELECT COUNT(*) FROM event e WHERE e.session_id = c.session_id AND e.kind = 'compaction'),
-          (SELECT COUNT(*) FROM agent a WHERE a.session_id = c.session_id)
+          (SELECT COUNT(*) FROM agent a WHERE a.session_id = c.session_id),
+          (SELECT cwd FROM call w WHERE w.session_id = c.session_id AND w.cwd IS NOT NULL ORDER BY w.ts DESC LIMIT 1)
         FROM call c
         GROUP BY c.session_id
         ORDER BY MAX(c.ts) DESC;
@@ -1135,6 +1171,7 @@ public final class Store {
             SessionTotals(
                 sessionId: row.text(0),
                 project: row.optionalText(1),
+                cwd: row.optionalText(15),
                 model: row.optionalText(2),
                 calls: row.int(3),
                 input: row.int(4),
@@ -1191,5 +1228,92 @@ public final class Store {
             confidence: row.text(26),
             parserVersion: row.int(27)
         )
+    }
+
+    // MARK: - Plan limits
+
+    /// Keeps the newer reading. Codex rollouts are re-read from the top, so an
+    /// old line must never overwrite a newer one it happens to follow.
+    public func upsert(planLimit row: PlanLimitRow) throws {
+        try database.run(
+            """
+            INSERT INTO plan_limit (vendor, limit_key, label, used_percent, resets_at,
+                                    window_minutes, observed_at, source, sort_order)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            ON CONFLICT(vendor, limit_key) DO UPDATE SET
+              label = excluded.label,
+              used_percent = excluded.used_percent,
+              resets_at = excluded.resets_at,
+              window_minutes = excluded.window_minutes,
+              observed_at = excluded.observed_at,
+              source = excluded.source,
+              sort_order = excluded.sort_order
+            WHERE excluded.observed_at >= plan_limit.observed_at;
+            """,
+            [
+                .text(row.vendor), .text(row.limitKey), .text(row.label), .real(row.usedPercent),
+                .string(row.resetsAt), .int(row.windowMinutes), .text(row.observedAt),
+                .text(row.source), .integer(Int64(row.sortOrder)),
+            ]
+        )
+    }
+
+    /// A fetch is the whole picture: a limit it no longer lists is gone, not
+    /// merely unobserved.
+    public func replacePlanLimits(vendor: String, source: String, with rows: [PlanLimitRow]) throws {
+        try database.transaction {
+            try database.run(
+                "DELETE FROM plan_limit WHERE vendor = ?1 AND source = ?2;",
+                [.text(vendor), .text(source)]
+            )
+            for row in rows { try upsert(planLimit: row) }
+        }
+    }
+
+    public func planLimits() throws -> [PlanLimitRow] {
+        try database.query(
+            """
+            SELECT vendor, limit_key, label, used_percent, resets_at, window_minutes,
+                   observed_at, source, sort_order
+            FROM plan_limit ORDER BY vendor, sort_order, limit_key;
+            """
+        ) { row in
+            PlanLimitRow(
+                vendor: row.text(0),
+                limitKey: row.text(1),
+                label: row.text(2),
+                usedPercent: row.double(3),
+                resetsAt: row.optionalText(4),
+                windowMinutes: row.optionalInt(5),
+                observedAt: row.text(6),
+                source: row.text(7),
+                sortOrder: row.int(8)
+            )
+        }
+    }
+
+    /// What Ullage itself saw one vendor use since `since` — the four counters
+    /// kept apart. It is a floor on what the limit counts: the vendor also
+    /// counts usage Ullage never sees (chat, other machines).
+    public struct WindowUsage: Equatable {
+        public var calls = 0
+        public var input = 0
+        public var output = 0
+        public var cacheRead = 0
+        public var cacheWrite = 0
+    }
+
+    public func windowUsage(vendor: String, since: String) throws -> WindowUsage {
+        try database.query(
+            """
+            SELECT COUNT(*), COALESCE(SUM(input), 0), COALESCE(SUM(output), 0),
+                   COALESCE(SUM(cache_read), 0), COALESCE(SUM(cache_write), 0)
+            FROM call WHERE vendor = ?1 AND ts >= ?2;
+            """,
+            [.text(vendor), .text(since)]
+        ) { row in
+            WindowUsage(calls: row.int(0), input: row.int(1), output: row.int(2),
+                        cacheRead: row.int(3), cacheWrite: row.int(4))
+        }.first ?? WindowUsage()
     }
 }

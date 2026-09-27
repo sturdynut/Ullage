@@ -19,6 +19,9 @@ public struct MenuBarState: Equatable {
     public var windowLimit: Int?
     public var sessionId: String?
     public var project: String?
+    /// Full working directory; the basename alone is ambiguous across
+    /// worktrees and same-named checkouts.
+    public var cwd: String?
     public var model: String?
     public var modelWindowIsAssumed: Bool
     public var lastActivity: Date?
@@ -48,6 +51,7 @@ public enum MenuBarFormatter {
                 windowLimit: nil,
                 sessionId: nil,
                 project: nil,
+                cwd: nil,
                 model: nil,
                 modelWindowIsAssumed: false,
                 lastActivity: nil,
@@ -81,11 +85,22 @@ public enum MenuBarFormatter {
             windowLimit: call.windowLimit,
             sessionId: call.sessionId,
             project: call.project,
+            cwd: call.cwd,
             model: call.model,
             modelWindowIsAssumed: !WindowLimits.isKnown(call.model),
             lastActivity: timestamp,
             contextDelta: call.contextDelta
         )
+    }
+
+    /// `cwd` with the home directory folded to `~`, for display only.
+    public static func displayPath(_ cwd: String?, home: String = NSHomeDirectory()) -> String? {
+        guard let cwd, !cwd.isEmpty else { return nil }
+        let home = home.hasSuffix("/") ? String(home.dropLast()) : home
+        guard !home.isEmpty else { return cwd }
+        if cwd == home { return "~" }
+        if cwd.hasPrefix(home + "/") { return "~" + cwd.dropFirst(home.count) }
+        return cwd
     }
 
     /// Rounded down: 99% must not read as 100% while there is still room.
