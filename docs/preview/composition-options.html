@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Window Composition Options</title>
+<style>
+  :root {
+    --ground: #eceef0;
+    --surface: #ffffff;
+    --ink: #16191d;
+    --ink-soft: #4a535c;
+    --ink-faint: #7f8891;
+    --rule: #d3d7dc;
+    --accent: #9a6c1c;
+
+    /* The mock popover follows macOS appearance, so it carries the system
+       colours CompositionView uses, light and dark. */
+    --pop-bg: #f6f6f7;
+    --pop-ink: #1d1d1f;
+    --pop-2: rgba(60,60,67,0.62);
+    --pop-3: rgba(60,60,67,0.38);
+    --pop-rule: rgba(60,60,67,0.16);
+    --pop-track: rgba(120,120,128,0.16);
+    --pop-edge: rgba(0,0,0,0.12);
+    --gray: #8e8e93;
+    --teal: #30b0c7;
+    --purple: #af52de;
+    --brown: #a2845e;
+    --warn: #ff9500;
+    --tile-ink: rgba(0,0,0,0.82);
+    --tile-ink-2: rgba(0,0,0,0.58);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0f1215;
+      --surface: #171b20;
+      --ink: #e6e9ec;
+      --ink-soft: #a6afb8;
+      --ink-faint: #6f7881;
+      --rule: #2a3138;
+      --accent: #d9a441;
+      --pop-bg: #1e1e20;
+      --pop-ink: #f2f2f4;
+      --pop-2: rgba(235,235,245,0.6);
+      --pop-3: rgba(235,235,245,0.32);
+      --pop-rule: rgba(235,235,245,0.14);
+      --pop-track: rgba(120,120,128,0.30);
+      --pop-edge: rgba(255,255,255,0.10);
+      --gray: #98989d;
+      --teal: #40c8e0;
+      --purple: #bf5af2;
+      --brown: #ac8e68;
+      --warn: #ff9f0a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0f1215;
+    --surface: #171b20;
+    --ink: #e6e9ec;
+    --ink-soft: #a6afb8;
+    --ink-faint: #6f7881;
+    --rule: #2a3138;
+    --accent: #d9a441;
+    --pop-bg: #1e1e20;
+    --pop-ink: #f2f2f4;
+    --pop-2: rgba(235,235,245,0.6);
+    --pop-3: rgba(235,235,245,0.32);
+    --pop-rule: rgba(235,235,245,0.14);
+    --pop-track: rgba(120,120,128,0.30);
+    --pop-edge: rgba(255,255,255,0.10);
+    --gray: #98989d;
+    --teal: #40c8e0;
+    --purple: #bf5af2;
+    --brown: #ac8e68;
+    --warn: #ff9f0a;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.01em; }
+  h2 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.005em; }
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); margin: 18px 0 6px; }
+  p { margin: 0 0 10px; }
+  .lede { color: var(--ink-soft); max-width: 70ch; }
+  code { font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .controls {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
+    margin: 22px -16px 8px; padding: 12px 16px;
+    background: color-mix(in srgb, var(--ground) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    font: inherit; font-size: 13px; padding: 5px 11px; border: 0; background: var(--surface);
+    color: var(--ink-soft); cursor: pointer; border-right: 1px solid var(--rule);
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .controls label { font-size: 12px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.05em; }
+  .dataset-note { font-size: 13px; color: var(--ink-faint); flex-basis: 100%; }
+
+  .option {
+    display: grid; grid-template-columns: auto 1fr; gap: 28px;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 14px;
+    padding: 22px; margin-top: 18px;
+  }
+  .option.pick { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+         padding: 1px 7px; border-radius: 5px; margin-left: 8px; vertical-align: 3px;
+         border: 1px solid var(--rule); color: var(--ink-faint); }
+  .pick .tag { border-color: var(--accent); color: var(--accent); }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li { margin: 3px 0; }
+  .sub { color: var(--ink-soft); margin-bottom: 8px; }
+  @media (max-width: 860px) {
+    .option { grid-template-columns: 1fr; }
+  }
+
+  /* ---- The mock popover ---- */
+  .pop {
+    width: calc(var(--content-w) + 28px); max-width: 100%;
+    background: var(--pop-bg); color: var(--pop-ink);
+    border: 1px solid var(--pop-edge); border-radius: 12px; padding: 14px;
+    font: 13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  }
+  .rule { display: flex; align-items: center; gap: 8px; margin: 0 0 6px;
+          font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--pop-3); }
+  .rule::after { content: ""; flex: 1; height: 1px; background: var(--pop-rule); }
+  .cap { font-size: 11px; color: var(--pop-2); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cap b { font-weight: 500; color: var(--pop-ink); }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; font-size: 10.5px; margin-top: 6px; }
+  .li { display: flex; align-items: center; gap: 4px; min-width: 0; }
+  .li i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .li .n { color: var(--pop-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .li .v { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .li .p { width: 30px; text-align: right; color: var(--pop-3); font-variant-numeric: tabular-nums; }
+  .more { font-size: 11px; color: var(--pop-2); margin-top: 6px; }
+  .more::before { content: "›  "; font-weight: 600; }
+  svg { display: block; overflow: visible; }
+  svg text { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
+
+  .tip {
+    position: fixed; pointer-events: none; z-index: 20; max-width: 280px;
+    background: var(--ink); color: var(--surface); border-radius: 8px; padding: 7px 10px;
+    font-size: 12px; line-height: 1.4; opacity: 0; transition: opacity 0.08s;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  }
+  .tip b { font-weight: 600; }
+  .tip .t2 { opacity: 0.72; }
+
+  .verdict { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 22px; margin-top: 30px; }
+  .verdict ol { padding-left: 20px; margin: 6px 0 0; }
+  .verdict li { margin: 6px 0; }
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 8px; }
+  .cmp th, .cmp td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .cmp th { color: var(--ink-faint); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .cmp-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>What the window holds — chart options</h1>
+  <p class="lede">
+    The popover's composition block is one flat bar of four segments plus a two-row legend. The part people
+    open "What's inside" for — <em>which tools</em> filled the window — isn't in the chart at all. Below are five
+    ways to draw the same <code>ContextComposition</code>, each at the popover's real content width (332pt) or the
+    History window's. Hover any mark for its figures.
+  </p>
+
+  <div class="controls">
+    <label>Session</label>
+    <div class="seg" id="ds"></div>
+    <label>Width</label>
+    <div class="seg" id="wd">
+      <button data-w="332" aria-pressed="true">Popover</button>
+      <button data-w="560" aria-pressed="false">History window</button>
+    </div>
+    <div class="dataset-note" id="dsnote"></div>
+  </div>
+
+  <section class="option">
+    <div class="mock" id="m-current"></div>
+    <div class="notes">
+      <h2>A. Flat stacked bar <span class="tag">today</span></h2>
+      <p class="sub">Four segments in fixed order, shares of what's in the window.</p>
+      <ul>
+        <li>Compact: 10pt of bar, ~30pt of legend.</li>
+        <li>Stable — segment order never changes, so the eye learns where "Output" lives.</li>
+        <li>Stops at the first level. Tool results is the one category with real parts, and they are two clicks away in a table.</li>
+        <li>The legend is doing the chart's labelling; it costs two rows because four labels don't fit in one.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="option pick">
+    <div class="mock" id="m-treemap"></div>
+    <div class="notes">
+      <h2>B. Treemap <span class="tag">recommended</span></h2>
+      <p class="sub">Area = tokens. Categories are tiles; Tool results splits into one tile per tool, Baseline splits off CLAUDE.md when the environment snapshot has it.</p>
+      <div class="seg" id="tmMode" style="margin: 2px 0 10px">
+        <button data-m="ordered" aria-pressed="true">Ordered (stable)</button>
+        <button data-m="squarified" aria-pressed="false">Squarified</button>
+      </div>
+      <ul>
+        <li>Shows the second level in the chart itself — "Read is 21k of your window" is visible without expanding anything.</li>
+        <li>Labels go <em>inside</em> tiles, so the two-row legend shrinks to a one-line key. It is about twice A's height (~88pt vs ~42pt) — the cost of showing the parts.</li>
+        <li><b>Ordered vs squarified is the real decision.</b> Squarified gives nicer aspect ratios but re-sorts by size, so tiles jump positions as the session grows — bad in a live popover. Ordered keeps the fixed category order left→right (the rule in CLAUDE.md) and only stacks tools within their column.</li>
+        <li>Weakness: tiny values vanish. In the real session below, tool results are 3% of the window — a sliver. Hover still works, and that sliver <em>is</em> the honest answer.</li>
+        <li>Estimated tiles keep the <code>≈</code>, as the legend does today.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="option">
+    <div class="mock" id="m-twotier"></div>
+    <div class="notes">
+      <h2>C. Two-tier bar (icicle)</h2>
+      <p class="sub">Today's bar, plus a thinner row under it that breaks each category into its parts, aligned beneath the parent.</p>
+      <ul>
+        <li>The smallest change from today: same reading direction, same colours, +8pt of height.</li>
+        <li>Shows the tool split, but at 6pt tall a part can't carry a label; names live in hover or under the bar for the top two or three.</li>
+        <li>A good fallback if the treemap reads as too busy in the popover.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="option">
+    <div class="mock" id="m-window"></div>
+    <div class="notes">
+      <h2>D. Composition on the window's scale</h2>
+      <p class="sub">One bar over the whole window: the segments fill from the left, the empty track is the headroom — the ullage.</p>
+      <ul>
+        <li>Merges two bars the popover draws today (occupancy in the header, composition lower down) into one, which answers "how full" and "full of what" together.</li>
+        <li>On a 1M window at 20–30% the segments get thin and the breakdown is hard to read; on a 200k window it's excellent.</li>
+        <li>Better as a replacement for the header bar than for this block — worth a separate decision.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="option">
+    <div class="mock" id="m-waffle"></div>
+    <div class="notes">
+      <h2>E. Waffle of the window</h2>
+      <p class="sub">100 squares, each 1% of the window, filled in fixed category order; empty squares are headroom.</p>
+      <ul>
+        <li>Countable — "21 squares used" is concrete in a way a percentage isn't, and the empty squares are a nice fit for the app's name.</li>
+        <li>Quantised to 1%: small categories round to zero squares, so it can't carry tools, and at 1M windows a whole category can be two squares.</li>
+        <li>Pleasant but lossy; it answers the header's question better than this block's.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="verdict">
+    <h2>Recommendation</h2>
+    <ol>
+      <li><b>Replace the flat bar with an ordered treemap (B, "Ordered").</b> It's the only option that puts the tool breakdown in the chart, it keeps positions stable as the popover updates live, and inside-tile labels let the two-row legend go. Popover: ~88pt tall. History window: ~160pt, where more tools get labels.</li>
+      <li><b>Keep the "What's inside" disclosure</b>, but it becomes the table view of the treemap (the full tool list, MCP servers, skills) rather than the only place the parts appear.</li>
+      <li><b>Treat D as its own follow-up</b> for the header occupancy bar — it's a good idea, but for a different chart.</li>
+    </ol>
+    <h3>Build notes</h3>
+    <ul>
+      <li>No new data needed. <code>ContextComposition</code> already has <code>tools</code> with per-tool tokens and <code>claudeMdTokensEstimate</code>. The layout (slice-and-dice / squarify) is a pure function of those — it belongs in <code>UllageCore</code> as a tested <code>TreemapLayout</code> struct, and SwiftUI only draws rectangles (a <code>Canvas</code> or a <code>ZStack</code> of positioned views, so each tile gets <code>.help()</code>).</li>
+      <li>The long tail folds into "N more tools" past the top five, rather than generating more shades.</li>
+      <li>Tool tiles are shades of the Tool results teal, so the category still reads by colour; tool identity is by label, not hue.</li>
+    </ul>
+    <h3>At a glance</h3>
+    <div class="cmp-wrap">
+    <table class="cmp">
+      <tr><th></th><th>Shows tools</th><th>Stable while live</th><th>Height in popover</th><th>Needs legend</th></tr>
+      <tr><td>A. Flat bar</td><td>No</td><td>Yes</td><td>~42pt</td><td>Yes, 2 rows</td></tr>
+      <tr><td>B. Treemap, ordered</td><td>Yes</td><td>Yes</td><td>~88pt</td><td>No</td></tr>
+      <tr><td>B. Treemap, squarified</td><td>Yes</td><td>No — reshuffles</td><td>~88pt</td><td>No</td></tr>
+      <tr><td>C. Two-tier bar</td><td>Partly (hover)</td><td>Yes</td><td>~50pt</td><td>Yes</td></tr>
+      <tr><td>D. Window scale</td><td>No</td><td>Yes</td><td>~42pt</td><td>Yes</td></tr>
+      <tr><td>E. Waffle</td><td>No</td><td>Yes</td><td>~70pt</td><td>Yes</td></tr>
+    </table>
+    </div>
+  </section>
+</main>
+
+<div class="tip" id="tip"></div>
+
+<script>
+/* --------------------------------------------------------------------------
+   Data. The first set is this repo's own first build session, computed from
+   its transcript with the same attribution ContextComposition.build uses.
+   The other two are illustrative.
+   -------------------------------------------------------------------------- */
+const DATASETS = [
+  {
+    id: "real", label: "This repo's build session",
+    note: "Real: computed from this repo's first Claude Code session transcript (98 turns, no compactions). The repo was empty when it began, so there was no CLAUDE.md to split out of the baseline.",
+    window: 1000000, context: 338163, turns: [0, 97], compactions: 0,
+    baseline: 70434, baselineParts: null,
+    tools: [
+      ["Bash", 84, 9618], ["mcp__github__pull_request_read", 1, 1401], ["Artifact", 2, 540],
+      ["AskUserQuestion", 1, 58], ["mcp__github__create_pull_request", 1, 18], ["Skill", 2, 14]
+    ],
+    output: 199816, other: 56264
+  },
+  {
+    id: "tools", label: "Tool-heavy (README totals)",
+    note: "Illustrative: category totals from the README popover screenshot (215,861 / 1M, turns 0–125); the per-tool split and CLAUDE.md size are made up to show a tool-heavy window.",
+    window: 1000000, context: 215861, turns: [0, 125], compactions: 0,
+    baseline: 48212, baselineParts: { claudeMd: 3640 },
+    tools: [
+      ["Read", 38, 21400], ["Bash", 61, 11900], ["Grep", 44, 6100], ["mcp__github__pull_request_read", 5, 4200],
+      ["Glob", 19, 1800], ["Edit", 27, 900], ["WebFetch", 2, 700]
+    ],
+    output: 81340, other: 39309
+  },
+  {
+    id: "200k", label: "200k window, after compaction",
+    note: "Illustrative: a Sonnet-sized 200k window at 71%, restarted at a compaction summary — where the window-scaled options (D, E) do best.",
+    window: 200000, context: 142300, turns: [58, 131], compactions: 1,
+    baseline: 31200, baselineParts: { claudeMd: 3640 },
+    tools: [["Read", 22, 29800], ["Bash", 31, 13900], ["Grep", 17, 7600], ["Task", 3, 6200], ["Glob", 9, 900]],
+    output: 29100, other: 23500
+  }
+];
+
+const CAT = [
+  { key: "baseline", name: "Baseline", color: "--gray", est: false,
+    note: "Rides every turn: system prompt, tool schemas, skills, CLAUDE.md, and the opening prompt — or the summary, after a compaction." },
+  { key: "tools", name: "Tool results", color: "--teal", est: true,
+    note: "Estimated from the length of what each tool returned (~4 bytes per token)." },
+  { key: "output", name: "Output", color: "--purple", est: false,
+    note: "Output tokens as reported. A mid-stream snapshot; undercounts." },
+  { key: "other", name: "Other", color: "--brown", est: true,
+    note: "Prompts, thinking, tool inputs, and the error in the two estimates." }
+];
+
+const TOP_TOOLS = 5;
+let state = { ds: DATASETS[0], width: 332, tmMode: "ordered" };
+
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const compact = t => t >= 1e6 ? (t / 1e6).toFixed(1) + "M" : t >= 1e4 ? Math.floor(t / 1e3) + "k" : t >= 1e3 ? (t / 1e3).toFixed(1) + "k" : String(t);
+const pct = (x) => x < 0.01 && x > 0 ? "<1%" : Math.round(x * 100) + "%";
+const shortTool = n => n.startsWith("mcp__") ? n.split("__").slice(1).join(" · ").replace(/_/g, " ") : n;
+
+function categories(ds) {
+  const toolsTotal = ds.tools.reduce((s, t) => s + t[2], 0);
+  return CAT.map(c => {
+    let tokens = c.key === "tools" ? toolsTotal : ds[c.key];
+    let children = null;
+    if (c.key === "tools") {
+      const sorted = ds.tools.slice().sort((a, b) => b[2] - a[2]);
+      children = sorted.slice(0, TOP_TOOLS).map(t => ({ name: shortTool(t[0]), full: t[0], calls: t[1], tokens: t[2], est: true }));
+      const rest = sorted.slice(TOP_TOOLS);
+      if (rest.length) children.push({
+        name: rest.length + " more", full: rest.map(r => r[0]).join(", "),
+        calls: rest.reduce((s, r) => s + r[1], 0), tokens: rest.reduce((s, r) => s + r[2], 0), est: true, tail: true
+      });
+      children = children.filter(ch => ch.tokens > 0);
+    } else if (c.key === "baseline" && ds.baselineParts) {
+      const md = ds.baselineParts.claudeMd;
+      children = [
+        { name: ds.turns[0] === 0 ? "System + prompt" : "System + summary", tokens: tokens - md, est: true,
+          detail: "Not separable on disk; the baseline less the CLAUDE.md estimate." },
+        { name: "CLAUDE.md", tokens: md, est: true, detail: "Length estimate, ~4 bytes per token." }
+      ];
+    }
+    return { ...c, tokens, children };
+  });
+}
+
+/* ---- Tooltip ---- */
+const tip = document.getElementById("tip");
+function bindTip(el, html) {
+  el.addEventListener("mousemove", e => {
+    tip.innerHTML = html; tip.style.opacity = 1;
+    const r = tip.getBoundingClientRect();
+    let x = e.clientX + 14, y = e.clientY + 14;
+    if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14;
+    if (y + r.height > innerHeight - 8) y = e.clientY - r.height - 14;
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  });
+  el.addEventListener("mouseleave", () => { tip.style.opacity = 0; });
+}
+function tipFor(ds, cat, child) {
+  const est = (child ? child.est : cat.est) ? "≈" : "";
+  if (child) {
+    return `<b>${child.full || child.name}</b> <span class="t2">· ${cat.name}</span><br>` +
+      `${est}${child.tokens.toLocaleString()} tokens · ${pct(child.tokens / ds.context)} of context` +
+      (child.calls != null ? `<br><span class="t2">${child.calls} call${child.calls === 1 ? "" : "s"}</span>` : "") +
+      (child.detail ? `<br><span class="t2">${child.detail}</span>` : "");
+  }
+  return `<b>${cat.name}</b><br>${est}${cat.tokens.toLocaleString()} tokens · ${pct(cat.tokens / ds.context)} of context` +
+    `<br><span class="t2">${cat.note}</span>`;
+}
+
+/* ---- SVG helpers ---- */
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs, parent) {
+  const el = document.createElementNS(NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(el);
+  return el;
+}
+function svg(w, h) { return svgEl("svg", { width: w, height: h, viewBox: `0 0 ${w} ${h}` }); }
+function rect(parent, x, y, w, h, fill, r = 2, extra = {}) {
+  return svgEl("rect", { x, y, width: Math.max(0, w), height: Math.max(0, h), rx: Math.min(r, w / 2, h / 2), fill, ...extra }, parent);
+}
+/* A shade of the parent's colour for its children: same hue, alternating
+   lightness, so the category still reads by colour. */
+function shade(hex, i) {
+  const mix = [0, 22, 10, 30, 16, 36][i % 6];
+  return `color-mix(in srgb, ${hex} ${100 - mix}%, var(--pop-bg))`;
+}
+
+/* ---- Shared chrome ---- */
+function popover(host, title, bodyFn) {
+  host.innerHTML = "";
+  const pop = document.createElement("div");
+  pop.className = "pop";
+  pop.style.setProperty("--content-w", state.width + "px");
+  const ds = state.ds;
+  pop.innerHTML = `<div class="rule">${title}</div>`;
+  host.appendChild(pop);
+  bodyFn(pop, ds, categories(ds));
+}
+function caption(pop, ds, extra = "") {
+  const d = document.createElement("div");
+  d.className = "cap";
+  d.innerHTML = `turns ${ds.turns[0]}–${ds.turns[1]}` +
+    (ds.compactions ? `  ·  after ${ds.compactions} compaction${ds.compactions === 1 ? "" : "s"}` : "") + extra;
+  pop.appendChild(d);
+}
+function legend(pop, ds, cats, shareOf = ds.context) {
+  const g = document.createElement("div");
+  g.className = "legend";
+  cats.forEach(c => {
+    const li = document.createElement("div");
+    li.className = "li";
+    li.innerHTML = `<i style="background:var(${c.color})"></i><span class="n">${c.name}</span>` +
+      `<span class="v">${c.est ? "≈" : ""}${compact(c.tokens)}</span><span class="p">${pct(c.tokens / shareOf)}</span>`;
+    bindTip(li, tipFor(ds, c));
+    g.appendChild(li);
+  });
+  pop.appendChild(g);
+}
+function more(pop, text = "What's inside — baseline & tools") {
+  const d = document.createElement("div");
+  d.className = "more"; d.textContent = text;
+  pop.appendChild(d);
+}
+
+/* ---- A. Flat bar ---- */
+function drawCurrent(host) {
+  popover(host, "What the window holds", (pop, ds, cats) => {
+    caption(pop, ds);
+    const W = state.width, gap = 2, live = cats.filter(c => c.tokens > 0);
+    const s = svg(W, 10);
+    const avail = W - gap * (live.length - 1);
+    let x = 0;
+    live.forEach(c => {
+      const w = Math.max(3, avail * c.tokens / ds.context);
+      bindTip(rect(s, x, 0, w, 10, `var(${c.color})`), tipFor(ds, c));
+      x += w + gap;
+    });
+    pop.appendChild(s);
+    legend(pop, ds, cats);
+    more(pop);
+  });
+}
+
+/* ---- B. Treemap ---- */
+function squarify(items, x, y, w, h) {
+  // items: [{value, ...}] sorted desc. Returns [{item, x, y, w, h}].
+  const out = [];
+  const total = items.reduce((s, i) => s + i.value, 0);
+  if (!total) return out;
+  const scale = (w * h) / total;
+  let rest = items.map(i => ({ item: i, area: i.value * scale }));
+  let rx = x, ry = y, rw = w, rh = h;
+  const worst = (row, side) => {
+    const s = row.reduce((a, r) => a + r.area, 0);
+    let mx = -Infinity, mn = Infinity;
+    row.forEach(r => { mx = Math.max(mx, r.area); mn = Math.min(mn, r.area); });
+    return Math.max((side * side * mx) / (s * s), (s * s) / (side * side * mn));
+  };
+  while (rest.length) {
+    const side = Math.min(rw, rh);
+    let row = [rest[0]], i = 1;
+    while (i < rest.length && worst(row.concat(rest[i]), side) <= worst(row, side)) { row.push(rest[i]); i++; }
+    rest = rest.slice(i);
+    const s = row.reduce((a, r) => a + r.area, 0);
+    if (rw >= rh) {
+      const cw = s / rh; let cy = ry;
+      row.forEach(r => { const ch = r.area / cw; out.push({ item: r.item, x: rx, y: cy, w: cw, h: ch }); cy += ch; });
+      rx += cw; rw -= cw;
+    } else {
+      const chh = s / rw; let cx = rx;
+      row.forEach(r => { const cw = r.area / chh; out.push({ item: r.item, x: cx, y: ry, w: cw, h: chh }); cx += cw; });
+      ry += chh; rh -= chh;
+    }
+  }
+  return out;
+}
+function sliceDice(items, x, y, w, h, horizontal) {
+  const total = items.reduce((s, i) => s + i.value, 0);
+  const out = []; let off = 0;
+  items.forEach(i => {
+    const f = total ? i.value / total : 0;
+    if (horizontal) out.push({ item: i, x: x + off * w, y, w: f * w, h });
+    else out.push({ item: i, x, y: y + off * h, w, h: f * h });
+    off += f;
+  });
+  return out;
+}
+function inset(r, g) { return { ...r, x: r.x + g / 2, y: r.y + g / 2, w: r.w - g, h: r.h - g }; }
+
+function tileLabel(s, r, lines, ds) {
+  // Name on the first line, value on the second; drop what doesn't fit.
+  const padX = 5, lineH = 12;
+  const fits = (txt, size) => txt.length * size * 0.56 + padX * 2 <= r.w;
+  if (r.h < 14 || r.w < 22) return;
+  const g = svgEl("g", { "pointer-events": "none" }, s);
+  let y = r.y + 12;
+  const [name, values] = lines;
+  // Values come as alternatives, longest first: "≈39k  18%", then "≈39k".
+  const value = [].concat(values).find(v => fits(v, 10)) || "";
+  if (fits(name, 10.5)) {
+    svgEl("text", { x: r.x + padX, y, "font-size": 10.5, "font-weight": 600, fill: "var(--tile-ink)" }, g).textContent = name;
+    y += lineH;
+    if (r.h >= 28 && value) {
+      svgEl("text", { x: r.x + padX, y, "font-size": 10, fill: "var(--tile-ink-2)", "font-variant-numeric": "tabular-nums" }, g).textContent = value;
+    }
+  } else if (value) {
+    svgEl("text", { x: r.x + padX, y, "font-size": 10, fill: "var(--tile-ink-2)" }, g).textContent = value;
+  }
+}
+
+function drawTreemap(host) {
+  popover(host, "What the window holds", (pop, ds, cats) => {
+    caption(pop, ds, `  ·  <b>${ds.context.toLocaleString()}</b> tokens`);
+    const W = state.width, H = state.width > 400 ? 160 : 88, GAP = 2, SUB = 1;
+    const s = svg(W, H);
+    const live = cats.filter(c => c.tokens > 0).map(c => ({ ...c, value: c.tokens }));
+    const ordered = state.tmMode === "ordered";
+    const top = ordered
+      ? sliceDice(live, 0, 0, W + GAP, H + GAP, true)
+      : squarify(live.slice().sort((a, b) => b.value - a.value), 0, 0, W + GAP, H + GAP);
+    top.forEach(t => {
+      const c = t.item, r = inset(t, GAP), color = css(c.color);
+      if (r.w <= 0.5) return;
+      if (c.children && c.children.length > 1 && r.w > 6) {
+        const kids = c.children.map(ch => ({ ...ch, value: ch.tokens }));
+        // A header band keeps the category's name once it is split into parts.
+        if (r.h >= 44 && r.w >= 34) {
+          const hb = { x: r.x, y: r.y, w: r.w, h: 14 };
+          bindTip(rect(s, hb.x, hb.y, hb.w, hb.h, color, 2), tipFor(ds, c));
+          tileLabel(s, { ...hb, h: 14 }, [c.name + "  " + (c.est ? "≈" : "") + compact(c.tokens), (c.est ? "≈" : "") + compact(c.tokens)], ds);
+          r.y += 15; r.h -= 15;
+        }
+        const sub = ordered
+          ? sliceDice(kids, r.x, r.y, r.w + SUB, r.h + SUB, r.w > r.h * 2.2)
+          : squarify(kids.slice().sort((a, b) => b.value - a.value), r.x, r.y, r.w + SUB, r.h + SUB);
+        sub.forEach((k, i) => {
+          const kr = inset({ ...k, x: k.x + SUB / 2, y: k.y + SUB / 2 }, SUB);
+          kr.x -= SUB / 2; kr.y -= SUB / 2;
+          const idx = c.children.indexOf(c.children.find(ch => ch.name === k.item.name));
+          bindTip(rect(s, kr.x, kr.y, Math.max(kr.w, 1), Math.max(kr.h, 1), shade(color, idx), 2), tipFor(ds, c, k.item));
+          tileLabel(s, kr, [k.item.name, (k.item.est ? "≈" : "") + compact(k.item.tokens)], ds);
+        });
+      } else {
+        bindTip(rect(s, r.x, r.y, Math.max(r.w, 1.5), r.h, color, 3), tipFor(ds, c));
+        tileLabel(s, r, [c.name, [(c.est ? "≈" : "") + compact(c.tokens) + "  " + pct(c.tokens / ds.context), (c.est ? "≈" : "") + compact(c.tokens)]], ds);
+      }
+    });
+    pop.appendChild(s);
+    // A one-line key instead of the two-row legend: tiles carry their own labels.
+    const key = document.createElement("div");
+    key.className = "legend";
+    key.style.gridTemplateColumns = "repeat(4, auto)";
+    key.style.justifyContent = "start";
+    key.innerHTML = cats.map(c => `<div class="li"><i style="background:var(${c.color})"></i><span class="n">${c.name}</span></div>`).join("");
+    pop.appendChild(key);
+    more(pop, "All tools, MCP servers & skills");
+  });
+}
+
+/* ---- C. Two-tier bar ---- */
+function drawTwoTier(host) {
+  popover(host, "What the window holds", (pop, ds, cats) => {
+    caption(pop, ds);
+    const W = state.width, GAP = 2, live = cats.filter(c => c.tokens > 0);
+    const s = svg(W, 10 + 3 + 6 + 16);
+    const avail = W - GAP * (live.length - 1);
+    let x = 0;
+    const labels = [];
+    live.forEach(c => {
+      const w = Math.max(3, avail * c.tokens / ds.context);
+      const color = css(c.color);
+      bindTip(rect(s, x, 0, w, 10, `var(${c.color})`), tipFor(ds, c));
+      if (c.children && c.children.length) {
+        const tot = c.children.reduce((a, ch) => a + ch.tokens, 0);
+        let cx = x;
+        c.children.forEach((ch, i) => {
+          const cw = w * ch.tokens / tot;
+          bindTip(rect(s, cx + (i ? 0.5 : 0), 13, Math.max(cw - (i ? 1 : 0), 1), 6, shade(color, i), 1.5), tipFor(ds, c, ch));
+          if (c.key === "tools" && cw > 24) labels.push({ x: cx, w: cw, text: ch.name });
+          cx += cw;
+        });
+      } else {
+        rect(s, x, 13, w, 6, `color-mix(in srgb, var(${c.color}) 28%, var(--pop-bg))`, 1.5);
+      }
+      x += w + GAP;
+    });
+    labels.slice(0, 3).forEach(l => {
+      const maxChars = Math.floor((l.w - 2) / 5.4);
+      const t = l.text.length > maxChars ? l.text.slice(0, Math.max(1, maxChars - 1)) + "…" : l.text;
+      svgEl("text", { x: l.x + 1, y: 31, "font-size": 9.5, fill: "var(--pop-2)" }, s).textContent = t;
+    });
+    pop.appendChild(s);
+    legend(pop, ds, cats);
+    more(pop);
+  });
+}
+
+/* ---- D. Window-scaled bar ---- */
+function drawWindow(host) {
+  popover(host, "What the window holds", (pop, ds, cats) => {
+    const W = state.width, H = 10;
+    const d = document.createElement("div");
+    d.className = "cap";
+    d.innerHTML = `<b>${ds.context.toLocaleString()}</b> / ${ds.window.toLocaleString()}  ·  ${compact(ds.window - ds.context)} left  ·  turns ${ds.turns[0]}–${ds.turns[1]}`;
+    pop.appendChild(d);
+    const s = svg(W, H + 12);
+    rect(s, 0, 0, W, H, "var(--pop-track)", 3);
+    let x = 0;
+    const live = cats.filter(c => c.tokens > 0);
+    live.forEach((c, i) => {
+      const w = W * c.tokens / ds.window;
+      bindTip(rect(s, x, 0, Math.max(w - 1.5, 1.5), H, `var(${c.color})`, 2), tipFor(ds, c));
+      x += w;
+    });
+    const warnX = W * 0.85;
+    svgEl("line", { x1: warnX, x2: warnX, y1: -2, y2: H + 2, stroke: "var(--warn)", "stroke-width": 1.5 }, s);
+    svgEl("text", { x: warnX, y: H + 11, "font-size": 9, "text-anchor": "middle", fill: "var(--pop-3)" }, s).textContent = "85%";
+    const free = svgEl("rect", { x, y: 0, width: Math.max(0, W - x), height: H, fill: "transparent" }, s);
+    bindTip(free, `<b>Headroom</b><br>${(ds.window - ds.context).toLocaleString()} tokens · ${pct(1 - ds.context / ds.window)} of the window`);
+    pop.appendChild(s);
+    legend(pop, ds, cats, ds.window);
+  });
+}
+
+/* ---- E. Waffle ---- */
+function drawWaffle(host) {
+  popover(host, "What the window holds", (pop, ds, cats) => {
+    const W = state.width, cols = 20, rows = 5, gap = 2;
+    const cell = (W - gap * (cols - 1)) / cols;
+    const d = document.createElement("div");
+    d.className = "cap";
+    d.innerHTML = `each square is 1% of the window (${compact(ds.window / 100)} tokens)  ·  turns ${ds.turns[0]}–${ds.turns[1]}`;
+    pop.appendChild(d);
+    // Largest remainder, so the filled count is the occupancy rounded.
+    const filledTarget = Math.round(ds.context / ds.window * 100);
+    const raw = cats.map(c => c.tokens / ds.window * 100);
+    const n = raw.map(Math.floor);
+    let left = filledTarget - n.reduce((a, b) => a + b, 0);
+    raw.map((r, i) => [r - Math.floor(r), i]).sort((a, b) => b[0] - a[0]).forEach(([_, i]) => { if (left > 0) { n[i]++; left--; } });
+    const s = svg(W, rows * cell + (rows - 1) * gap);
+    let k = 0;
+    const cellsFor = [];
+    cats.forEach((c, ci) => { for (let j = 0; j < n[ci]; j++) cellsFor.push(ci); });
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const x = c * (cell + gap), y = r * (cell + gap);
+      const ci = cellsFor[k++];
+      if (ci != null) bindTip(rect(s, x, y, cell, cell, `var(${cats[ci].color})`, 2.5), tipFor(ds, cats[ci]));
+      else rect(s, x + 0.5, y + 0.5, cell - 1, cell - 1, "none", 2.5, { stroke: "var(--pop-rule)", "stroke-width": 1 });
+    }
+    pop.appendChild(s);
+    legend(pop, ds, cats, ds.window);
+  });
+}
+
+/* ---- Wiring ---- */
+function render() {
+  document.getElementById("dsnote").textContent = state.ds.note;
+  drawCurrent(document.getElementById("m-current"));
+  drawTreemap(document.getElementById("m-treemap"));
+  drawTwoTier(document.getElementById("m-twotier"));
+  drawWindow(document.getElementById("m-window"));
+  drawWaffle(document.getElementById("m-waffle"));
+}
+function seg(id, attr, onPick) {
+  const host = document.getElementById(id);
+  host.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    host.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    onPick(b.dataset[attr]); render();
+  });
+}
+const dsHost = document.getElementById("ds");
+DATASETS.forEach((d, i) => {
+  const b = document.createElement("button");
+  b.dataset.id = d.id; b.textContent = d.label; b.setAttribute("aria-pressed", i === 0);
+  dsHost.appendChild(b);
+});
+seg("ds", "id", id => { state.ds = DATASETS.find(d => d.id === id); });
+seg("wd", "w", w => { state.width = Math.min(+w, document.querySelector("main").clientWidth - 76); });
+seg("tmMode", "m", m => { state.tmMode = m; });
+// Phone width: the popover mock must fit the viewport.
+state.width = Math.min(332, document.querySelector("main").clientWidth - 76);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+render();
+</script>
+</body>
+</html>

@@ -23,3 +23,16 @@ SELECT ts, kind, detail FROM event ORDER BY ts;
 so the page stands alone. The compaction cliff in it — 87% to 14% between two
 adjacent turns, with `context_delta` NULL across the boundary — is the argument
 for the `event` table in one picture.
+
+## Composition chart options
+
+`composition-options.html` compares five ways to draw the popover's "What the
+window holds" block — today's flat bar, a treemap (ordered and squarified), a
+two-tier bar, a window-scaled bar and a waffle — at the popover's 332pt content
+width and the History window's. One dataset is real (this repo's first build
+session, attributed the way `ContextComposition.build` does it); the other two
+are labelled illustrative.
+
+**Decided: B, the ordered treemap**, now what the app draws
+(`CompositionTreemap` in Core, `CompositionView` in the app). The page stays as
+the record of what was compared and why.

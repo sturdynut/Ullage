@@ -2,14 +2,19 @@
 import SwiftUI
 import UllageCore
 
-/// M7 — one stacked bar of what the current window holds, a legend that names
-/// and sizes every segment, and an expandable breakdown: the baseline's known
-/// components (CLAUDE.md, MCP servers, skills) and the tools whose results are
-/// sitting in the window.
+/// M7 — a treemap of what the current window holds, and an expandable table
+/// view of it: the four totals, the baseline's known components (CLAUDE.md,
+/// MCP servers, skills) and every tool whose results are sitting in the window.
+///
+/// The layout is `CompositionTreemap`, computed and tested in Core. It is
+/// ordered rather than squarified so the tiles hold still while the popover
+/// redraws every turn; this view only draws the rectangles it is given.
 struct CompositionView: View {
     let composition: ContextComposition
     /// Start with the breakdown open (the History window); the popover starts collapsed.
     var startExpanded = false
+    /// 88pt fits the popover; the History window has room to label more tiles.
+    var treemapHeight: CGFloat = 88
     /// The popover names the block in its section rule; the history window has
     /// no such rule, so it keeps the name in the caption.
     var showsTitle = true
@@ -37,7 +42,7 @@ struct CompositionView: View {
     /// baseline is a measured prompt size, and assistant output is reported
     /// (it undercounts, which the detail says, but it is not a guess).
     static func isEstimated(_ segment: String) -> Bool {
-        segment == ContextComposition.toolResultsName || segment == ContextComposition.otherName
+        ContextComposition.isEstimate(segment: segment)
     }
 
     static func note(for segment: String) -> String {
@@ -60,8 +65,8 @@ struct CompositionView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            bar
-            legend
+            treemap
+            key
 
             // A full-width button, not a bare DisclosureGroup label: the whole
             // row is the target and the chevron makes the affordance obvious.
@@ -72,7 +77,7 @@ struct CompositionView: View {
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
-                    Text(expanded ? "Hide details" : "What's inside — baseline & tools")
+                    Text(expanded ? "Hide details" : "Totals, baseline & every tool")
                         .font(.caption)
                     Spacer(minLength: 0)
                 }
@@ -81,8 +86,11 @@ struct CompositionView: View {
             }
             .buttonStyle(.plain)
 
+            // The table view of the treemap: every figure a tile was too small
+            // to label is here, so nothing is reachable only by hovering.
             if expanded {
                 VStack(alignment: .leading, spacing: 10) {
+                    totals
                     baseline
                     if !composition.tools.isEmpty { tools }
                 }
@@ -93,18 +101,111 @@ struct CompositionView: View {
         .onAppear { expanded = startExpanded }
     }
 
-    private var bar: some View {
+    // MARK: - Treemap
+
+    private var treemap: some View {
         GeometryReader { geometry in
-            HStack(spacing: 2) {
-                ForEach(composition.segments.filter { $0.tokens > 0 }) { segment in
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Self.color(for: segment.name))
-                        .frame(width: max(3, (geometry.size.width - 6) * composition.share(segment.tokens)))
-                        .help("\(segment.name): \(segment.tokens.formatted()) tokens")
+            let map = CompositionTreemap.layout(
+                composition,
+                width: Double(geometry.size.width),
+                height: Double(geometry.size.height)
+            )
+            ZStack(alignment: .topLeading) {
+                ForEach(map.tiles) { tile in
+                    tileView(tile)
+                        .frame(width: CGFloat(max(tile.rect.width, 1)), height: CGFloat(max(tile.rect.height, 1)))
+                        .offset(x: CGFloat(tile.rect.x), y: CGFloat(tile.rect.y))
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+        }
+        .frame(height: treemapHeight)
+    }
+
+    /// Lightness steps for the parts of a split segment: same hue, so the
+    /// segment still reads by colour, with neighbours told apart. The step is
+    /// derived from the part's name, so it follows the tool, not its rank.
+    private static let partBrightness: [Double] = [0.0, 0.10, 0.04, 0.14, 0.07]
+
+    private func tileView(_ tile: CompositionTreemap.Tile) -> some View {
+        let corner: CGFloat = tile.role == .segment ? 3 : 2
+        let brightness = tile.role == .part
+            ? Self.partBrightness[tile.shade % Self.partBrightness.count]
+            : 0
+        return RoundedRectangle(cornerRadius: corner, style: .continuous)
+            .fill(Self.color(for: tile.segment))
+            .brightness(brightness)
+            .overlay(alignment: .topLeading) { tileLabel(tile.label) }
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .help(helpText(for: tile))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityText(for: tile))
+    }
+
+    /// Dark ink on every fill: the four system colours are all mid-to-light,
+    /// and white on teal fails contrast in light mode. The same ink holds in
+    /// dark mode, where the system colours get brighter still.
+    @ViewBuilder
+    private func tileLabel(_ label: CompositionTreemap.Label) -> some View {
+        let name = Font.system(size: 10.5, weight: .semibold)
+        let value = Font.system(size: 10).monospacedDigit()
+        Group {
+            switch label {
+            case .none:
+                EmptyView()
+            case .value(let text):
+                Text(text).font(value).foregroundStyle(Color.black.opacity(0.66))
+            case .name(let text):
+                Text(text).font(name).foregroundStyle(Color.black.opacity(0.84))
+            case .nameAndValue(let title, let text):
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title).font(name).foregroundStyle(Color.black.opacity(0.84))
+                    Text(text).font(value).foregroundStyle(Color.black.opacity(0.66))
                 }
             }
         }
-        .frame(height: 10)
+        .lineLimit(1)
+        .padding(.horizontal, 5)
+        .padding(.top, 1)
+    }
+
+    private func helpText(for tile: CompositionTreemap.Tile) -> String {
+        let tokens = (tile.isEstimate ? "≈" : "") + tile.tokens.formatted() + " tokens"
+        let share = MenuBarFormatter.percentage(composition.share(tile.tokens)) + " of context"
+        var lines: [String]
+        switch tile.role {
+        case .segment, .header:
+            lines = [tile.name, tokens + " · " + share, Self.note(for: tile.segment)]
+        case .part:
+            lines = [tile.fullName + " · " + tile.segment, tokens + " · " + share]
+            if let calls = tile.calls { lines.append("\(calls) call\(calls == 1 ? "" : "s")") }
+            if let detail = tile.detail { lines.append(detail) }
+            if tile.segment == ContextComposition.toolResultsName {
+                lines.append("Estimated from the length of what the tool returned.")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func accessibilityText(for tile: CompositionTreemap.Tile) -> String {
+        let name = tile.role == .part ? tile.fullName + ", " + tile.segment : tile.name
+        return name + ", " + (tile.isEstimate ? "about " : "") + tile.tokens.formatted() + " tokens, "
+            + MenuBarFormatter.percentage(composition.share(tile.tokens)) + " of context"
+    }
+
+    /// Tiles carry their own figures, so the key only maps colour to name.
+    private var key: some View {
+        HStack(spacing: 11) {
+            ForEach(composition.segments.filter { $0.tokens > 0 }) { segment in
+                HStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 1.5).fill(Self.color(for: segment.name)).frame(width: 8, height: 8)
+                    Text(segment.name).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .help(Self.note(for: segment.name))
+            }
+            Spacer(minLength: 0)
+        }
+        .font(.caption2)
     }
 
     /// The section rule above names the block and carries the overshoot
@@ -118,10 +219,9 @@ struct CompositionView: View {
         return text
     }
 
-    /// Two rows of two. As one row it needed about 416pt in a 332pt box, so two
-    /// of the four labels were always truncated — including, routinely, the
-    /// largest share in the bar.
-    private var legend: some View {
+    /// The four totals, two rows of two — what the old legend showed, kept for
+    /// the segments whose tiles are too small to carry a label.
+    private var totals: some View {
         let segments = composition.segments
         return Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 3) {
             GridRow {
@@ -217,12 +317,7 @@ struct CompositionView: View {
     }
 
     static func compact(_ tokens: Int) -> String {
-        switch tokens {
-        case 1_000_000...: return String(format: "%.1fM", Double(tokens) / 1_000_000)
-        case 10_000...: return "\(tokens / 1_000)k"
-        case 1_000...: return String(format: "%.1fk", Double(tokens) / 1_000)
-        default: return "\(tokens)"
-        }
+        TokenFormat.compact(tokens)
     }
 }
 #endif
