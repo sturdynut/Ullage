@@ -54,11 +54,14 @@ you set it up.
   - a chart of context tokens per turn, where the band above the line is the
     room left, with the 85% line and a marker wherever a compaction dropped the
     window (hover for the exact turn, tokens, and change);
-  - a bar of **what the window holds right now** — baseline, tool results,
-    output, and everything else — with `≈` on the figures that are estimates,
-    and a "What's inside" button that expands to the baseline's parts
-    (CLAUDE.md, MCP servers, skills) and a per-tool table of what is sitting in
-    the window;
+  - a treemap of **what the window holds right now** — baseline, tool results,
+    output, and everything else, in that fixed order so the tiles hold still as
+    the session grows. Tool results split into the tools that produced them
+    (the top five, then "N more") and the baseline into CLAUDE.md and the rest,
+    each tile labelled where it fits and with `≈` on every estimate. Hover a
+    tile for its exact figure; the button below expands to the table view —
+    the four totals, the baseline's parts (CLAUDE.md, MCP servers, skills) and
+    every tool sitting in the window;
   - the last turn's change, turn count and last-active time;
   - at the bottom, **plan limits**: one line per harness with the limit that will stop you
     first — how much is left and which window it is. Expand it for every limit

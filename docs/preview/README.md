@@ -32,3 +32,7 @@ two-tier bar, a window-scaled bar and a waffle — at the popover's 332pt conten
 width and the History window's. One dataset is real (this repo's first build
 session, attributed the way `ContextComposition.build` does it); the other two
 are labelled illustrative.
+
+**Decided: B, the ordered treemap**, now what the app draws
+(`CompositionTreemap` in Core, `CompositionView` in the app). The page stays as
+the record of what was compared and why.
