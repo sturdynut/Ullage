@@ -233,9 +233,7 @@ plausible and are wrong.
   `rtk` binary) is told apart from one that works. Config is read only to know
   what can be switched now. Logic lives in `TokenSavers`, `SaverReport`,
   `SaverLedgers`, `SaverPanel`, `SaverDetail` (the window's ranges) and
-  `SaverSwitchboard`. `Timestamps.date(from:)` builds two formatters per call;
-  parse only what you need from a loop (a 30-day saver range went from 24s to
-  1s by parsing each session's two ends instead of every turn).
+  `SaverSwitchboard`.
 - **`session_env` is the one irreproducible table.** MCP servers, skills and
   CLAUDE.md are snapshotted at ingest because nothing on disk records what they
   were when a session ran. It is Claude-Code-only; other vendors skip it.
