@@ -266,4 +266,34 @@ final class IngestTests: XCTestCase {
         XCTAssertEqual(defaulted.count, 1)
         XCTAssertTrue(defaulted[0].path.hasSuffix("/.claude/projects"))
     }
+
+    /// Two writers on one database — a second app instance, or `ullage watch`
+    /// beside the app — each used to number turns from its own cached counter
+    /// and hand out the same index twice.
+    func testTwoIngestorsOnOneDatabaseNeverShareATurnIndex() throws {
+        let workspace = try TempWorkspace()
+        let lines = try Fixtures.lines("basic-session.jsonl")
+        try workspace.write("s.jsonl", lines: Array(lines.prefix(4)))
+        let url = workspace.root.appendingPathComponent("s.jsonl")
+        try workspace.ingestor.ingestFile(at: url)           // A caches its counter
+
+        try workspace.append("s.jsonl", text: lines[4..<8].joined(separator: "\n") + "\n")
+        try Ingestor(store: workspace.store).ingestFile(at: url)   // B numbers the next turns
+
+        try workspace.append("s.jsonl", text: lines[8...].joined(separator: "\n") + "\n")
+        try workspace.ingestor.ingestFile(at: url)           // A again, with a stale cache
+
+        let turns = try workspace.store.calls(sessionId: "sess-abc123").compactMap(\.turnIndex)
+        XCTAssertEqual(turns, Array(0..<turns.count))
+    }
+
+    func testDuplicateTurnIndexesAreRepaired() throws {
+        let workspace = try TempWorkspace()
+        try workspace.ingestor.ingestFile(at: try workspace.copyFixture("basic-session.jsonl"))
+        try workspace.store.database.run("UPDATE call SET turn_index = 1 WHERE turn_index = 2;")
+        XCTAssertEqual(try workspace.store.repairDuplicateTurns(), 1)
+        let turns = try workspace.store.calls(sessionId: "sess-abc123").compactMap(\.turnIndex)
+        XCTAssertEqual(turns, Array(0..<turns.count))
+        XCTAssertEqual(try workspace.store.repairDuplicateTurns(), 0)
+    }
 }

@@ -12,6 +12,7 @@ struct PopoverContent: View {
     /// exactly as tall as its content until the screen runs out.
     @State private var sectionsHeight: CGFloat = 0
     @State private var headerHeight: CGFloat = 0
+    @State private var contentHeight: CGFloat = 0
     @AppStorage("compositionExpanded") private var compositionExpanded = false
     @AppStorage("detailsExpanded") private var detailsExpanded = false
     @AppStorage("planLimitsExpanded") private var planLimitsExpanded = false
@@ -24,11 +25,11 @@ struct PopoverContent: View {
             VStack(alignment: .leading, spacing: 8) {
                 toolbar
                 header
-                // Next to the headline it explains, not below the charts.
-                if model.state.status != .empty {
-                    CollapsibleSectionRule("Details", scope: scopeName, isExpanded: $detailsExpanded,
-                                           help: ("Collapse to one line", "Show every detail"))
-                    if detailsExpanded { stats } else { statsSummary }
+                // Straight under the bar it charts: how the window filled up.
+                // No section rule — the headline above already names it.
+                if let history = model.history {
+                    ContextChart(history: history, showsIdleCaption: false, readoutOverlay: true)
+                        .frame(height: 72)
                 }
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
@@ -42,6 +43,9 @@ struct PopoverContent: View {
         }
         .padding(14)
         .frame(width: 360)
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+        .background(WindowFitter(height: contentHeight))
         .onAppear { model.popoverDidOpen() }
         .onDisappear { model.popoverDidClose() }
     }
@@ -56,25 +60,12 @@ struct PopoverContent: View {
     @ViewBuilder
     private var sections: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let tree = model.agents, !tree.isEmpty {
-                SectionRule("Agents") { agentsTrailing }
-                AgentTreeView(
-                    tree: tree,
-                    mainThreadDetail: mainThreadDetail,
-                    mainThreadOccupancy: model.state.occupancy,
-                    focus: model.focus,
-                    onSelect: { model.focus(on: $0) }
-                )
-            }
-            if let history = model.history {
-                SectionRule("Context per turn", scope: scopeName)
-                ContextChart(history: history, showsIdleCaption: false)
-                    .frame(height: 84)
-            }
+            // First under the headline: what the used part of the window is
+            // made of, then the figures that explain the headline.
             if let composition = model.composition {
                 // Collapsed is the overview bar and legend, expanded the
                 // treemap and every table under it.
-                CollapsibleSectionRule("What the window holds", scope: scopeName, isExpanded: $compositionExpanded,
+                CollapsibleSectionRule("Context composition", scope: scopeName, isExpanded: $compositionExpanded,
                                        help: ("Collapse to the overview", "Expand to the treemap, baseline and every tool")) {
                     if composition.estimatesOvershoot { overshootBadge }
                     Button { openExplorer() } label: {
@@ -87,6 +78,21 @@ struct PopoverContent: View {
                 }
                 CompositionView(composition: composition, expanded: compositionExpanded, showsTitle: false,
                                 onOpen: openExplorer)
+            }
+            if model.state.status != .empty {
+                CollapsibleSectionRule("Session information", scope: scopeName, isExpanded: $detailsExpanded,
+                                       help: ("Collapse to one line", "Show every detail"))
+                if detailsExpanded { stats } else { statsSummary }
+            }
+            if let tree = model.agents, !tree.isEmpty {
+                SectionRule("Agents") { agentsTrailing }
+                AgentTreeView(
+                    tree: tree,
+                    mainThreadDetail: mainThreadDetail,
+                    mainThreadOccupancy: model.state.occupancy,
+                    focus: model.focus,
+                    onSelect: { model.focus(on: $0) }
+                )
             }
             // Last: the account's allowance, not this session's window — the
             // sections above all describe the session.

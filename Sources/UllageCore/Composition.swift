@@ -25,6 +25,21 @@ public struct ContextComposition: Equatable {
         public var server: String?
         public var calls: Int
         public var resultTokens: Int
+        /// What the tool was called on, grouped: a Bash program, a file, a
+        /// pattern. Most-called first.
+        public var targets: [TargetShare] = []
+        public var id: String { name }
+    }
+
+    /// One thing a tool was called on, or a group of them: `git status` under
+    /// `git`, a file path under Read. `members` holds the distinct targets
+    /// inside a group, and is empty when the group is a single target.
+    public struct TargetShare: Equatable, Identifiable {
+        public var name: String
+        public var calls: Int
+        public var resultTokens: Int
+        public var errors: Int
+        public var members: [TargetShare] = []
         public var id: String { name }
     }
 
@@ -128,6 +143,7 @@ public struct ContextComposition: Equatable {
         let assistantOutput = prior.reduce(0) { $0 + $1.output }
 
         var shares: [String: ToolShare] = [:]
+        var callsByTool: [String: [ToolCallRow]] = [:]
         for tool in toolCalls where priorKeys.contains(tool.callId) {
             var share = shares[tool.name] ?? ToolShare(
                 name: tool.name, kind: tool.kind, server: tool.mcpServer, calls: 0, resultTokens: 0
@@ -135,6 +151,10 @@ public struct ContextComposition: Equatable {
             share.calls += 1
             share.resultTokens += tool.resultTokens ?? 0
             shares[tool.name] = share
+            callsByTool[tool.name, default: []].append(tool)
+        }
+        for name in shares.keys {
+            shares[name]?.targets = ToolTargets.group(tool: name, calls: callsByTool[name] ?? [])
         }
         let tools = shares.values.sorted {
             $0.resultTokens != $1.resultTokens ? $0.resultTokens > $1.resultTokens : $0.name < $1.name

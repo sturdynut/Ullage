@@ -357,7 +357,12 @@ public final class Ingestor {
             // It is the same turn, so do not advance the counter.
             turnIndex = existing
         } else {
-            turnIndex = state.nextTurnIndex
+            // The cached counter is only this process's view. Another writer
+            // on the same database (a second app instance, `ullage watch`)
+            // may have numbered turns since, and trusting the cache handed out
+            // the same index twice — a chart line that loops back on itself.
+            let stored = (try store.maxTurnIndex(sessionId: call.sessionId, agentId: call.agentId)).map { $0 + 1 } ?? 0
+            turnIndex = max(state.nextTurnIndex, stored)
             state.nextTurnIndex = turnIndex + 1
         }
         state.contextByTurn[turnIndex] = call.contextTokens

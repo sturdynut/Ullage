@@ -33,7 +33,7 @@ struct UllageApp: App {
         .defaultSize(width: 980, height: 680)
 
         // The popover's treemap, big enough to open every tile.
-        Window("What the Window Holds", id: CompositionExplorer.id) {
+        Window("Context Composition", id: CompositionExplorer.id) {
             CompositionExplorer(model: model)
         }
         .defaultSize(width: 1000, height: 640)
@@ -83,6 +83,15 @@ enum MenuBarLabel {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // One copy only. A reinstall that relaunches the app while a login
+        // item or launcher starts it too left two copies running, each
+        // tailing the same transcripts into the same database.
+        if let bundleId = Bundle.main.bundleIdentifier,
+           NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+               .contains(where: { $0 != NSRunningApplication.current && !$0.isTerminated }) {
+            NSApp.terminate(nil)
+            return
+        }
         // Menu bar only: no Dock icon, no main window.
         NSApp.setActivationPolicy(.accessory)
         MenuBarModel.shared.start()

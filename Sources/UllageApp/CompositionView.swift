@@ -77,6 +77,7 @@ struct CompositionView: View {
                     totals
                     baseline
                     if !composition.tools.isEmpty { tools }
+                    if !mostCalled.isEmpty { mostCalledList }
                 }
                 .padding(.top, 2)
                 .transition(.opacity)
@@ -250,7 +251,7 @@ struct CompositionView: View {
     /// therefore the first thing macOS truncated.
     private var caption: String {
         var text = showsTitle
-            ? "What the window holds  ·  turns \(composition.windowStartTurn)–\(composition.lastTurn)"
+            ? "Context composition  ·  turns \(composition.windowStartTurn)–\(composition.lastTurn)"
             : "turns \(composition.windowStartTurn)–\(composition.lastTurn)"
         if composition.compactions > 0 { text += "  ·  after \(composition.compactions) compaction\(composition.compactions == 1 ? "" : "s")" }
         return text
@@ -346,6 +347,30 @@ struct CompositionView: View {
                     GridRow {
                         Text("and \(composition.tools.count - 10) more").foregroundStyle(.tertiary)
                         Text(""); Text("")
+                    }
+                }
+            }
+            .font(.caption2)
+        }
+    }
+
+    // MARK: - Most called
+
+    private var mostCalled: [ToolTargets.Called] { ToolTargets.mostCalled(composition) }
+
+    private var mostCalledList: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Called most in the window")
+                .font(.caption).foregroundStyle(.secondary)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 2) {
+                ForEach(mostCalled) { entry in
+                    GridRow {
+                        Text(entry.tool).foregroundStyle(.tertiary)
+                        Text(entry.displayName)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(entry.target.name)
+                        Text("×\(entry.target.calls)").monospacedDigit().gridColumnAlignment(.trailing)
                     }
                 }
             }

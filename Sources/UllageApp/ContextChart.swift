@@ -16,6 +16,10 @@ struct ContextChart: View {
     /// The popover captions the block with a section rule, so the idle line
     /// would repeat it. The history window has no such rule and keeps it.
     var showsIdleCaption = true
+    /// No caption line of its own: the hover readout floats over the top of
+    /// the plot instead. For the popover, where the chart sits right under a
+    /// headline that already says how much is left.
+    var readoutOverlay = false
 
     @State private var hovered: ContextPoint?
 
@@ -28,7 +32,7 @@ struct ContextChart: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            readout
+            if !readoutOverlay { readout }
             if isUnmeasured {
                 Text("This harness records no token counts — activity only")
                     .font(.caption)
@@ -41,6 +45,15 @@ struct ContextChart: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 chart
+                    .overlay(alignment: .topLeading) {
+                        if readoutOverlay, hovered != nil {
+                            readout
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
+                                .allowsHitTesting(false)
+                        }
+                    }
             }
         }
     }
@@ -70,10 +83,14 @@ struct ContextChart: View {
             // is the negative space that matters, not a second series.
             if let limit {
                 ForEach(history.points) { point in
+                    // Its own series: without one, Charts joins this band and
+                    // the fill below into a single path, drawn as crossing
+                    // grey wedges across the plot.
                     AreaMark(
                         x: .value("Turn", point.turnIndex),
                         yStart: .value("Context", min(point.contextTokens, limit)),
-                        yEnd: .value("Window", limit)
+                        yEnd: .value("Window", limit),
+                        series: .value("Series", "room")
                     )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(Color.primary.opacity(0.045))
@@ -81,13 +98,19 @@ struct ContextChart: View {
             }
 
             ForEach(history.points) { point in
-                AreaMark(x: .value("Turn", point.turnIndex), y: .value("Context", point.contextTokens))
+                AreaMark(
+                    x: .value("Turn", point.turnIndex),
+                    yStart: .value("Floor", 0),
+                    yEnd: .value("Context", point.contextTokens),
+                    series: .value("Series", "fill")
+                )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(
                         LinearGradient(colors: [Color.accentColor.opacity(0.18), Color.accentColor.opacity(0.0)],
                                        startPoint: .top, endPoint: .bottom)
                     )
-                LineMark(x: .value("Turn", point.turnIndex), y: .value("Context", point.contextTokens))
+                LineMark(x: .value("Turn", point.turnIndex), y: .value("Context", point.contextTokens),
+                         series: .value("Series", "line"))
                     .interpolationMethod(.monotone)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                     .foregroundStyle(Color.accentColor)

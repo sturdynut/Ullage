@@ -17,6 +17,20 @@ struct CompositionExplorer: View {
     @ObservedObject var model: MenuBarModel
     @State private var path: [String] = []
     @State private var hovered: String?
+    /// Inside Tool results, tiles can be sized by calls instead of tokens:
+    /// what is called most is not always what fills the window.
+    @AppStorage("explorerRanksByCalls") private var byCalls = false
+
+    private enum Rank: String, CaseIterable { case tokens = "Tokens", calls = "Calls" }
+
+    /// Calls only mean something inside Tool results; the other segments have none.
+    private func ranksByCalls(_ level: CompositionNode) -> Bool {
+        byCalls && level.segment == ContextComposition.toolResultsName
+    }
+
+    private func weight(_ node: CompositionNode, byCalls: Bool) -> Int {
+        byCalls ? (node.calls ?? 0) : node.tokens
+    }
 
     var body: some View {
         Group {
@@ -68,6 +82,17 @@ struct CompositionExplorer: View {
                     .foregroundStyle(index == reached.count - 1 ? AnyShapeStyle(.primary) : AnyShapeStyle(Color.accentColor))
             }
             Spacer(minLength: 8)
+            if root.descend(reached).node.segment == ContextComposition.toolResultsName {
+                Picker("Size by", selection: Binding(
+                    get: { byCalls ? Rank.calls : Rank.tokens },
+                    set: { byCalls = $0 == .calls }
+                )) {
+                    ForEach(Rank.allCases, id: \.self) { Text($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .help("Size tiles and sort rows by tokens in the window, or by how often each was called")
+            }
             Text(caption(composition))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -96,12 +121,19 @@ struct CompositionExplorer: View {
     private func treemap(_ level: CompositionNode, composition: ContextComposition) -> some View {
         GeometryReader { geometry in
             let metrics = Self.metrics
+            let calls = ranksByCalls(level)
             let placed = CompositionTreemap.squarify(
                 level.children.isEmpty ? [level] : level.children,
                 width: Double(geometry.size.width),
                 height: Double(geometry.size.height),
                 gap: 2,
-                metrics: metrics
+                metrics: metrics,
+                weight: { weight($0, byCalls: calls) },
+                value: { node in
+                    calls
+                        ? "\(node.calls ?? 0) call\(node.calls == 1 ? "" : "s")"
+                        : (node.isEstimate ? "≈" : "") + TokenFormat.compact(node.tokens)
+                }
             )
             ZStack(alignment: .topLeading) {
                 ForEach(placed) { tile in
@@ -112,6 +144,7 @@ struct CompositionExplorer: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
             .animation(.easeInOut(duration: 0.2), value: path)
+            .animation(.easeInOut(duration: 0.2), value: byCalls)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -205,7 +238,11 @@ struct CompositionExplorer: View {
 
     /// The level as rows: every tile, including the ones too small to label.
     private func table(_ level: CompositionNode, composition: ContextComposition) -> some View {
-        let rows = level.children.isEmpty ? [level] : level.children.sorted { $0.tokens > $1.tokens }
+        let calls = ranksByCalls(level)
+        let rows = (level.children.isEmpty ? [level] : level.children).sorted {
+            let (a, b) = (weight($0, byCalls: calls), weight($1, byCalls: calls))
+            return a != b ? a > b : $0.tokens > $1.tokens
+        }
         let showsCalls = rows.contains { ($0.calls ?? 0) > 0 }
         return VStack(alignment: .leading, spacing: 6) {
             HStack {

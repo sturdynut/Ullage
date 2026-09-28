@@ -193,6 +193,25 @@ public final class Store {
     /// and the numbering is ours to redo, so both are fixed in place. Only the
     /// spawn tree needs the transcripts again, and the cursors for exactly those
     /// files are rewound at the end so the next ingest picks it up.
+    /// Streams where two rows share a turn index — left by two writers that
+    /// each numbered from their own cached counter — are renumbered from the
+    /// rows themselves. Cheap when there are none, so it runs on every open.
+    public func repairDuplicateTurns() throws -> Int {
+        let sessions = try database.query(
+            """
+            SELECT DISTINCT session_id FROM (
+              SELECT session_id FROM call WHERE turn_index IS NOT NULL
+              GROUP BY session_id, COALESCE(agent_id, ''), turn_index HAVING COUNT(*) > 1
+            );
+            """
+        ) { $0.text(0) }
+        guard !sessions.isEmpty else { return 0 }
+        try database.transaction {
+            for sessionId in sessions { try renumberStreams(sessionId: sessionId) }
+        }
+        return sessions.count
+    }
+
     func repairAgentStreams() throws {
         try database.transaction { try repairAgentStreamsInTransaction() }
     }

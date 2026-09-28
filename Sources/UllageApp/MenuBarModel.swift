@@ -144,6 +144,9 @@ final class MenuBarModel: ObservableObject {
             let path = ClaudePaths.defaultDatabaseURL().path
             databasePath = path
             let writeStore = try Store(path: path)
+            // Left behind by two writers numbering the same stream; see
+            // `Ingestor.assignTurn`. Nothing to do on a clean database.
+            _ = try? writeStore.repairDuplicateTurns()
             readStore = try Store(path: path)
 
             let tailer = SessionTailer(ingestor: Ingestor(store: writeStore))

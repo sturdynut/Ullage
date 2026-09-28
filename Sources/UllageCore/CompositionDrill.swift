@@ -75,7 +75,8 @@ public struct CompositionNode: Equatable, Identifiable {
         func leaf(_ tool: ContextComposition.ToolShare, name: String) -> CompositionNode {
             CompositionNode(id: segment + "/" + tool.name, name: name, fullName: tool.name, segment: segment,
                             tokens: tool.resultTokens, calls: tool.calls, isEstimate: true,
-                            detail: tool.server.map { "MCP server " + $0 }, children: [])
+                            detail: tool.server.map { "MCP server " + $0 },
+                            children: targets(tool, parent: segment + "/" + tool.name))
         }
         var nodes: [CompositionNode] = []
         var servers: [String: [ContextComposition.ToolShare]] = [:]
@@ -113,6 +114,32 @@ public struct CompositionNode: Equatable, Identifiable {
             ))
         }
         return nodes.sorted { $0.tokens > $1.tokens }
+    }
+
+    /// What a tool was called on. Nothing to open when every call had the same
+    /// target, or none — a level of one tile says nothing the tool did not.
+    static func targets(_ tool: ContextComposition.ToolShare, parent: String) -> [CompositionNode] {
+        let isFile = ToolTargets.fileTools.contains(tool.name)
+        func node(_ target: ContextComposition.TargetShare, parent: String) -> CompositionNode {
+            let id = parent + "/" + target.name
+            var detail = "\(target.calls) call\(target.calls == 1 ? "" : "s")"
+            if target.errors > 0 { detail += " · \(target.errors) failed" }
+            return CompositionNode(
+                id: id,
+                name: isFile ? ToolTargets.shortPath(target.name) : target.name,
+                fullName: target.name,
+                segment: ContextComposition.toolResultsName,
+                tokens: target.resultTokens,
+                calls: target.calls,
+                isEstimate: true,
+                detail: detail,
+                children: target.members.map { node($0, parent: id) }
+            )
+        }
+        let nodes = tool.targets.map { node($0, parent: parent) }
+        if nodes.count == 1, nodes[0].children.isEmpty { return [] }
+        if nodes.allSatisfy({ $0.fullName == ToolTargets.noTarget }) { return [] }
+        return nodes
     }
 
     /// The recorded server, or the one spelled in an `mcp__server__tool` name.
@@ -157,13 +184,15 @@ extension CompositionTreemap {
         width: Double,
         height: Double,
         gap: Double = partGap,
-        metrics: Metrics = Metrics()
+        metrics: Metrics = Metrics(),
+        weight: (CompositionNode) -> Int = { $0.tokens },
+        value: (CompositionNode) -> String = { ($0.isEstimate ? "≈" : "") + TokenFormat.compact($0.tokens) }
     ) -> [Placed] {
-        let items = nodes.filter { $0.tokens > 0 }.sorted { $0.tokens > $1.tokens }
-        let total = Double(items.reduce(0) { $0 + $1.tokens })
+        let items = nodes.filter { weight($0) > 0 }.sorted { weight($0) > weight($1) }
+        let total = Double(items.reduce(0) { $0 + weight($1) })
         guard width > 0, height > 0, total > 0 else { return [] }
         let scale = width * height / total
-        var areas = items.map { Double($0.tokens) * scale }
+        var areas = items.map { Double(weight($0)) * scale }
         var rects: [Rect] = []
         var free = Rect(x: 0, y: 0, width: width, height: height)
 
@@ -212,11 +241,10 @@ extension CompositionTreemap {
                 width: max(1, rect.maxX >= width - 0.5 ? rect.width : rect.width - gap),
                 height: max(1, rect.maxY >= height - 0.5 ? rect.height : rect.height - gap)
             )
-            let value = (node.isEstimate ? "≈" : "") + TokenFormat.compact(node.tokens)
             return Placed(
                 node: node,
                 rect: inset,
-                label: label(name: node.name, values: [value], rect: inset, metrics: metrics),
+                label: label(name: node.name, values: [value(node)], rect: inset, metrics: metrics),
                 shade: node.id == node.segment ? 0 : shade(for: node.id)
             )
         }
