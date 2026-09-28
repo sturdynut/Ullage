@@ -32,7 +32,7 @@ you set it up.
 
 <div align="center">
 
-<img src="docs/screenshots/popover.png" alt="The Ullage popover: the session's project, path and model; 784k left in a 1M window over a marked occupancy bar; a context-per-turn chart whose upper band is the room left; a breakdown of what the window holds; and, at the bottom, the tightest plan limit for Claude and for Codex" width="380">
+<img src="docs/screenshots/popover.png" alt="The Ullage popover: the session's project, path and model; 781k left in a 1M window over a marked occupancy bar with the context-per-turn chart directly beneath it; a context-composition bar of baseline, tool results, output and other with its legend; a one-line session summary; and plan limits as one row per harness showing what is left in each limit" width="380">
 
 </div>
 
@@ -41,46 +41,78 @@ you set it up.
   turns amber past 85%, and drops to a plain gauge with no number once a session
   has been idle for 30 minutes, so a stale figure is never mistaken for a live
   one.
-- **Popover** — click the menu bar item for:
+- **Popover** — click the menu bar item. The top stays put while the rest
+  scrolls, so the session is always named even when the popover is taller than
+  the screen:
   - **which session**: its project, the full working directory (so two
     worktrees or checkouts with the same folder name are told apart), and the
     model;
   - **the room left in the window**, in tokens, over a bar marked at 85% and at
     the session's own peak, with the exact `used / window` beneath it;
+  - directly under that, **context tokens per turn**, where the band above the
+    line is the room left, with the 85% line and a marker wherever a compaction
+    dropped the window (hover for the exact turn, tokens, and change).
+
+  Below it, three sections that each collapse to one glance and expand for
+  everything (click the section's rule; each remembers how you left it):
+  - **Context composition** — what the used part of the window is made of:
+    baseline, tool results, output, and everything else, always in that order
+    and colour. Collapsed, one bar of the four shares with a legend of their
+    tokens and percentages. Expanded, a treemap — tool results split into the
+    tools that produced them, the baseline into CLAUDE.md and the rest, `≈` on
+    every estimate — with the four totals, the baseline's parts (CLAUDE.md, MCP
+    servers, skills), every tool in the window, and the targets **called most**
+    (`Bash git status ×12`, `Read Store.swift ×4`). The ⤢ button, or a click on
+    the bar or treemap, opens the [composition explorer](#composition-explorer).
+  - **Session information** — the last turn's change, turn count, session id and
+    last-active time: one line collapsed, a table expanded.
   - the **subagents that session spawned**, as the tree that spawned them, each
     named by the description the agent above it wrote and each with **its own
-    window and occupancy** — click one and the chart, the breakdown and the
-    figures below switch to its context, and say so;
-  - a chart of context tokens per turn, where the band above the line is the
-    room left, with the 85% line and a marker wherever a compaction dropped the
-    window (hover for the exact turn, tokens, and change);
-  - a treemap of **what the window holds right now** — baseline, tool results,
-    output, and everything else, in that fixed order so the tiles hold still as
-    the session grows. Tool results split into the tools that produced them
-    (the top five, then "N more") and the baseline into CLAUDE.md and the rest,
-    each tile labelled where it fits and with `≈` on every estimate. A segment
-    too narrow to label is drawn whole rather than sliced into slivers, a part
-    too thin to see folds into "N more", and any total no tile has room for is
-    printed in the key. Hover a tile for its exact figure; the button below
-    expands to the table view —
-    the four totals, the baseline's parts (CLAUDE.md, MCP servers, skills) and
-    every tool sitting in the window;
-  - the last turn's change, turn count and last-active time;
-  - at the bottom, **plan limits**: one line per harness with the limit that will stop you
-    first — how much is left and which window it is. Expand it for every limit
-    (Claude's 5-hour and weekly, per-model ones like Fable's, and Codex's) with
-    when each resets and what Ullage itself saw in that window. See
-    [Plan limits](#plan-limits).
+    window and occupancy** — click one and the chart, the composition and the
+    session information switch to its context, and say so;
+  - **Plan limits** — collapsed, one row per harness with what is left in every
+    limit (`Claude 5h 88% week 39% Fable 22%`), the tightest in bold. Expanded,
+    every limit with its bar, when it resets and what Ullage itself saw in that
+    window. See [Plan limits](#plan-limits).
 
   It follows the most recently active session and holds still on it while the
   popover is open. The chevron at the top switches session — grouped by
   project, since a session id is not a name, with each entry's path — and
   stays accented while one is pinned.
+- **Composition explorer** — the composition treemap at window size, one level
+  at a time. See [below](#composition-explorer).
 - **History window** — the History button opens activity per day stacked by
   project over 7, 30, 90, or 365 days, switchable between turns, output tokens,
   and cache reads; a table of every session in range with its path and agent
   count; and
   the selected session's agent tree, chart and full composition.
+
+### Composition explorer
+
+<div align="center">
+
+<img src="docs/screenshots/composition-explorer.png" alt="The composition explorer opened to Tool results, then Bash, sized by calls: python3 23 calls, sed 18, grep 13, then install-app.sh, cat, sqlite3 and smaller commands, with a table of calls, estimated tokens and share of the window beside the treemap" width="760">
+
+</div>
+
+What the window holds, big enough to open every tile. It starts at the four
+segments; click one to open it, and the breadcrumb or Escape goes back up:
+
+- **Tool results** opens to every tool in the window — nothing folds into
+  "N more" here — with MCP tools grouped under their server.
+- **A tool** opens to what it was called on: Bash by program and subcommand
+  (`git status`, `swift test`, `sqlite3`; a leading `cd`, variable assignments,
+  quotes and pipes are read the way the shell reads them), file tools by path,
+  search and fetch tools by pattern or URL. Failed calls are counted on hover.
+- **A Bash program** opens to the exact commands it ran.
+- **Tokens / Calls** sizes the tiles and sorts the table by how much of the
+  window each takes, or by how often it was called — what is called most is
+  not always what fills the window.
+
+The table beside the treemap lists every tile, including ones too small to
+label. The explorer is live: it follows the session (or agent) the popover
+shows and keeps its place as turns arrive. Token figures here are the same
+length estimates as the popover's, never counted tokens.
 
 ## Install
 

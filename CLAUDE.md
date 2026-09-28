@@ -42,7 +42,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 181 tests on macOS; 175 on Linux (six need CryptoKit)
+swift test                 # 192 tests on macOS; 186 on Linux (six need CryptoKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -143,12 +143,15 @@ plausible and are wrong.
   and tested in `UllageCore`; SwiftUI only renders it. Hence `MenuBarState`,
   `SessionHistory`, `Composition` as plain structs — and `CompositionTreemap`,
   which positions and labels every tile so `CompositionView` only draws them.
+  The explorer window's tree (`CompositionNode`), its squarified layout and the
+  grouping of tool calls by target (`ToolTargets`) live there too.
 - **Fixed order for anything colour-coded.** Composition segments and history
   projects keep a stable order so a colour follows an entity, never its rank.
   The composition treemap is *ordered*, not squarified, for the same reason —
   squarifying re-sorts by size, so tiles would swap places every turn — and a
-  tool's shade comes from its name, not its position;
-  the long tail folds into "Other" rather than cycling hues.
+  tool's shade comes from its name, not its position; the long tail folds into
+  "Other" rather than cycling hues. The explorer window does squarify: it draws
+  one level at a time, large, where legibility matters more than stillness.
 - **Compaction is a first-class event.** Context falls off a cliff at a
   compaction boundary: `context_delta` is NULL across it, charts mark it, and
   composition restarts the window at the post-compaction summary.

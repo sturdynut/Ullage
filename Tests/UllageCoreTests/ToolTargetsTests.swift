@@ -18,6 +18,12 @@ final class ToolTargetsTests: XCTestCase {
         XCTAssertEqual(ToolTargets.program(of: "/usr/bin/open -a Foo"), "open")
         XCTAssertEqual(ToolTargets.program(of: "sed -n 1,20p file"), "sed")
         XCTAssertEqual(ToolTargets.program(of: "uv run python -c \"\nprint(1)\n\""), "uv run")
+        // A quoted value with a space is one word, and a bare assignment runs nothing.
+        XCTAssertEqual(ToolTargets.program(of: "DB=\"$HOME/Library/Application Support/t.db\"; sqlite3 \"$DB\" .tables"), "sqlite3")
+        XCTAssertEqual(ToolTargets.program(of: "S=/tmp/x; rm -f $S/a.png; ls"), "rm")
+        XCTAssertEqual(ToolTargets.program(of: "cd /x && python3 - <<'EOF'"), "python3")
+        XCTAssertEqual(ToolTargets.program(of: "false || echo 'a | b'"), "false")
+        XCTAssertEqual(ToolTargets.program(of: "(OUT=$S ./build/app & P=$!; sleep 30)"), "app")
     }
 
     func testMostCalledFirstWithDistinctCommandsUnderAProgram() {

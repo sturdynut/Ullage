@@ -84,34 +84,85 @@ public enum ToolTargets {
     }
 
     /// `cd ~/x && FOO=1 git status -s | head` → `git status`.
+    ///
+    /// The first simple command in the line that runs something: `cd` and
+    /// bare assignments (`DB="…"; sqlite3 …`) are skipped, and quotes are
+    /// respected so a quoted path with a space is one word.
     public static func program(of command: String) -> String {
         let firstLine = command.split(whereSeparator: \.isNewline).first.map(String.init) ?? command
-        // Each simple command in a `&&`/`;` chain; the first that is not a
-        // `cd` is the one that names what the call was for.
-        let pieces = firstLine
-            .replacingOccurrences(of: "&&", with: ";")
-            .replacingOccurrences(of: "||", with: ";")
-            .split(separator: ";")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        let chosen = pieces.first { !$0.hasPrefix("cd ") && $0 != "cd" } ?? pieces.first ?? firstLine
-        var words = chosen
-            .split(separator: "|").first.map(String.init)?
-            .split(separator: " ", omittingEmptySubsequences: true)
-            .map(String.init) ?? []
-        // Leading environment assignments and wrappers say nothing about the program.
-        while let first = words.first,
-              first.contains("=") && !first.hasPrefix("-") || ["sudo", "time", "env", "exec", "nohup"].contains(first) {
-            words.removeFirst()
+        for statement in statements(firstLine) {
+            var words = statement
+            // Leading environment assignments and wrappers say nothing about the program.
+            while let first = words.first,
+                  isAssignment(first) || ["sudo", "time", "env", "exec", "nohup", "command"].contains(first) {
+                words.removeFirst()
+            }
+            guard let head = words.first, head != "cd" else { continue }
+            let name = head.hasPrefix("/") || head.hasPrefix("./") || head.hasPrefix("~/")
+                ? (head as NSString).lastPathComponent
+                : head
+            if subcommandPrograms.contains(name),
+               let sub = words.dropFirst().first(where: { !$0.hasPrefix("-") }) {
+                return name + " " + sub
+            }
+            return name
         }
-        guard let head = words.first else { return command.prefix(40).trimmingCharacters(in: .whitespaces) }
-        let name = head.hasPrefix("/") || head.hasPrefix("./") || head.hasPrefix("~/")
-            ? (head as NSString).lastPathComponent
-            : head
-        if subcommandPrograms.contains(name), words.count > 1, let sub = words.dropFirst().first(where: { !$0.hasPrefix("-") }) {
-            return name + " " + sub
+        return String(firstLine.prefix(40)).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// `NAME=value`, where NAME is a shell identifier.
+    static func isAssignment(_ word: String) -> Bool {
+        guard let equals = word.firstIndex(of: "="), equals != word.startIndex else { return false }
+        return word[..<equals].allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
+
+    /// The line split into simple commands on `;`, `&&`, `||`, `|` and
+    /// subshell parentheses, each
+    /// split into words, with quoted text kept whole and its quotes dropped.
+    /// Only the first command of a pipeline is kept: `swift test | grep` is a test run.
+    static func statements(_ line: String) -> [[String]] {
+        var statements: [[String]] = []
+        var words: [String] = []
+        var word = ""
+        var quote: Character?
+        var inPipeTail = false
+        var index = line.startIndex
+
+        func endWord() {
+            if !word.isEmpty { words.append(word); word = "" }
         }
-        return name
+        func endStatement(pipe: Bool) {
+            endWord()
+            if !inPipeTail, !words.isEmpty { statements.append(words) }
+            words = []
+            inPipeTail = pipe
+        }
+
+        while index < line.endIndex {
+            let char = line[index]
+            let next = line.index(after: index)
+            if let open = quote {
+                if char == open { quote = nil } else { word.append(char) }
+            } else if char == "\"" || char == "'" {
+                quote = char
+            } else if char == " " || char == "\t" {
+                endWord()
+            } else if char == ";" || char == "(" || char == ")" {
+                // A subshell's parentheses bound its commands like `;` does.
+                endStatement(pipe: false)
+            } else if char == "&" || char == "|", next < line.endIndex, line[next] == char {
+                endStatement(pipe: false)
+                index = line.index(after: next)
+                continue
+            } else if char == "|" {
+                endStatement(pipe: true)
+            } else {
+                word.append(char)
+            }
+            index = next
+        }
+        endStatement(pipe: false)
+        return statements
     }
 
     /// `/Users/me/Code/Ullage/Sources/UllageCore/Store.swift` → `UllageCore/Store.swift`.
