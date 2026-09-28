@@ -25,6 +25,11 @@ Anthropic for them the way Claude Code's `/usage` does, sending Claude Code's
 own sign-in to api.anthropic.com and nothing else. None of these happens until
 you set it up.
 
+Ullage only reads Claude Code's config, with one exception: when you flip a
+[token saver](#token-savers) switch, it edits Claude Code's user settings to
+switch that one tool on or off. It backs the file up first and never throws
+anything away.
+
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
 
@@ -38,9 +43,9 @@ you set it up.
 
 - **Menu bar:** a gauge icon whose needle rises with occupancy, followed by the
   percentage &nbsp;<img src="docs/screenshots/menu-bar.png" alt="Ullage menu bar item showing a gauge icon and 44%" height="18" valign="middle">&nbsp;. It
-  turns amber past 85%, and drops to a plain gauge with no number once a session
-  has been idle for 30 minutes, so a stale figure is never mistaken for a live
-  one.
+  turns amber past 85%. Once a session has been idle for 30 minutes the
+  percentage fades: you can still read the last value, and it doesn't look
+  current.
 - **Popover** — click the menu bar item. The top stays put while the rest
   scrolls, so the session is always named even when the popover is taller than
   the screen:
@@ -53,27 +58,36 @@ you set it up.
     line is the room left, with the 85% line and a marker wherever a compaction
     dropped the window (hover for the exact turn, tokens, and change).
 
-  Below it, three sections that each collapse to one glance and expand for
-  everything (click the section's rule; each remembers how you left it):
-  - **Context composition** — what the used part of the window is made of:
-    baseline, tool results, output, and everything else, always in that order
-    and colour. Collapsed, one bar of the four shares with a legend of their
-    tokens and percentages. Expanded, a treemap — tool results split into the
-    tools that produced them, the baseline into CLAUDE.md and the rest, `≈` on
-    every estimate — with the four totals, the baseline's parts (CLAUDE.md, MCP
-    servers, skills), every tool in the window, and the targets **called most**
-    (`Bash git status ×12`, `Read Store.swift ×4`). The ⤢ button, or a click on
-    the bar or treemap, opens the [composition explorer](#composition-explorer).
-  - **Session information** — the last turn's change, turn count, session id and
-    last-active time: one line collapsed, a table expanded.
-  - the **subagents that session spawned**, as the tree that spawned them, each
-    named by the description the agent above it wrote and each with **its own
-    window and occupancy** — click one and the chart, the composition and the
-    session information switch to its context, and say so;
-  - **Plan limits** — collapsed, one row per harness with what is left in every
-    limit (`Claude 5h 88% week 39% Fable 22%`), the tightest in bold. Expanded,
-    every limit with its bar, when it resets and what Ullage itself saw in that
-    window. See [Plan limits](#plan-limits).
+  Below it, every section collapses to **one row of its key figures** and
+  expands to the full view (click the section's rule; each remembers how you
+  left it):
+  - **Context composition**: what the used part of the window is made of,
+    always in the same order and colours. Collapsed, the four totals in one
+    row (`● Baseline 48k · ● Tools ≈41k · ● Output 85k · ● Other ≈55k`), with `≈` on
+    every estimate. Expanded, a treemap (tool results split by the tool that
+    produced them, the baseline into CLAUDE.md and the rest), the four totals,
+    the baseline's parts (CLAUDE.md, MCP servers, skills), every tool in the
+    window, and the targets **called most** (`Bash git status ×12`). The ⤢
+    button, or a click on the row or treemap, opens the
+    [composition explorer](#composition-explorer).
+  - **Token savers**: collapsed, problems first, then how many are on and off
+    (`rtk not running · Headroom idle · 1 on`).
+    Expanded, each tool's on/off switch, where its figure comes from, and an
+    Install… option for the ones you don't have. See
+    [Token savers](#token-savers).
+  - **Session information**: collapsed, the last turn's change, turn count and
+    last-active time (`last turn +951 · turns 112 · idle 5:27 PM`). Expanded, a
+    table that adds the session id.
+  - **Agents**: collapsed, how many there are, how many haven't finished, and
+    whose window is fullest. Expanded, the tree of **subagents the session
+    spawned**, each named by the description the agent above it wrote and each
+    with **its own window and occupancy**. Click one and the chart, the
+    composition and the session information switch to its context, and say
+    so. The tree stays open while an agent is selected.
+  - **Plan limits**: collapsed, each harness's tightest limit in one row
+    (`Claude 5h 88% left · Codex week 100% left`). Expanded, every limit with its
+    bar, when it resets, and what Ullage itself saw in that window. See
+    [Plan limits](#plan-limits).
 
   It follows the most recently active session and holds still on it while the
   popover is open. The chevron at the top switches session — grouped by
@@ -174,6 +188,10 @@ ullage push [--test]         # devices subscribed to alerts; --test buzzes them
 ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
 ullage limits [--fetch]      # plan limits left; --fetch asks Anthropic for Claude's
+ullage savers [session]      # token savers: switched on, and what each did
+ullage savers --days 30      # each saver across every session in the range
+ullage savers disable rtk --dry-run   # what switching one off would change
+ullage savers install caveman         # the tool's own install commands, after asking
 ullage info                  # resolved paths, retention, row counts
 ```
 
@@ -210,6 +228,87 @@ machines).
   says so until Claude Code's next request renews it. The endpoint is not a
   public API and may change; if it does, the limits disappear rather than show
   a wrong number.
+
+### Token savers
+
+[rtk](https://github.com/rtk-ai/rtk), [Tokenade](https://github.com/pi-infected/tokenade-npm),
+[caveman](https://github.com/juliusbrussee/caveman) and
+[Headroom](https://github.com/headroomlabs-ai/headroom) all exist to spend fewer
+tokens. Ullage shows what each one actually did and lets you switch it on or off.
+It never adds up a single "tokens saved" number, because nothing on disk records
+what a session would have cost without the tool.
+
+- **Did it run?** Claude Code logs every hook it runs in the transcript: the
+  command, the tool call it ran for, the command it was rewritten to, and any
+  error. Ullage reads those logs directly, so it can tell when a tool's hook
+  ran but failed. For example, rtk's hook keeps running after the `rtk` binary
+  is gone, and prints "rtk is not installed" every time.
+- **rtk and Tokenade** filter tool output before the model sees it, so Ullage
+  only ever sees the smaller version. Their savings come from their own logs
+  (rtk's `history.db`, Tokenade's `~/.tokenade/gain.jsonl`), matched to a
+  session by directory and time. They are shown with `≈` as that tool's own
+  claim: rtk counts bytes ÷ 4, and Tokenade doesn't say how it counts. When
+  both rewrite the same Bash call, the popover warns that their figures
+  overlap and can't be added together.
+- **caveman** shortens the model's replies, and Ullage measures output tokens
+  exactly. It compares the median output per turn with caveman on and with it
+  off, over the same directory's last 30 days of main-thread turns. That is a
+  comparison of different work, not a saving, and it is labelled as one. It
+  needs 20 turns on each side.
+- **Headroom** is an MCP server. Ullage shows whether it was loaded and
+  whether it was ever called; a loaded server that is never called still puts
+  its tool definitions in every prompt.
+
+The ⤢ button on the section opens the **Token savers window**. It shows each
+tool over this session, 7 days or 30 days:
+- what the transcripts prove: sessions it ran in, hook runs, rewrites, failures
+  with the last error message, and MCP calls;
+- for rtk and Tokenade, their own count per command (before, after and saved,
+  all marked `≈`);
+- for caveman, the two medians with their sample sizes, plus this session's
+  output per reply, coloured by whether caveman was on;
+- for Headroom, the sessions where it was loaded but never used.
+
+`ullage savers --days 30` prints the same summary.
+
+**The switches** change Claude Code's user config (`~/.claude/settings.json`,
+`~/.claude.json`), and only when you click one or run `ullage savers
+enable|disable`:
+
+| Tool | Switching it off | Switching it on |
+|---|---|---|
+| caveman | sets its `enabledPlugins` flag to false | sets the flag back to true |
+| rtk, Tokenade | moves its hooks, unchanged, into `parked-savers.json` next to Ullage's database | puts the hooks back from there |
+| Headroom (and Tokenade's MCP server) | moves its `mcpServers` entry into the same file | puts the entry back |
+
+**Installing and uninstalling** is always your call. Tools that are already
+installed get a row. The others are listed under **Install…** in the section,
+or you can use `ullage savers install|uninstall <name>`. Either way you see the
+tool's own documented commands first, and nothing runs until you confirm. The
+app runs them in Terminal, so you can watch, and so a browser sign-in
+(Tokenade) or a Homebrew prompt works. Uninstalling uses whichever package
+manager installed the tool (Homebrew, npm, pipx, uv, cargo), found from where
+its binary really lives.
+
+| Tool | Install | Uninstall |
+|---|---|---|
+| rtk | `brew install rtk` (or rtk's install script), then `rtk init -g` | `rtk init -g --uninstall`, then its package manager |
+| Tokenade | `npm install -g @tokenade/cli`, `tokenade install`, `tokenade login` | `tokenade uninstall`, `npm uninstall -g @tokenade/cli` |
+| caveman | `claude plugin marketplace add JuliusBrussee/caveman`, `claude plugin install caveman@caveman` | `claude plugin uninstall caveman@caveman`, then remove the marketplace |
+| Headroom | `uv tool install "headroom-ai[mcp]"` (or pipx), `claude mcp add --scope user headroom -- headroom mcp serve` | `claude mcp remove --scope user headroom`, then its package manager |
+
+A step is skipped if what it sets up is already there. When the run in Terminal
+finishes, the tool's row says whether it worked ("caveman installed · on from
+the next session", or which step stopped it), even if the popover was closed at
+the time.
+
+A switch you flip shows "Off from the next session" on its own row, with
+**Undo** until you close the popover.
+
+Each file is backed up to `backups/` next to the database before it is written.
+Sessions already running keep what they loaded; the change applies from the
+next one. Project-level config (`.claude/settings.json`, `.mcp.json`) is never
+touched.
 
 ### Aggregating across machines and harnesses
 

@@ -16,6 +16,8 @@ struct PopoverContent: View {
     @AppStorage("compositionExpanded") private var compositionExpanded = false
     @AppStorage("detailsExpanded") private var detailsExpanded = false
     @AppStorage("planLimitsExpanded") private var planLimitsExpanded = false
+    @AppStorage("saversExpanded") private var saversExpanded = false
+    @AppStorage("agentsExpanded") private var agentsExpanded = false
 
     var body: some View {
         // A MenuBarExtra window taller than the screen is clipped at the top,
@@ -66,7 +68,10 @@ struct PopoverContent: View {
                 // Collapsed is the overview bar and legend, expanded the
                 // treemap and every table under it.
                 CollapsibleSectionRule("Context composition", scope: scopeName, isExpanded: $compositionExpanded,
-                                       help: ("Collapse to the overview", "Expand to the treemap, baseline and every tool")) {
+                                       help: ("Collapse to the overview", "Expand to the treemap, baseline and every tool"),
+                                       shares: composition.segments.map {
+                                           RuleShare(color: CompositionView.color(for: $0.name), weight: Double($0.tokens))
+                                       }) {
                     if composition.estimatesOvershoot { overshootBadge }
                     Button { openExplorer() } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -85,14 +90,50 @@ struct PopoverContent: View {
                 if detailsExpanded { stats } else { statsSummary }
             }
             if let tree = model.agents, !tree.isEmpty {
-                SectionRule("Agents") { agentsTrailing }
-                AgentTreeView(
-                    tree: tree,
-                    mainThreadDetail: mainThreadDetail,
-                    mainThreadOccupancy: model.state.occupancy,
-                    focus: model.focus,
-                    onSelect: { model.focus(on: $0) }
-                )
+                // A selected agent keeps the tree open — collapsing it would hide
+                // the only control that says which window you are in — so while
+                // one is selected the rule is not a toggle at all.
+                if model.focusedAgent != nil {
+                    SectionRule("Agents") { agentsTrailing }
+                } else {
+                    CollapsibleSectionRule("Agents", isExpanded: $agentsExpanded,
+                                           help: ("Collapse to one line", "Show every agent and its window")) { agentsTrailing }
+                }
+                if agentsExpanded || model.focusedAgent != nil {
+                    AgentTreeView(
+                        tree: tree,
+                        mainThreadDetail: mainThreadDetail,
+                        mainThreadOccupancy: model.state.occupancy,
+                        focus: model.focus,
+                        onSelect: { model.focus(on: $0) }
+                    )
+                } else {
+                    ReadoutLine(tree.summary)
+                }
+            }
+            // After the session's own story (composition, details, agents):
+            // half of it is configuration, like the plan limits below it.
+            if !model.savers.isEmpty {
+                CollapsibleSectionRule("Token savers", isExpanded: $saversExpanded,
+                                       help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from")) {
+                    Button {
+                        openWindow(id: SaversWindow.id)
+                        NSApp.activate(ignoringOtherApps: true)
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tertiary)
+                    .help("Open each saver over this session, 7 or 30 days")
+                }
+                SaversView(panel: model.savers, expanded: saversExpanded,
+                           onSwitch: { model.setSaver($0, on: $1) },
+                           onUndo: { model.undoSaver($0) },
+                           onPlan: { saver, action in
+                               let plan = model.installPlan(saver, action)
+                               if InstallConfirmation.confirm(plan) { model.run(plan) }
+                           })
             }
             // Last: the account's allowance, not this session's window — the
             // sections above all describe the session.
@@ -433,27 +474,26 @@ struct PopoverContent: View {
     }
 
     /// The collapsed Details: the same figures as `stats`, on one line.
-    @ViewBuilder
-    private var statsSummary: some View {
+    private var statsSummary: some View { ReadoutLine(statsReadouts) }
+
+    private var statsReadouts: [Readout] {
         let state = model.state
         let agent = model.focusedAgent
         let delta = agent == nil ? state.contextDelta : model.history?.points.last?.contextDelta
         let lastActivity = agent.flatMap { $0.lastTs.flatMap(Timestamps.date(from:)) } ?? state.lastActivity
-        let parts: [String] = [
-            delta.map { (($0 >= 0 ? "+" : "") + $0.formatted()) + " last turn" },
-            model.history.map { "\($0.points.count) turn\($0.points.count == 1 ? "" : "s")"
-                + ($0.compactionTurns.isEmpty ? "" : " · \($0.compactionTurns.count) compacted") },
-            agent == nil ? state.sessionId.map { String($0.prefix(8)) } : agent?.statusLabel,
-            lastActivity.map { (state.isIdle && agent == nil ? "idle since " : "")
-                + $0.formatted(date: .omitted, time: .shortened) },
-        ].compactMap { $0 }
-        Text(parts.joined(separator: "  ·  "))
-            .font(.caption)
-            .monospacedDigit()
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .textSelection(.enabled)
+        var parts: [Readout] = []
+        if let delta { parts.append(Readout("last turn", (delta >= 0 ? "+" : "") + delta.formatted())) }
+        if let history = model.history {
+            parts.append(Readout("turns", history.points.count.formatted()))
+            if !history.compactionTurns.isEmpty { parts.append(Readout("compacted", "\(history.compactionTurns.count)×")) }
+        }
+        // The session id is in the expanded table; one line has no room for it.
+        if let status = agent?.statusLabel { parts.append(Readout(status)) }
+        if let lastActivity {
+            parts.append(Readout(state.isIdle && agent == nil ? "idle" : "at",
+                                 lastActivity.formatted(date: .omitted, time: .shortened)))
+        }
+        return parts
     }
 
     private func row(_ name: String, _ value: String) -> some View {

@@ -48,6 +48,7 @@ final class MenuBarModel: ObservableObject {
     func popoverDidOpen() {
         popoverIsOpen = true
         heldSessionId = nil      // re-latch onto whatever is current right now
+        saverStates = nil        // an install may have finished in Terminal
         refresh()
         fetchClaudeLimits()
     }
@@ -55,6 +56,11 @@ final class MenuBarModel: ObservableObject {
     func popoverDidClose() {
         popoverIsOpen = false
         heldSessionId = nil
+        // Keep "Installing… in Terminal" for runs still going; drop the rest.
+        saverPending = saverPending.filter { installWatches[$0.key] != nil }
+        saverUndo = [:]
+        for saver in resultsShown { saverResults[saver] = nil }
+        resultsShown = []
     }
     @Published private(set) var sessions: [SessionSummary] = []
     /// The picker's shape: sessions under the project they ran in.
@@ -130,6 +136,165 @@ final class MenuBarModel: ObservableObject {
                 self.refresh()
             }
         }
+    }
+
+    // MARK: Token savers
+
+    @Published private(set) var savers = SaverPanel()
+    /// What was done to each saver while the popover has been open — shown on
+    /// that saver's own row, and forgotten when the popover closes (by then
+    /// the config itself says it, see `SaverPanel.build`).
+    private var saverPending: [TokenSaver: String] = [:]
+    /// The state each switched saver was in before this popover changed it —
+    /// what Undo puts back. Forgotten with `saverPending`.
+    private var saverUndo: [TokenSaver: Bool] = [:]
+    /// Terminal runs still going, each with the marker its script writes its
+    /// exit status to when it ends.
+    private var installWatches: [TokenSaver: (plan: InstallPlan, marker: URL, started: Date)] = [:]
+    private var installTimer: Timer?
+    /// How a finished run went. Unlike `saverPending` it survives the popover
+    /// closing — a run often ends while it is closed — and is dropped once it
+    /// has been seen: on the close after an open that showed it.
+    private var saverResults: [TokenSaver: String] = [:]
+    private var resultsShown: Set<TokenSaver> = []
+    static let installWatchLimit: TimeInterval = 30 * 60
+
+    private let switchboard = SaverSwitchboard()
+    private lazy var installer = SaverInstaller(switchboard: switchboard)
+    private var saverInstalls: [TokenSaver: SaverInstallation] = [:]
+    // Other programs' files and a 30-day scan: re-read on a slower clock than
+    // the 15-second refresh, and at once after a switch.
+    private var saverStates: (at: Date, states: [TokenSaver: SaverSwitchState])?
+    private var saverLedger: (at: Date, entries: [LedgerEntry])?
+    private var saverComparison: (at: Date, cwd: String, value: OutputComparison?)?
+    static let saverCacheInterval: TimeInterval = 60
+
+    /// Writes Claude Code's user config. Only ever from the user's own click.
+    func setSaver(_ saver: TokenSaver, on: Bool) {
+        do {
+            try switchboard.set(saver, on: on)
+            if saverUndo[saver] == on {
+                // Back where it started: nothing is pending any more.
+                saverUndo[saver] = nil
+                saverPending[saver] = nil
+            } else {
+                saverUndo[saver] = !on
+                saverPending[saver] = on ? SaverPanel.onNextSession : SaverPanel.offNextSession
+            }
+        } catch {
+            saverPending[saver] = "Couldn't switch: \(error)"
+        }
+        saverStates = nil
+        refresh()
+    }
+
+    /// One saver over a range, for the Token savers window. Anchored on the
+    /// session the popover is showing. A 30-day range reads every session in
+    /// it, so the window asks for this on a change, not on every redraw.
+    func saverDetail(_ saver: TokenSaver, range: SaverRange) -> SaverDetail? {
+        guard let readStore else { return nil }
+        let ledger = saverLedger?.entries ?? SaverLedgers.load(since: Date().addingTimeInterval(-31 * 86_400))
+        return try? readStore.saverDetail(saver, range: range, sessionId: state.sessionId, ledger: ledger)
+    }
+
+    func saverSwitchState(_ saver: TokenSaver) -> SaverSwitchState {
+        saverStates?.states[saver] ?? .notInstalled
+    }
+
+    func saverIsInstalled(_ saver: TokenSaver) -> Bool {
+        saverInstalls[saver]?.isInstalled ?? false || saverSwitchState(saver) != .notInstalled
+    }
+
+    /// Puts a switch back the way it was before this popover changed it.
+    func undoSaver(_ saver: TokenSaver) {
+        guard let previous = saverUndo[saver] else { return }
+        setSaver(saver, on: previous)
+    }
+
+    func installPlan(_ saver: TokenSaver, _ action: SaverAction) -> InstallPlan {
+        installer.plan(saver, action)
+    }
+
+    /// Runs a plan the user has read and confirmed, in Terminal: the steps are
+    /// the tools' own commands, and some (a browser sign-in, Homebrew) need a
+    /// person at a real terminal.
+    func run(_ plan: InstallPlan) {
+        do {
+            let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+            let files = try SaverInstaller.writeCommandFile(for: plan, shell: shell)
+            NSWorkspace.shared.open(files.script)
+            saverPending[plan.saver] = "\(plan.action == .install ? "Installing" : "Uninstalling") \(plan.saver.displayName) in Terminal…"
+            saverResults[plan.saver] = nil
+            installWatches[plan.saver] = (plan, files.marker, Date())
+            watchInstalls()
+        } catch {
+            saverPending[plan.saver] = "Couldn't start Terminal: \(error)"
+        }
+        saverStates = nil
+        refresh()
+    }
+
+    /// Polls the markers every two seconds while any run is going; stops by
+    /// itself when none is.
+    private func watchInstalls() {
+        guard installTimer == nil else { return }
+        installTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkInstalls() }
+        }
+    }
+
+    private func checkInstalls() {
+        var finished = false
+        for (saver, watch) in installWatches {
+            if let status = SaverInstaller.finishedStatus(marker: watch.marker) {
+                try? FileManager.default.removeItem(at: watch.marker)
+                saverResults[saver] = SaverInstaller.outcome(of: watch.plan, status: status)
+                resultsShown.remove(saver)
+                saverPending[saver] = nil
+                installWatches[saver] = nil
+                finished = true
+            } else if Date().timeIntervalSince(watch.started) > Self.installWatchLimit {
+                // Left open or abandoned; the row stops claiming it is running.
+                saverPending[saver] = nil
+                installWatches[saver] = nil
+                finished = true
+            }
+        }
+        if installWatches.isEmpty {
+            installTimer?.invalidate()
+            installTimer = nil
+        }
+        if finished {
+            saverStates = nil
+            refresh()
+        }
+    }
+
+    private func refreshSavers(store: Store, sessionId: String?) throws {
+        let now = Date()
+        if saverStates.map({ now.timeIntervalSince($0.at) > Self.saverCacheInterval }) ?? true {
+            saverStates = (now, switchboard.states())
+            saverInstalls = Dictionary(uniqueKeysWithValues: TokenSaver.allCases.map { ($0, installer.installation(of: $0)) })
+        }
+        if saverLedger.map({ now.timeIntervalSince($0.at) > Self.saverCacheInterval }) ?? true {
+            saverLedger = (now, SaverLedgers.load(since: now.addingTimeInterval(-31 * 86_400)))
+        }
+        let report = try sessionId.map { try store.saverReport(sessionId: $0, ledger: saverLedger?.entries ?? []) }
+        var comparison: OutputComparison?
+        if let cwd = report?.cwd {
+            if let cached = saverComparison, cached.cwd == cwd, now.timeIntervalSince(cached.at) < Self.saverCacheInterval * 5 {
+                comparison = cached.value
+            } else {
+                let since = Timestamps.string(from: now.addingTimeInterval(-30 * 86_400))
+                comparison = try store.outputComparison(cwd: cwd, since: since)
+                saverComparison = (now, cwd, comparison)
+            }
+        }
+        savers = SaverPanel.build(report: report, states: saverStates?.states ?? [:], comparison: comparison,
+                                  installed: Set(saverInstalls.filter { $0.value.isInstalled }.keys),
+                                  pending: saverPending.merging(saverResults) { _, result in result },
+                                  undoable: Set(saverUndo.keys))
+        if popoverIsOpen { resultsShown.formUnion(saverResults.keys) }
     }
 
     private var readStore: Store?
@@ -226,6 +391,7 @@ final class MenuBarModel: ObservableObject {
 
             history = try shown.map { try readStore.contextHistory(sessionId: $0.sessionId, scope: focus) }
             composition = try shown.flatMap { try readStore.composition(sessionId: $0.sessionId, scope: focus) }
+            try refreshSavers(store: readStore, sessionId: shown?.sessionId)
 
             let limits = PlanLimitFormatter.displays(for: try readStore.planLimits())
             planLimits = limits

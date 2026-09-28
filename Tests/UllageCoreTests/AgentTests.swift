@@ -398,4 +398,14 @@ final class AgentTests: XCTestCase {
         XCTAssertEqual(groups[0].sessions.map(\.sessionId), ["s3", "s1"])
         XCTAssertEqual(groups[0].agents, 3)
     }
+
+    func testSummaryLineNamesTheFullestWindow() {
+        let done = AgentSummary(agentId: "a", sessionId: "s", agentType: "Explore", status: "completed",
+                                lastContextTokens: 90_000, windowLimit: 200_000)
+        let busy = AgentSummary(agentId: "b", sessionId: "s", label: "Review the diff", status: nil,
+                                lastContextTokens: 20_000, windowLimit: 200_000)
+        let tree = AgentTree(sessionId: "s", roots: [.init(agent: done, depth: 0), .init(agent: busy, depth: 0)])
+        XCTAssertEqual(Readout.line(tree.summary), "2 agents · 1 not finished · fullest Explore 45%")
+        XCTAssertFalse(tree.summary.contains(where: \.isWarning))
+    }
 }

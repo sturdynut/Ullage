@@ -25,6 +25,12 @@ USAGE
   ullage push [--test]       Devices subscribed to alerts; --test buzzes them
   ullage otlp                Export everything measured to an OTLP collector
   ullage limits [--fetch]    Plan limits left: Codex from disk; --fetch asks Anthropic for Claude's
+  ullage savers --days N     Each token saver across every session in the last N days
+  ullage savers [session]    Token savers (rtk, Tokenade, caveman, Headroom): switched on, and what they did
+  ullage savers enable|disable <name> [--dry-run]
+                             Switch one in Claude Code's user config (applies to new sessions)
+  ullage savers install|uninstall <name> [--dry-run] [--yes]
+                             Run the saver's own install or uninstall commands, after asking
   ullage info                Resolved paths and row counts
 
 OPTIONS
@@ -39,6 +45,7 @@ OPTIONS
   --traces-only     Export spans but no metrics
   --all             Export every span on disk, not just the window
   --fetch           `limits`: fetch Claude's plan limits (sends Claude Code's token to Anthropic)
+  --yes             `savers install|uninstall`: do not ask before running
   --verbose         Report malformed lines and skipped files
   -h, --help        This text
 
@@ -66,6 +73,7 @@ struct Options {
     var tracesOnly = false
     var everything = false
     var fetch = false
+    var yes = false
     /// `--days` was given explicitly, so it wins over the export cursor.
     var daysWasSet = false
 }
@@ -105,6 +113,8 @@ func parseArguments(_ arguments: [String]) -> Options {
             options.everything = true
         case "--fetch":
             options.fetch = true
+        case "--yes", "-y":
+            options.yes = true
         case "-h", "--help", "help":
             positional.append("help")
         default:
@@ -404,6 +414,119 @@ func menuBarLine(_ store: Store) throws -> String {
 
 /// One line per limit: what is left, when it resets, and what Ullage itself
 /// saw in that window — the four counters apart, never summed.
+func printSaverRange(_ store: Store, days: Int) throws {
+    let range: SaverRange = days <= 7 ? .week : .month
+    let ledger = SaverLedgers.load(since: Date().addingTimeInterval(-Double(days + 1) * 86_400))
+    let anchor = try store.latestCall()?.sessionId
+    print("TOKEN SAVERS, last \(range.days ?? days) days (counts from transcripts; ≈ is the tool's own claim)")
+    for saver in TokenSaver.allCases {
+        let detail = try store.saverDetail(saver, range: range, sessionId: anchor, ledger: ledger)
+        var facts = ["ran in \(detail.sessionsUsed) of \(detail.sessions) sessions"]
+        if detail.hookRuns > 0 { facts.append("hook ran \(detail.hookRuns)×") }
+        if detail.rewrites > 0 { facts.append("rewrote \(detail.rewrites) of \(detail.bashCalls) Bash calls") }
+        if detail.failedRuns > 0 { facts.append("\(detail.failedRuns) runs failed") }
+        if detail.mcpCalls > 0 { facts.append("\(detail.mcpCalls) MCP calls") }
+        if detail.sessionsIdle > 0 { facts.append("loaded but unused in \(detail.sessionsIdle)") }
+        print("  " + pad(saver.displayName, 10) + facts.joined(separator: " · "))
+        if let ledger = detail.ledger {
+            print("  " + pad("", 10) + "≈\(thousands(ledger.savedTokens)) saved by its own count over \(ledger.entries) commands")
+        }
+    }
+}
+
+func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: String?) throws {
+    let states = switchboard.states()
+    print("SWITCHED ON IN CLAUDE CODE (user config)")
+    for saver in TokenSaver.allCases {
+        print("  " + pad(saver.displayName, 10) + pad(states[saver]?.rawValue ?? "—", 15) + "shrinks " + saver.shrinks)
+    }
+
+    let sessionId: String?
+    if let sessionPrefix {
+        sessionId = try store.sessionTotals().map(\.sessionId).first { $0.hasPrefix(sessionPrefix) }
+        if sessionId == nil { print("\nno session starting with \(sessionPrefix)"); return }
+    } else {
+        sessionId = try store.latestCall()?.sessionId
+    }
+    guard let sessionId else { return }
+    let report = try store.saverReport(sessionId: sessionId, ledger: SaverLedgers.load())
+    print("")
+    print("SESSION \(sessionId.prefix(8))  \(report.cwd ?? "")  ·  \(report.bashCalls) Bash calls")
+    if report.visible.isEmpty {
+        print("  no token saver left a trace in this session")
+    }
+    for usage in report.visible {
+        var facts: [String] = []
+        if usage.hookRuns > 0 { facts.append("hook ran \(usage.hookRuns)×") }
+        if usage.rewrites > 0 { facts.append("rewrote \(usage.rewrites) commands") }
+        if usage.failedRuns > 0 { facts.append("\(usage.failedRuns) runs failed") }
+        if usage.mcpCalls > 0 { facts.append("\(usage.mcpCalls) MCP calls") }
+        if usage.idle { facts.append("configured, never called") }
+        if usage.invocations > 0 { facts.append("invoked \(usage.invocations)×") }
+        print("  " + pad(usage.saver.displayName, 10) + facts.joined(separator: " · "))
+        if usage.broken, let message = usage.failureMessage {
+            print("  " + pad("", 10) + "says: " + message.replacingOccurrences(of: "\n", with: " "))
+        }
+        if let ledger = usage.ledger {
+            let reduction = ledger.reduction.map { "  (≈\(Int(($0 * 100).rounded()))% smaller)" } ?? ""
+            print("  " + pad("", 10) + "≈\(thousands(ledger.savedTokens)) tokens kept out over \(ledger.entries) commands\(reduction)")
+            print("  " + pad("", 10) + usage.saver.savingSource)
+            for group in ledger.groups.prefix(5) {
+                print("  " + pad("", 12) + pad(group.command, 18) + padLeft("\(group.entries)×", 5) + padLeft("≈" + thousands(group.savedTokens), 10))
+            }
+        }
+    }
+    if report.doubleHookedCalls > 0 {
+        print("")
+        print("  ! \(report.doubleHookedCalls) Bash calls went through both rtk and Tokenade; their savings overlap and cannot be added")
+    }
+    if let cwd = report.cwd,
+       let since = Calendar.current.date(byAdding: .day, value: -30, to: Date()),
+       let comparison = try store.outputComparison(cwd: cwd, since: Timestamps.string(from: since)) {
+        print("")
+        print("CAVEMAN, this directory, 30 days (measured output per main-thread turn; a comparison, not a saving)")
+        print("  with     median \(thousands(comparison.withMedian))  over \(comparison.withTurns) turns in \(comparison.withSessions) sessions")
+        print("  without  median \(thousands(comparison.withoutMedian))  over \(comparison.withoutTurns) turns in \(comparison.withoutSessions) sessions")
+    }
+}
+
+/// Prints the plan, asks, then runs each step in the user's shell with this
+/// terminal attached, so prompts and browser sign-ins work. Stops at the
+/// first step that fails.
+func runInstallPlan(_ plan: InstallPlan, dryRun: Bool, assumeYes: Bool) throws {
+    let verb = plan.action == .install ? "install" : "uninstall"
+    if !plan.missing.isEmpty {
+        print("can't \(verb) \(plan.saver.displayName): needs \(plan.missing.joined(separator: " and "))")
+    }
+    for (index, step) in plan.steps.enumerated() {
+        print("\(index + 1). \(step.purpose)")
+        print("   $ \(step.command)")
+    }
+    plan.notes.forEach { print($0) }
+    guard plan.isRunnable, !dryRun else { return }
+    if !assumeYes {
+        print("\nThese are \(plan.saver.displayName)'s own commands. Run them? [y/N] ", terminator: "")
+        guard let answer = readLine()?.lowercased(), answer == "y" || answer == "yes" else {
+            print("nothing changed")
+            return
+        }
+    }
+    let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/sh"
+    for step in plan.steps {
+        print("\n→ \(step.purpose)\n  $ \(step.command)")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shell)
+        process.arguments = ["-c", step.command]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            print("stopped: exited \(process.terminationStatus); the steps after it did not run")
+            exit(process.terminationStatus)
+        }
+    }
+    print("\ndone · applies to Claude Code sessions started from now")
+}
+
 func printLimits(_ store: Store, now: Date = Date(), fetched: Bool) throws {
     let displays = PlanLimitFormatter.displays(for: try store.planLimits(), now: now)
     if displays.isEmpty {
@@ -706,6 +829,45 @@ do {
             }
         }
         try printLimits(store, fetched: options.fetch)
+
+    case "savers":
+        let switchboard = SaverSwitchboard()
+        if let verb = options.paths.first, let action = SaverAction(rawValue: verb) {
+            guard let name = options.paths.dropFirst().first,
+                  let saver = TokenSaver.allCases.first(where: { $0.rawValue == name.lowercased() }) else {
+                print("usage: ullage savers \(verb) <\(TokenSaver.allCases.map(\.rawValue).joined(separator: "|"))> [--dry-run] [--yes]")
+                break
+            }
+            let plan = SaverInstaller(switchboard: switchboard).plan(saver, action)
+            try runInstallPlan(plan, dryRun: options.dryRun, assumeYes: options.yes)
+            break
+        }
+        if let verb = options.paths.first, verb == "enable" || verb == "disable" {
+            guard let name = options.paths.dropFirst().first,
+                  let saver = TokenSaver.allCases.first(where: { $0.rawValue == name.lowercased() }) else {
+                print("usage: ullage savers enable|disable <\(TokenSaver.allCases.map(\.rawValue).joined(separator: "|"))> [--dry-run]")
+                break
+            }
+            let on = verb == "enable"
+            let change = options.dryRun ? try switchboard.plan(saver, on: on) : try switchboard.set(saver, on: on)
+            if change.summary.isEmpty {
+                print("\(saver.displayName) is already \(on ? "on" : "off")")
+            } else {
+                print((options.dryRun ? "would change:" : "changed:"))
+                change.summary.forEach { print("  " + $0) }
+                if !options.dryRun {
+                    print("backups in \(switchboard.parkedURL.deletingLastPathComponent().appendingPathComponent("backups").path)")
+                    print("applies to Claude Code sessions started from now; running ones keep what they loaded")
+                }
+            }
+            break
+        }
+        let store = try Store(path: options.databasePath)
+        if options.daysWasSet {
+            try printSaverRange(store, days: options.days)
+            break
+        }
+        try printSavers(store, switchboard: switchboard, sessionPrefix: options.paths.first)
 
     case "info":
         let store = try Store(path: options.databasePath)

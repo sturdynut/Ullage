@@ -20,21 +20,44 @@ public enum Timestamps {
     }
 
     public static func date(from raw: String) -> Date? {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        lock.lock()
+        defer { lock.unlock() }
         if let d = withFraction.date(from: raw) { return d }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
         return plain.date(from: raw)
     }
 
     public static func string(from date: Date) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return output.string(from: date)
+    }
+
+    // Built once. A formatter costs far more to make than to use, and both of
+    // these are called per row — a 30-day saver range spent 24s making them.
+    // Darwin's formatters are safe to share; swift-corelibs-foundation's are
+    // not promised to be, and the tailer and the UI parse on different
+    // threads, so every use goes through the lock.
+    private static let lock = NSLock()
+
+    private static let withFraction: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let plain: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let output: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "UTC")
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        return formatter.string(from: date)
-    }
+        return formatter
+    }()
 
     public static func now() -> String { string(from: Date()) }
 }

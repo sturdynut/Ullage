@@ -37,12 +37,18 @@ struct UllageApp: App {
             CompositionExplorer(model: model)
         }
         .defaultSize(width: 1000, height: 640)
+
+        // Each token saver over a session, a week or a month.
+        Window("Token Savers", id: SaversWindow.id) {
+            SaversWindow(model: model)
+        }
+        .defaultSize(width: 960, height: 640)
     }
 }
 
 /// Draws the menu bar item as a template NSImage: a gauge whose needle climbs
 /// with occupancy, followed by the percentage. Template so the menu bar tints
-/// it for light/dark automatically. Idle shows the gauge alone, no stale number.
+/// it for light/dark automatically. Idle keeps the last percentage, faded.
 enum MenuBarLabel {
     static func gaugeSymbol(_ occupancy: Double?) -> String {
         switch occupancy ?? 0 {
@@ -54,13 +60,18 @@ enum MenuBarLabel {
 
     static func image(for state: MenuBarState) -> NSImage {
         let font = NSFont.menuBarFont(ofSize: 0)
-        let text = state.isIdle ? nil : state.title
+        // Idle keeps the last number, drawn faded: gone entirely, it read as
+        // broken; at full strength, it would pass for live.
+        let text = state.isIdle ? state.idleReading : state.title
+        let textAlpha: CGFloat = state.isIdle ? 0.4 : 1
         let symbolConfig = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
         let gauge = NSImage(systemSymbolName: gaugeSymbol(state.occupancy), accessibilityDescription: "context window")?
             .withSymbolConfiguration(symbolConfig)
         let symbolSize = gauge?.size ?? NSSize(width: font.pointSize, height: font.pointSize)
 
-        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        // A template image is tinted by its alpha, so a fainter black draws a
+        // fainter number in both light and dark menu bars.
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black.withAlphaComponent(textAlpha)]
         let textSize = text.map { ($0 as NSString).size(withAttributes: attributes) } ?? .zero
         let spacing: CGFloat = text == nil ? 0 : 3
         let height = ceil(max(symbolSize.height, textSize.height))
