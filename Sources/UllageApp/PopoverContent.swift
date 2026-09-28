@@ -118,6 +118,7 @@ struct PopoverContent: View {
                                        help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from"))
                 SaversView(panel: model.savers, expanded: saversExpanded,
                            onSwitch: { model.setSaver($0, on: $1) },
+                           onUndo: { model.undoSaver($0) },
                            onPlan: { saver, action in
                                let plan = model.installPlan(saver, action)
                                if InstallConfirmation.confirm(plan) { model.run(plan) }

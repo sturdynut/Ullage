@@ -10,6 +10,7 @@ struct SaversView: View {
     let panel: SaverPanel
     let expanded: Bool
     let onSwitch: (TokenSaver, Bool) -> Void
+    let onUndo: (TokenSaver) -> Void
     /// Install or uninstall, after the user has confirmed the exact commands.
     let onPlan: (TokenSaver, SaverAction) -> Void
 
@@ -82,9 +83,17 @@ struct SaversView: View {
             }
             Group {
                 if let pending = row.pending {
-                    Text(pending)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(Color.accentColor)
+                    HStack(spacing: 6) {
+                        Text(pending)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                        if row.canUndo {
+                            Button("Undo") { onUndo(row.saver) }
+                                .buttonStyle(.link)
+                                .font(.caption)
+                                .help("Put \(row.saver.displayName) back the way it was")
+                        }
+                    }
                 }
                 Text(row.line)
                     .font(.caption)

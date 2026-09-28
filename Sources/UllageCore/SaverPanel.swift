@@ -33,6 +33,8 @@ public struct SaverPanel: Equatable {
         /// from the next session". The switch shows config *now*; the figures
         /// show *this session*; this line is what reconciles the two.
         public var pending: String?
+        /// The pending change came from a switch here and can be put back.
+        public var canUndo = false
         /// The one-word state for the collapsed line.
         public var status: String = ""
         public var statusIsWarning = false
@@ -103,7 +105,8 @@ public struct SaverPanel: Equatable {
         states: [TokenSaver: SaverSwitchState],
         comparison: OutputComparison?,
         installed: Set<TokenSaver> = [],
-        pending: [TokenSaver: String] = [:]
+        pending: [TokenSaver: String] = [:],
+        undoable: Set<TokenSaver> = []
     ) -> SaverPanel {
         var rows: [Row] = []
         var installable: [TokenSaver] = []
@@ -122,6 +125,7 @@ public struct SaverPanel: Equatable {
             // A saver that ran in this session but is switched off now: the
             // figures above are real, and they stop from the next session.
             row.pending = pending[saver] ?? (state == .off && usage.ran ? offNextSession : nil)
+            row.canUndo = undoable.contains(saver) && pending[saver] != nil
             row.status = status(state: state, usage: usage)
             row.statusIsWarning = usage.broken || usage.idle
             rows.append(row)

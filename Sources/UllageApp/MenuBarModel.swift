@@ -56,7 +56,11 @@ final class MenuBarModel: ObservableObject {
     func popoverDidClose() {
         popoverIsOpen = false
         heldSessionId = nil
-        saverPending = [:]
+        // Keep "Installing… in Terminal" for runs still going; drop the rest.
+        saverPending = saverPending.filter { installWatches[$0.key] != nil }
+        saverUndo = [:]
+        for saver in resultsShown { saverResults[saver] = nil }
+        resultsShown = []
     }
     @Published private(set) var sessions: [SessionSummary] = []
     /// The picker's shape: sessions under the project they ran in.
@@ -141,6 +145,19 @@ final class MenuBarModel: ObservableObject {
     /// that saver's own row, and forgotten when the popover closes (by then
     /// the config itself says it, see `SaverPanel.build`).
     private var saverPending: [TokenSaver: String] = [:]
+    /// The state each switched saver was in before this popover changed it —
+    /// what Undo puts back. Forgotten with `saverPending`.
+    private var saverUndo: [TokenSaver: Bool] = [:]
+    /// Terminal runs still going, each with the marker its script writes its
+    /// exit status to when it ends.
+    private var installWatches: [TokenSaver: (plan: InstallPlan, marker: URL, started: Date)] = [:]
+    private var installTimer: Timer?
+    /// How a finished run went. Unlike `saverPending` it survives the popover
+    /// closing — a run often ends while it is closed — and is dropped once it
+    /// has been seen: on the close after an open that showed it.
+    private var saverResults: [TokenSaver: String] = [:]
+    private var resultsShown: Set<TokenSaver> = []
+    static let installWatchLimit: TimeInterval = 30 * 60
 
     private let switchboard = SaverSwitchboard()
     private lazy var installer = SaverInstaller(switchboard: switchboard)
@@ -156,12 +173,25 @@ final class MenuBarModel: ObservableObject {
     func setSaver(_ saver: TokenSaver, on: Bool) {
         do {
             try switchboard.set(saver, on: on)
-            saverPending[saver] = on ? SaverPanel.onNextSession : SaverPanel.offNextSession
+            if saverUndo[saver] == on {
+                // Back where it started: nothing is pending any more.
+                saverUndo[saver] = nil
+                saverPending[saver] = nil
+            } else {
+                saverUndo[saver] = !on
+                saverPending[saver] = on ? SaverPanel.onNextSession : SaverPanel.offNextSession
+            }
         } catch {
             saverPending[saver] = "Couldn't switch: \(error)"
         }
         saverStates = nil
         refresh()
+    }
+
+    /// Puts a switch back the way it was before this popover changed it.
+    func undoSaver(_ saver: TokenSaver) {
+        guard let previous = saverUndo[saver] else { return }
+        setSaver(saver, on: previous)
     }
 
     func installPlan(_ saver: TokenSaver, _ action: SaverAction) -> InstallPlan {
@@ -174,14 +204,53 @@ final class MenuBarModel: ObservableObject {
     func run(_ plan: InstallPlan) {
         do {
             let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-            let url = try SaverInstaller.writeCommandFile(for: plan, shell: shell)
-            NSWorkspace.shared.open(url)
+            let files = try SaverInstaller.writeCommandFile(for: plan, shell: shell)
+            NSWorkspace.shared.open(files.script)
             saverPending[plan.saver] = "\(plan.action == .install ? "Installing" : "Uninstalling") \(plan.saver.displayName) in Terminal…"
+            saverResults[plan.saver] = nil
+            installWatches[plan.saver] = (plan, files.marker, Date())
+            watchInstalls()
         } catch {
             saverPending[plan.saver] = "Couldn't start Terminal: \(error)"
         }
         saverStates = nil
         refresh()
+    }
+
+    /// Polls the markers every two seconds while any run is going; stops by
+    /// itself when none is.
+    private func watchInstalls() {
+        guard installTimer == nil else { return }
+        installTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.checkInstalls() }
+        }
+    }
+
+    private func checkInstalls() {
+        var finished = false
+        for (saver, watch) in installWatches {
+            if let status = SaverInstaller.finishedStatus(marker: watch.marker) {
+                try? FileManager.default.removeItem(at: watch.marker)
+                saverResults[saver] = SaverInstaller.outcome(of: watch.plan, status: status)
+                resultsShown.remove(saver)
+                saverPending[saver] = nil
+                installWatches[saver] = nil
+                finished = true
+            } else if Date().timeIntervalSince(watch.started) > Self.installWatchLimit {
+                // Left open or abandoned; the row stops claiming it is running.
+                saverPending[saver] = nil
+                installWatches[saver] = nil
+                finished = true
+            }
+        }
+        if installWatches.isEmpty {
+            installTimer?.invalidate()
+            installTimer = nil
+        }
+        if finished {
+            saverStates = nil
+            refresh()
+        }
     }
 
     private func refreshSavers(store: Store, sessionId: String?) throws {
@@ -206,7 +275,9 @@ final class MenuBarModel: ObservableObject {
         }
         savers = SaverPanel.build(report: report, states: saverStates?.states ?? [:], comparison: comparison,
                                   installed: Set(saverInstalls.filter { $0.value.isInstalled }.keys),
-                                  pending: saverPending)
+                                  pending: saverPending.merging(saverResults) { _, result in result },
+                                  undoable: Set(saverUndo.keys))
+        if popoverIsOpen { resultsShown.formUnion(saverResults.keys) }
     }
 
     private var readStore: Store?

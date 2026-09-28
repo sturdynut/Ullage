@@ -288,12 +288,18 @@ public struct SaverInstaller {
 
     /// A script that runs the plan in a login shell, echoing each step, and
     /// stops at the first failure. Used as a Terminal `.command` by the app.
-    public static func script(for plan: InstallPlan, shell: String = "/bin/zsh") -> String {
+    /// `marker`, when given, receives the script's exit status however it
+    /// ends — how Ullage learns an install in Terminal has finished, and
+    /// whether it worked, without holding on to the process.
+    public static func script(for plan: InstallPlan, shell: String = "/bin/zsh", marker: URL? = nil) -> String {
         var lines = [
             "#!\(shell) -il",
             "# Ullage: \(plan.action.rawValue) \(plan.saver.displayName). Each command is the tool's own.",
+        ]
+        if let marker { lines.append("trap 'echo $? > \(shellQuote(marker.path))' EXIT") }
+        lines += [
             "set -e",
-            "clear",
+            "clear 2>/dev/null || true",
             "echo \(shellQuote("Ullage — \(plan.action.rawValue) \(plan.saver.displayName)"))",
             "echo",
         ]
@@ -309,12 +315,33 @@ public struct SaverInstaller {
 
     /// Writes the script as an executable `.command` in the temp directory;
     /// opening it runs it in Terminal.
-    public static func writeCommandFile(for plan: InstallPlan, shell: String) throws -> URL {
-        let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("ullage-\(plan.action.rawValue)-\(plan.saver.rawValue)-\(UUID().uuidString.prefix(8)).command")
-        try script(for: plan, shell: shell).write(to: url, atomically: true, encoding: .utf8)
+    public static func writeCommandFile(for plan: InstallPlan, shell: String) throws -> (script: URL, marker: URL) {
+        let stem = "ullage-\(plan.action.rawValue)-\(plan.saver.rawValue)-\(UUID().uuidString.prefix(8))"
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+        let url = directory.appendingPathComponent(stem + ".command")
+        let marker = directory.appendingPathComponent(stem + ".status")
+        try script(for: plan, shell: shell, marker: marker).write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
-        return url
+        return (url, marker)
+    }
+
+    /// The exit status a finished script left in its marker, or nil while it
+    /// is still running (or never started).
+    public static func finishedStatus(marker: URL) -> Int32? {
+        guard let data = FileManager.default.contents(atPath: marker.path),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        return Int32(text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// What a row says once a run has finished.
+    public static func outcome(of plan: InstallPlan, status: Int32) -> String {
+        let name = plan.saver.displayName
+        guard status == 0 else {
+            return "\(plan.action == .install ? "Install" : "Uninstall") of \(name) stopped (exit \(status)) · see Terminal"
+        }
+        return plan.action == .install
+            ? "\(name) installed · on from the next session"
+            : "\(name) uninstalled · gone from the next session"
     }
 
     static func shellQuote(_ text: String) -> String {

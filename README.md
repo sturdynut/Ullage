@@ -284,7 +284,13 @@ its binary really lives.
 | caveman | `claude plugin marketplace add JuliusBrussee/caveman`, `claude plugin install caveman@caveman` | `claude plugin uninstall caveman@caveman`, then remove the marketplace |
 | Headroom | `uv tool install "headroom-ai[mcp]"` (or pipx), `claude mcp add --scope user headroom -- headroom mcp serve` | `claude mcp remove --scope user headroom`, then its package manager |
 
-A step is skipped if what it sets up is already there.
+A step is skipped if what it sets up is already there. When the run in Terminal
+finishes, the tool's row says whether it worked ("caveman installed · on from
+the next session", or which step stopped it), even if the popover was closed at
+the time.
+
+A switch you flip shows "Off from the next session" on its own row, with
+**Undo** until you close the popover.
 
 Each file is backed up to `backups/` next to the database before it is written.
 Sessions already running keep what they loaded; the change applies from the

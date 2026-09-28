@@ -337,6 +337,7 @@ final class TokenSaverTests: XCTestCase {
         let script = SaverInstaller.script(for: plan, shell: "/bin/zsh")
         XCTAssertTrue(script.hasPrefix("#!/bin/zsh -il\n"))
         XCTAssertTrue(script.contains("set -e"))
+        XCTAssertFalse(script.contains("trap"), "no marker, no trap")
         XCTAssertTrue(script.contains("\nclaude plugin install caveman@caveman\n"))
         XCTAssertEqual(SaverInstaller.shellQuote("it's"), "'it'\\''s'")
     }
@@ -399,5 +400,53 @@ final class TokenSaverTests: XCTestCase {
         XCTAssertEqual(panel.rows.first?.pending, SaverPanel.onNextSession)
         XCTAssertEqual(panel.pendingInstalls, ["Installing rtk in Terminal…"])
         XCTAssertEqual(Readout.line(SaverPanel().summary), "None installed")
+    }
+
+    // MARK: - Knowing when a Terminal run ends
+
+    private func runScript(_ steps: [InstallStep]) throws -> (status: Int32?, output: String) {
+        let plan = InstallPlan(saver: .rtk, action: .install, steps: steps, missing: [], notes: ["n"])
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("run-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let marker = root.appendingPathComponent("status")
+        let script = root.appendingPathComponent("s.command")
+        try SaverInstaller.script(for: plan, shell: "/bin/sh", marker: marker).write(to: script, atomically: true, encoding: .utf8)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [script.path]
+        process.environment = ["PATH": "/usr/bin:/bin"]   // no TERM: clear must not abort the run
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        process.waitUntilExit()
+        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return (SaverInstaller.finishedStatus(marker: marker), output)
+    }
+
+    func testMarkerRecordsSuccessAndFailure() throws {
+        let ok = try runScript([InstallStep("echo first", "one"), InstallStep("echo second", "two")])
+        XCTAssertEqual(ok.status, 0)
+        XCTAssertTrue(ok.output.contains("second"))
+
+        let failed = try runScript([InstallStep("exit 3", "fails"), InstallStep("echo never", "skipped")])
+        XCTAssertEqual(failed.status, 3)
+        XCTAssertFalse(failed.output.contains("never"), "set -e stops at the first failing step")
+    }
+
+    func testOutcomeWording() {
+        let plan = InstallPlan(saver: .caveman, action: .install, steps: [], missing: [], notes: [])
+        XCTAssertEqual(SaverInstaller.outcome(of: plan, status: 0), "caveman installed · on from the next session")
+        XCTAssertEqual(SaverInstaller.outcome(of: plan, status: 1), "Install of caveman stopped (exit 1) · see Terminal")
+    }
+
+    func testUndoOnlyForSwitchedRows() {
+        let panel = SaverPanel.build(report: nil, states: [.headroom: .off, .caveman: .on], comparison: nil,
+                                     installed: [.headroom, .caveman],
+                                     pending: [.headroom: SaverPanel.offNextSession, .caveman: "caveman installed · on from the next session"],
+                                     undoable: [.headroom])
+        XCTAssertEqual(panel.rows.first { $0.saver == .headroom }?.canUndo, true)
+        XCTAssertEqual(panel.rows.first { $0.saver == .caveman }?.canUndo, false)
     }
 }

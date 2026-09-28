@@ -52,7 +52,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 222 tests on macOS; 211 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 225 tests on macOS; 214 on Linux (six need CryptoKit, five AppKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -173,7 +173,10 @@ plausible and are wrong.
 - **Nothing destructive is the default.** An alert for an action that removes
   something outside Ullage's own folder makes Cancel the Return default
   (`InstallConfirmation`). A saver switch shows what changed on its own row
-  ("Off from the next session"), not in a message shared by the popover.
+  ("Off from the next session", with Undo until the popover closes), not in a
+  message shared by the popover. A Terminal install reports back through a
+  marker file its script writes its exit status to (`SaverInstaller.script`);
+  the result stays on the row until it has been seen once.
 - **Fixed order for anything colour-coded.** Composition segments and history
   projects keep a stable order so a colour follows an entity, never its rank.
   The composition treemap is *ordered*, not squarified, for the same reason —
