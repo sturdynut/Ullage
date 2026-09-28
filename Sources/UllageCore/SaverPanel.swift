@@ -24,7 +24,8 @@ public struct SaverPanel: Equatable {
         public var metricTone: Tone
         /// What happened, in this session.
         public var line: String
-        /// Where the headline comes from — a claim, a comparison, a count.
+        /// Only for exceptions — why it is broken or idle. Where a figure comes
+        /// from is said once, in `legend`, not under every row.
         public var note: String?
         /// On this machine, so it can be uninstalled.
         public var isInstalled = false
@@ -46,6 +47,8 @@ public struct SaverPanel: Equatable {
     public var installable: [TokenSaver]
     /// Installs or uninstalls started from here that have not shown up yet.
     public var pendingInstalls: [String]
+    /// Where the figures shown come from, one line per kind, said once.
+    public var legend: [String] = []
 
     public init(rows: [Row] = [], warning: String? = nil, installable: [TokenSaver] = [], pendingInstalls: [String] = []) {
         self.rows = rows
@@ -129,10 +132,21 @@ public struct SaverPanel: Equatable {
         } else if states[.rtk] == .on, states[.tokenade] == .on {
             warning = "rtk and Tokenade are both switched on and both rewrite Bash. Keep one on."
         }
+        var legend: [String] = []
+        let claims = rows.filter { $0.metric.hasPrefix("≈") }.map(\.saver)
+        if !claims.isEmpty {
+            let how = claims.map { $0 == .rtk ? "rtk counts bytes ÷ 4" : "Tokenade doesn't say how" }
+            legend.append("≈ saved is the tool's own count, which Ullage can't check (\(how.joined(separator: "; "))).")
+        }
+        if rows.contains(where: { $0.saver == .caveman && $0.metricCaption == "tokens/reply" }) {
+            legend.append("caveman's figure compares measured replies with it on and off. Different work, so not a saving.")
+        }
         let pendingInstalls = TokenSaver.allCases
             .filter { saver in !rows.contains { $0.saver == saver } }
             .compactMap { pending[$0] }
-        return SaverPanel(rows: rows, warning: warning, installable: installable, pendingInstalls: pendingInstalls)
+        var panel = SaverPanel(rows: rows, warning: warning, installable: installable, pendingInstalls: pendingInstalls)
+        panel.legend = legend
+        return panel
     }
 
     static func row(
@@ -154,7 +168,7 @@ public struct SaverPanel: Equatable {
         case .rtk, .tokenade:
             if let ledger = usage.ledger {
                 row.metric = "≈" + TokenFormat.compact(ledger.savedTokens)
-                row.metricCaption = "kept out"
+                row.metricCaption = "saved"
                 var facts: [String] = []
                 if usage.rewrites > 0, bashCalls > 0 {
                     facts.append("\(usage.rewrites) of \(bashCalls) Bash calls rewritten")
@@ -163,21 +177,18 @@ public struct SaverPanel: Equatable {
                 }
                 if let reduction = ledger.reduction { facts.append("≈\(Int((reduction * 100).rounded()))% smaller") }
                 row.line = facts.joined(separator: " · ")
-                row.note = saver.savingSource
             } else if usage.ran {
                 row.metric = "\(usage.rewrites)"
-                row.metricCaption = "rewritten"
-                row.line = "Hook ran \(usage.hookRuns)× this session"
-                row.note = "No ledger entries matched, so no saving to claim"
+                row.metricCaption = usage.rewrites == 1 ? "rewrite" : "rewrites"
+                row.line = "Hook ran \(usage.hookRuns)× · nothing in its log to count savings from"
             } else {
                 row.line = "\(offLine) · no runs this session"
             }
         case .caveman:
             if let comparison {
                 row.metric = "\(comparison.withMedian)"
-                row.metricCaption = "out/turn"
-                row.line = "\(comparison.withoutMedian) without it, this directory, 30 days"
-                row.note = "Measured · a comparison, not a saving"
+                row.metricCaption = "tokens/reply"
+                row.line = "\(comparison.withoutMedian) without it · this folder, last 30 days"
             } else {
                 row.metric = usage.ran ? "on" : "—"
                 row.line = usage.ran
@@ -188,13 +199,12 @@ public struct SaverPanel: Equatable {
             if usage.mcpCalls > 0 {
                 row.metric = "\(usage.mcpCalls)"
                 row.metricCaption = usage.mcpCalls == 1 ? "call" : "calls"
-                row.line = "Called this session; savings not recorded"
+                row.line = "Used this session · it keeps no record of savings"
             } else if usage.idle {
                 row.metric = "idle"
-                row.metricCaption = "0 calls"
                 row.metricTone = .warning
-                row.line = "Loaded, never called this session"
-                row.note = "Its tool definitions ride in every prompt"
+                row.line = "Loaded but never used this session"
+                row.note = "Its tool definitions still ride in every prompt"
             } else {
                 row.line = "\(offLine) · not loaded in this session"
             }

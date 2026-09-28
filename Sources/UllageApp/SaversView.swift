@@ -34,6 +34,12 @@ struct SaversView: View {
                         .foregroundStyle(.secondary)
                 }
                 if !panel.installable.isEmpty { installMenu }
+                ForEach(panel.legend, id: \.self) { line in
+                    Text(line)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
                 ReadoutLine(panel.summary)
             }

@@ -287,7 +287,9 @@ final class TokenSaverTests: XCTestCase {
         let panel = SaverPanel.build(report: report, states: [.rtk: .on, .tokenade: .on], comparison: nil)
         XCTAssertEqual(panel.rows.first?.metric, "≈18k")
         XCTAssertEqual(panel.rows.first?.line, "4 of 9 Bash calls rewritten · ≈80% smaller")
-        XCTAssertEqual(panel.rows.first?.note, TokenSaver.rtk.savingSource)
+        XCTAssertNil(panel.rows.first?.note, "the source is said once, in the legend")
+        XCTAssertEqual(panel.rows.first?.metricCaption, "saved")
+        XCTAssertEqual(panel.legend, ["≈ saved is the tool's own count, which Ullage can't check (rtk counts bytes ÷ 4)."])
         XCTAssertTrue(panel.warning?.contains("2 Bash calls") == true)
     }
 

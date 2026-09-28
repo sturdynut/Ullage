@@ -68,7 +68,10 @@ struct PopoverContent: View {
                 // Collapsed is the overview bar and legend, expanded the
                 // treemap and every table under it.
                 CollapsibleSectionRule("Context composition", scope: scopeName, isExpanded: $compositionExpanded,
-                                       help: ("Collapse to the overview", "Expand to the treemap, baseline and every tool")) {
+                                       help: ("Collapse to the overview", "Expand to the treemap, baseline and every tool"),
+                                       shares: composition.segments.map {
+                                           RuleShare(color: CompositionView.color(for: $0.name), weight: Double($0.tokens))
+                                       }) {
                     if composition.estimatesOvershoot { overshootBadge }
                     Button { openExplorer() } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
@@ -80,16 +83,6 @@ struct PopoverContent: View {
                 }
                 CompositionView(composition: composition, expanded: compositionExpanded, showsTitle: false,
                                 onOpen: openExplorer)
-            }
-            if !model.savers.isEmpty {
-                CollapsibleSectionRule("Token savers", isExpanded: $saversExpanded,
-                                       help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from"))
-                SaversView(panel: model.savers, expanded: saversExpanded,
-                           onSwitch: { model.setSaver($0, on: $1) },
-                           onPlan: { saver, action in
-                               let plan = model.installPlan(saver, action)
-                               if InstallConfirmation.confirm(plan) { model.run(plan) }
-                           })
             }
             if model.state.status != .empty {
                 CollapsibleSectionRule("Session information", scope: scopeName, isExpanded: $detailsExpanded,
@@ -117,6 +110,18 @@ struct PopoverContent: View {
                 } else {
                     ReadoutLine(tree.summary)
                 }
+            }
+            // After the session's own story (composition, details, agents):
+            // half of it is configuration, like the plan limits below it.
+            if !model.savers.isEmpty {
+                CollapsibleSectionRule("Token savers", isExpanded: $saversExpanded,
+                                       help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from"))
+                SaversView(panel: model.savers, expanded: saversExpanded,
+                           onSwitch: { model.setSaver($0, on: $1) },
+                           onPlan: { saver, action in
+                               let plan = model.installPlan(saver, action)
+                               if InstallConfirmation.confirm(plan) { model.run(plan) }
+                           })
             }
             // Last: the account's allowance, not this session's window — the
             // sections above all describe the session.

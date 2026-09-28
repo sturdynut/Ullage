@@ -17,6 +17,9 @@ struct SectionRule<Trailing: View>: View {
     let title: String
     /// The agent whose numbers follow, when it is not the session's own.
     var scope: String?
+    /// When set, the hairline is drawn as these proportions instead — how a
+    /// collapsed section keeps its chart without spending a second row on it.
+    var shares: [RuleShare]? = nil
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -40,13 +43,46 @@ struct SectionRule<Trailing: View>: View {
                     .truncationMode(.tail)
                     .help(scope)
             }
-            Rectangle()
-                .fill(.quaternary)
-                .frame(height: 1)
-                .frame(maxWidth: .infinity)
+            if let shares, !shares.isEmpty {
+                proportions(shares)
+            } else {
+                Rectangle()
+                    .fill(.quaternary)
+                    .frame(height: 1)
+                    .frame(maxWidth: .infinity)
+            }
             trailing()
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// One segment of a rule drawn as proportions.
+struct RuleShare {
+    var color: Color
+    var weight: Double
+}
+
+extension SectionRule {
+    /// The same fixed order and colours as the chart it stands in for, as
+    /// thin as a rule can be and still be read: 3pt.
+    func proportions(_ shares: [RuleShare]) -> some View {
+        let total = shares.reduce(0) { $0 + max(0, $1.weight) }
+        return GeometryReader { geometry in
+            let gap: CGFloat = 1
+            let usable = max(0, geometry.size.width - gap * CGFloat(max(shares.count - 1, 0)))
+            HStack(spacing: gap) {
+                ForEach(Array(shares.enumerated()), id: \.offset) { _, share in
+                    Rectangle()
+                        .fill(share.color)
+                        .frame(width: total > 0 ? usable * CGFloat(max(0, share.weight)) / CGFloat(total) : 0)
+                }
+            }
+        }
+        .frame(height: 3)
+        .clipShape(Capsule())
+        .frame(maxWidth: .infinity)
+        .accessibilityHidden(true)
     }
 }
 
@@ -58,6 +94,8 @@ struct CollapsibleSectionRule<Trailing: View>: View {
     var scope: String?
     @Binding var isExpanded: Bool
     var help: (collapse: String, expand: String) = ("Collapse", "Expand")
+    /// Drawn in place of the hairline while collapsed; see `SectionRule.shares`.
+    var shares: [RuleShare]? = nil
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -67,7 +105,7 @@ struct CollapsibleSectionRule<Trailing: View>: View {
             Button {
                 withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() }
             } label: {
-                SectionRule(title, scope: scope) {
+                SectionRule(title: title, scope: scope, shares: isExpanded ? nil : shares) {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.tertiary)
@@ -86,8 +124,9 @@ struct CollapsibleSectionRule<Trailing: View>: View {
 extension CollapsibleSectionRule {
     init(_ title: String, scope: String? = nil, isExpanded: Binding<Bool>,
          help: (collapse: String, expand: String) = ("Collapse", "Expand"),
+         shares: [RuleShare]? = nil,
          @ViewBuilder trailing: @escaping () -> Trailing) {
-        self.init(title: title, scope: scope, isExpanded: isExpanded, help: help, trailing: trailing)
+        self.init(title: title, scope: scope, isExpanded: isExpanded, help: help, shares: shares, trailing: trailing)
     }
 }
 
