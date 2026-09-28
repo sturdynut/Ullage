@@ -83,9 +83,12 @@ struct PopoverContent: View {
             if !model.savers.isEmpty {
                 CollapsibleSectionRule("Token savers", isExpanded: $saversExpanded,
                                        help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from"))
-                SaversView(panel: model.savers, message: model.saverMessage, expanded: saversExpanded) {
-                    model.setSaver($0, on: $1)
-                }
+                SaversView(panel: model.savers, message: model.saverMessage, expanded: saversExpanded,
+                           onSwitch: { model.setSaver($0, on: $1) },
+                           onPlan: { saver, action in
+                               let plan = model.installPlan(saver, action)
+                               if InstallConfirmation.confirm(plan) { model.run(plan) }
+                           })
             }
             if model.state.status != .empty {
                 CollapsibleSectionRule("Session information", scope: scopeName, isExpanded: $detailsExpanded,

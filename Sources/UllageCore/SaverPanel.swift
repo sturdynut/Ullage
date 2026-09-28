@@ -26,34 +26,49 @@ public struct SaverPanel: Equatable {
         public var line: String
         /// Where the headline comes from — a claim, a comparison, a count.
         public var note: String?
+        /// On this machine, so it can be uninstalled.
+        public var isInstalled = false
         public var canSwitch: Bool { switchState != .notInstalled }
     }
 
     public var rows: [Row]
     /// Shown above the rows when two savers are working against each other.
     public var warning: String?
+    /// Not on this machine: offered for the user to install, never installed
+    /// on their behalf.
+    public var installable: [TokenSaver]
 
-    public init(rows: [Row] = [], warning: String? = nil) {
+    public init(rows: [Row] = [], warning: String? = nil, installable: [TokenSaver] = []) {
         self.rows = rows
         self.warning = warning
+        self.installable = installable
     }
 
-    public var isEmpty: Bool { rows.isEmpty }
+    public var isEmpty: Bool { rows.isEmpty && installable.isEmpty }
 
     public static let nextSessionNote = "applies to sessions started from now"
 
     public static func build(
         report: SaverSessionReport?,
         states: [TokenSaver: SaverSwitchState],
-        comparison: OutputComparison?
+        comparison: OutputComparison?,
+        installed: Set<TokenSaver> = []
     ) -> SaverPanel {
         var rows: [Row] = []
+        var installable: [TokenSaver] = []
         for saver in TokenSaver.allCases {
             let state = states[saver] ?? .notInstalled
             let usage = report?.usage(saver) ?? SaverUsage(saver: saver)
-            guard state != .notInstalled || usage.ran || usage.idle else { continue }
-            rows.append(row(saver, state: state, usage: usage, bashCalls: report?.bashCalls ?? 0,
-                            comparison: saver == .caveman ? comparison : nil))
+            let onMachine = installed.contains(saver) || state != .notInstalled
+            if !onMachine { installable.append(saver) }
+            guard onMachine || usage.ran || usage.idle else { continue }
+            var row = row(saver, state: state, usage: usage, bashCalls: report?.bashCalls ?? 0,
+                          comparison: saver == .caveman ? comparison : nil)
+            row.isInstalled = onMachine
+            if onMachine, state == .notInstalled, !usage.broken, !usage.ran {
+                row.line = "Installed, not set up in Claude Code"
+            }
+            rows.append(row)
         }
         var warning: String?
         if let doubled = report?.doubleHookedCalls, doubled > 0 {
@@ -61,7 +76,7 @@ public struct SaverPanel: Equatable {
         } else if states[.rtk] == .on, states[.tokenade] == .on {
             warning = "rtk and Tokenade are both switched on and both rewrite Bash. Keep one on."
         }
-        return SaverPanel(rows: rows, warning: warning)
+        return SaverPanel(rows: rows, warning: warning, installable: installable)
     }
 
     static func row(

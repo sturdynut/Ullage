@@ -184,6 +184,7 @@ ullage env <session>         # a session's configuration snapshot
 ullage limits [--fetch]      # plan limits left; --fetch asks Anthropic for Claude's
 ullage savers [session]      # token savers: switched on, and what each did
 ullage savers disable rtk --dry-run   # what switching one off would change
+ullage savers install caveman         # the tool's own install commands, after asking
 ullage info                  # resolved paths, retention, row counts
 ```
 
@@ -260,6 +261,24 @@ enable|disable`:
 | caveman | sets its `enabledPlugins` flag to false | sets the flag back to true |
 | rtk, Tokenade | moves its hooks, unchanged, into `parked-savers.json` next to Ullage's database | puts the hooks back from there |
 | Headroom (and Tokenade's MCP server) | moves its `mcpServers` entry into the same file | puts the entry back |
+
+**Installing and uninstalling** is always your call. Tools that are already
+installed get a row. The others are listed under **Install…** in the section,
+or you can use `ullage savers install|uninstall <name>`. Either way you see the
+tool's own documented commands first, and nothing runs until you confirm. The
+app runs them in Terminal, so you can watch, and so a browser sign-in
+(Tokenade) or a Homebrew prompt works. Uninstalling uses whichever package
+manager installed the tool (Homebrew, npm, pipx, uv, cargo), found from where
+its binary really lives.
+
+| Tool | Install | Uninstall |
+|---|---|---|
+| rtk | `brew install rtk` (or rtk's install script), then `rtk init -g` | `rtk init -g --uninstall`, then its package manager |
+| Tokenade | `npm install -g @tokenade/cli`, `tokenade install`, `tokenade login` | `tokenade uninstall`, `npm uninstall -g @tokenade/cli` |
+| caveman | `claude plugin marketplace add JuliusBrussee/caveman`, `claude plugin install caveman@caveman` | `claude plugin uninstall caveman@caveman`, then remove the marketplace |
+| Headroom | `uv tool install "headroom-ai[mcp]"` (or pipx), `claude mcp add --scope user headroom -- headroom mcp serve` | `claude mcp remove --scope user headroom`, then its package manager |
+
+A step is skipped if what it sets up is already there.
 
 Each file is backed up to `backups/` next to the database before it is written.
 Sessions already running keep what they loaded; the change applies from the

@@ -290,4 +290,83 @@ final class TokenSaverTests: XCTestCase {
         XCTAssertEqual(panel.rows.first?.note, TokenSaver.rtk.savingSource)
         XCTAssertTrue(panel.warning?.contains("2 Bash calls") == true)
     }
+
+    // MARK: - Install and uninstall
+
+    func testPackageManagerFromResolvedPath() {
+        XCTAssertEqual(PackageManager.owning(resolvedPath: "/opt/homebrew/Cellar/rtk/0.9/bin/rtk"), .homebrew)
+        XCTAssertEqual(PackageManager.owning(resolvedPath: "/Users/me/.local/pipx/venvs/headroom-ai/bin/headroom"), .pipx)
+        XCTAssertEqual(PackageManager.owning(resolvedPath: "/Users/me/.local/share/uv/tools/headroom-ai/bin/headroom"), .uv)
+        XCTAssertEqual(PackageManager.owning(resolvedPath: "/Users/me/.nvm/versions/node/v22/lib/node_modules/@tokenade/cli/bin/tokenade"), .npm)
+        XCTAssertEqual(PackageManager.owning(resolvedPath: "/Users/me/.local/bin/rtk"), .script)
+    }
+
+    func testInstallPlanSkipsWhatIsThere() {
+        let none = SaverInstallation(binary: nil, manager: nil, wired: false)
+        let fresh = SaverInstaller.installPlan(.rtk, current: none, available: ["brew", "curl"])
+        XCTAssertEqual(fresh.steps.map(\.command), ["brew install rtk", "rtk init -g"])
+
+        let binaryOnly = SaverInstallation(binary: "/opt/homebrew/bin/rtk", manager: .homebrew, wired: false)
+        XCTAssertEqual(SaverInstaller.installPlan(.rtk, current: binaryOnly, available: []).steps.map(\.command), ["rtk init -g"])
+
+        let tokenade = SaverInstaller.installPlan(.tokenade, current: none, available: [])
+        XCTAssertFalse(tokenade.isRunnable)
+        XCTAssertEqual(tokenade.missing, ["npm (Node.js)"])
+        XCTAssertTrue(SaverInstaller.installPlan(.tokenade, current: none, available: ["npm"]).needsPerson)
+
+        let done = SaverInstallation(binary: "/x/headroom", manager: .pipx, wired: true)
+        XCTAssertTrue(SaverInstaller.installPlan(.headroom, current: done, available: ["uv", "claude"]).steps.isEmpty)
+    }
+
+    func testUninstallUsesTheManagerThatInstalledIt() {
+        let headroom = SaverInstallation(binary: "/Users/me/.local/bin/headroom", manager: .pipx, wired: true)
+        XCTAssertEqual(SaverInstaller.uninstallPlan(.headroom, current: headroom, available: ["claude", "pipx"]).steps.map(\.command),
+                       ["claude mcp remove --scope user headroom", "pipx uninstall headroom-ai"])
+        let rtk = SaverInstallation(binary: "/Users/me/.local/bin/rtk", manager: .script, wired: true)
+        XCTAssertEqual(SaverInstaller.uninstallPlan(.rtk, current: rtk, available: []).steps.map(\.command),
+                       ["rtk init -g --uninstall", "rm '/Users/me/.local/bin/rtk'"])
+        let caveman = SaverInstallation(binary: nil, manager: nil, wired: true)
+        XCTAssertEqual(SaverInstaller.uninstallPlan(.caveman, current: caveman, available: []).missing, ["claude"])
+    }
+
+    func testScriptStopsOnFailureAndQuotes() {
+        let plan = SaverInstaller.installPlan(.caveman, current: SaverInstallation(binary: nil, manager: nil, wired: false),
+                                              available: ["claude"])
+        let script = SaverInstaller.script(for: plan, shell: "/bin/zsh")
+        XCTAssertTrue(script.hasPrefix("#!/bin/zsh -il\n"))
+        XCTAssertTrue(script.contains("set -e"))
+        XCTAssertTrue(script.contains("\nclaude plugin install caveman@caveman\n"))
+        XCTAssertEqual(SaverInstaller.shellQuote("it's"), "'it'\\''s'")
+    }
+
+    func testWhichAndInstallationFromDisk() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("which-" + UUID().uuidString)
+        let bin = root.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rtk = bin.appendingPathComponent("rtk")
+        try "#!/bin/sh\n".write(to: rtk, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: rtk.path)
+        let plugins = root.appendingPathComponent("installed_plugins.json")
+        try #"{"version":2,"plugins":{"caveman@caveman":[{}]}}"#.write(to: plugins, atomically: true, encoding: .utf8)
+        let board = SaverSwitchboard(settingsURL: root.appendingPathComponent("settings.json"),
+                                     claudeJSONURL: root.appendingPathComponent(".claude.json"),
+                                     parkedURL: root.appendingPathComponent("parked.json"))
+        let installer = SaverInstaller(searchPaths: [bin.path], installedPluginsURL: plugins, switchboard: board)
+        XCTAssertEqual(installer.which("rtk"), rtk.path)
+        XCTAssertNil(installer.which("tokenade"))
+        XCTAssertTrue(installer.installation(of: .rtk).isInstalled)
+        XCTAssertFalse(installer.installation(of: .rtk).wired)
+        XCTAssertTrue(installer.installation(of: .caveman).isInstalled)
+        XCTAssertFalse(installer.installation(of: .headroom).isInstalled)
+    }
+
+    func testPanelOffersWhatIsNotInstalled() {
+        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], comparison: nil, installed: [.headroom, .rtk])
+        XCTAssertEqual(panel.rows.map(\.saver), [.rtk, .headroom])
+        XCTAssertEqual(panel.rows.first?.line, "Installed, not set up in Claude Code")
+        XCTAssertTrue(panel.rows.allSatisfy(\.isInstalled))
+        XCTAssertEqual(panel.installable, [.tokenade, .caveman])
+        XCTAssertFalse(SaverPanel.build(report: nil, states: [:], comparison: nil).isEmpty, "nothing installed still offers installs")
+    }
 }

@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import SwiftUI
 import UllageCore
 
@@ -10,6 +11,8 @@ struct SaversView: View {
     let message: String?
     let expanded: Bool
     let onSwitch: (TokenSaver, Bool) -> Void
+    /// Install or uninstall, after the user has confirmed the exact commands.
+    let onPlan: (TokenSaver, SaverAction) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -23,6 +26,7 @@ struct SaversView: View {
                 ForEach(panel.rows) { row in
                     rowView(row)
                 }
+                if !panel.installable.isEmpty { installMenu }
             } else {
                 summary
             }
@@ -62,6 +66,22 @@ struct SaversView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if row.isInstalled {
+                    Menu {
+                        if row.switchState == .notInstalled {
+                            Button("Set up \(row.saver.displayName)…") { onPlan(row.saver, .install) }
+                        }
+                        Button("Uninstall \(row.saver.displayName)…") { onPlan(row.saver, .uninstall) }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .foregroundStyle(.tertiary)
+                    .help("Set up or uninstall \(row.saver.displayName) with its own commands")
+                }
             }
             Group {
                 Text(row.line)
@@ -79,8 +99,26 @@ struct SaversView: View {
         .help(row.saver.savingSource)
     }
 
+    private var installMenu: some View {
+        HStack(spacing: 6) {
+            Text(panel.rows.isEmpty ? "None installed." : "Not installed: "
+                 + panel.installable.map(\.displayName).joined(separator: ", "))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Menu("Install…") {
+                ForEach(panel.installable, id: \.self) { saver in
+                    Button("\(saver.displayName) — shrinks \(saver.shrinks)") { onPlan(saver, .install) }
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .font(.caption)
+            .help("Shows the tool's own install commands first; nothing runs until you confirm")
+        }
+    }
+
     private var summary: some View {
-        let parts = panel.rows.map { row in
+        let parts = panel.rows.isEmpty ? ["None installed"] : panel.rows.map { row in
             row.switchState == .off
                 ? "\(row.saver.displayName) off"
                 : "\(row.saver.displayName) \(row.metric)" + (row.metricCaption.isEmpty ? "" : " \(row.metricCaption)")
@@ -91,6 +129,37 @@ struct SaversView: View {
             .foregroundStyle(panel.warning == nil ? .secondary : Color.orange)
             .lineLimit(1)
             .truncationMode(.tail)
+    }
+}
+
+/// The exact commands, shown before anything runs. Returns true to go ahead.
+enum InstallConfirmation {
+    @MainActor
+    static func confirm(_ plan: InstallPlan) -> Bool {
+        let alert = NSAlert()
+        let verb = plan.action == .install ? "Install" : "Uninstall"
+        alert.messageText = "\(verb) \(plan.saver.displayName)?"
+        var lines: [String] = []
+        if !plan.missing.isEmpty {
+            lines.append("Needs \(plan.missing.joined(separator: " and ")), which isn't on this Mac.")
+        }
+        for (index, step) in plan.steps.enumerated() {
+            lines.append("\(index + 1). \(step.purpose)\n    \(step.command)")
+        }
+        if !plan.steps.isEmpty {
+            lines.append("These are \(plan.saver.displayName)'s own commands. They run in Terminal, where you can watch them"
+                         + (plan.needsPerson ? " and finish the sign-in." : "."))
+        }
+        lines += plan.notes
+        alert.informativeText = lines.joined(separator: "\n\n")
+        if plan.isRunnable {
+            alert.addButton(withTitle: "Run in Terminal")
+            alert.addButton(withTitle: "Cancel")
+        } else {
+            alert.addButton(withTitle: "OK")
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn && plan.isRunnable
     }
 }
 

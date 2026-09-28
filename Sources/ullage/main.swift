@@ -28,6 +28,8 @@ USAGE
   ullage savers [session]    Token savers (rtk, Tokenade, caveman, Headroom): switched on, and what they did
   ullage savers enable|disable <name> [--dry-run]
                              Switch one in Claude Code's user config (applies to new sessions)
+  ullage savers install|uninstall <name> [--dry-run] [--yes]
+                             Run the saver's own install or uninstall commands, after asking
   ullage info                Resolved paths and row counts
 
 OPTIONS
@@ -42,6 +44,7 @@ OPTIONS
   --traces-only     Export spans but no metrics
   --all             Export every span on disk, not just the window
   --fetch           `limits`: fetch Claude's plan limits (sends Claude Code's token to Anthropic)
+  --yes             `savers install|uninstall`: do not ask before running
   --verbose         Report malformed lines and skipped files
   -h, --help        This text
 
@@ -69,6 +72,7 @@ struct Options {
     var tracesOnly = false
     var everything = false
     var fetch = false
+    var yes = false
     /// `--days` was given explicitly, so it wins over the export cursor.
     var daysWasSet = false
 }
@@ -108,6 +112,8 @@ func parseArguments(_ arguments: [String]) -> Options {
             options.everything = true
         case "--fetch":
             options.fetch = true
+        case "--yes", "-y":
+            options.yes = true
         case "-h", "--help", "help":
             positional.append("help")
         default:
@@ -463,6 +469,43 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     }
 }
 
+/// Prints the plan, asks, then runs each step in the user's shell with this
+/// terminal attached, so prompts and browser sign-ins work. Stops at the
+/// first step that fails.
+func runInstallPlan(_ plan: InstallPlan, dryRun: Bool, assumeYes: Bool) throws {
+    let verb = plan.action == .install ? "install" : "uninstall"
+    if !plan.missing.isEmpty {
+        print("can't \(verb) \(plan.saver.displayName): needs \(plan.missing.joined(separator: " and "))")
+    }
+    for (index, step) in plan.steps.enumerated() {
+        print("\(index + 1). \(step.purpose)")
+        print("   $ \(step.command)")
+    }
+    plan.notes.forEach { print($0) }
+    guard plan.isRunnable, !dryRun else { return }
+    if !assumeYes {
+        print("\nThese are \(plan.saver.displayName)'s own commands. Run them? [y/N] ", terminator: "")
+        guard let answer = readLine()?.lowercased(), answer == "y" || answer == "yes" else {
+            print("nothing changed")
+            return
+        }
+    }
+    let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/sh"
+    for step in plan.steps {
+        print("\n→ \(step.purpose)\n  $ \(step.command)")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shell)
+        process.arguments = ["-c", step.command]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            print("stopped: exited \(process.terminationStatus); the steps after it did not run")
+            exit(process.terminationStatus)
+        }
+    }
+    print("\ndone · applies to Claude Code sessions started from now")
+}
+
 func printLimits(_ store: Store, now: Date = Date(), fetched: Bool) throws {
     let displays = PlanLimitFormatter.displays(for: try store.planLimits(), now: now)
     if displays.isEmpty {
@@ -768,6 +811,16 @@ do {
 
     case "savers":
         let switchboard = SaverSwitchboard()
+        if let verb = options.paths.first, let action = SaverAction(rawValue: verb) {
+            guard let name = options.paths.dropFirst().first,
+                  let saver = TokenSaver.allCases.first(where: { $0.rawValue == name.lowercased() }) else {
+                print("usage: ullage savers \(verb) <\(TokenSaver.allCases.map(\.rawValue).joined(separator: "|"))> [--dry-run] [--yes]")
+                break
+            }
+            let plan = SaverInstaller(switchboard: switchboard).plan(saver, action)
+            try runInstallPlan(plan, dryRun: options.dryRun, assumeYes: options.yes)
+            break
+        }
         if let verb = options.paths.first, verb == "enable" || verb == "disable" {
             guard let name = options.paths.dropFirst().first,
                   let saver = TokenSaver.allCases.first(where: { $0.rawValue == name.lowercased() }) else {

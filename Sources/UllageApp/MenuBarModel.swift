@@ -48,6 +48,7 @@ final class MenuBarModel: ObservableObject {
     func popoverDidOpen() {
         popoverIsOpen = true
         heldSessionId = nil      // re-latch onto whatever is current right now
+        saverStates = nil        // an install may have finished in Terminal
         refresh()
         fetchClaudeLimits()
     }
@@ -139,6 +140,8 @@ final class MenuBarModel: ObservableObject {
     @Published private(set) var saverMessage: String?
 
     private let switchboard = SaverSwitchboard()
+    private lazy var installer = SaverInstaller(switchboard: switchboard)
+    private var saverInstalls: [TokenSaver: SaverInstallation] = [:]
     // Other programs' files and a 30-day scan: re-read on a slower clock than
     // the 15-second refresh, and at once after a switch.
     private var saverStates: (at: Date, states: [TokenSaver: SaverSwitchState])?
@@ -160,10 +163,30 @@ final class MenuBarModel: ObservableObject {
         refresh()
     }
 
+    func installPlan(_ saver: TokenSaver, _ action: SaverAction) -> InstallPlan {
+        installer.plan(saver, action)
+    }
+
+    /// Runs a plan the user has read and confirmed, in Terminal: the steps are
+    /// the tools' own commands, and some (a browser sign-in, Homebrew) need a
+    /// person at a real terminal.
+    func run(_ plan: InstallPlan) {
+        do {
+            let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+            let url = try SaverInstaller.writeCommandFile(for: plan, shell: shell)
+            NSWorkspace.shared.open(url)
+            saverMessage = "\(plan.action == .install ? "Installing" : "Uninstalling") \(plan.saver.displayName) in Terminal · reopen this to see it"
+        } catch {
+            saverMessage = "\(error)"
+        }
+        saverStates = nil
+    }
+
     private func refreshSavers(store: Store, sessionId: String?) throws {
         let now = Date()
         if saverStates.map({ now.timeIntervalSince($0.at) > Self.saverCacheInterval }) ?? true {
             saverStates = (now, switchboard.states())
+            saverInstalls = Dictionary(uniqueKeysWithValues: TokenSaver.allCases.map { ($0, installer.installation(of: $0)) })
         }
         if saverLedger.map({ now.timeIntervalSince($0.at) > Self.saverCacheInterval }) ?? true {
             saverLedger = (now, SaverLedgers.load(since: now.addingTimeInterval(-31 * 86_400)))
@@ -179,7 +202,8 @@ final class MenuBarModel: ObservableObject {
                 saverComparison = (now, cwd, comparison)
             }
         }
-        savers = SaverPanel.build(report: report, states: saverStates?.states ?? [:], comparison: comparison)
+        savers = SaverPanel.build(report: report, states: saverStates?.states ?? [:], comparison: comparison,
+                                  installed: Set(saverInstalls.filter { $0.value.isInstalled }.keys))
     }
 
     private var readStore: Store?

@@ -28,7 +28,11 @@ Ullage reads Claude Code's config and writes it in exactly one case: a token
 saver switch (popover, or `ullage savers enable|disable`) edits
 `~/.claude/settings.json` / `~/.claude.json` for that one saver. It backs the
 file up first, and parks what it removes rather than deleting it
-(`SaverSwitchboard`).
+(`SaverSwitchboard`). Installing or uninstalling a saver runs *that tool's own*
+documented commands (`SaverInstaller`), only when the user picks it, confirms
+after seeing every command, and watches them run in Terminal (or their own
+shell, for the CLI). Ullage never installs anything on its own and never
+reimplements an installer.
 
 ### Harness support
 
@@ -48,7 +52,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 208 tests on macOS; 202 on Linux (six need CryptoKit)
+swift test                 # 214 tests on macOS; 208 on Linux (six need CryptoKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -56,7 +60,8 @@ scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
 `composition <session>`, `agents <session>`, `env <session>`, `serve`,
 `push [--test]`, `otlp`, `limits [--fetch]`, `savers [session]`,
-`savers enable|disable <name> [--dry-run]`, `info`.
+`savers enable|disable <name> [--dry-run]`,
+`savers install|uninstall <name> [--dry-run] [--yes]`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
   have no macOS-only imports, with one guarded exception: `WebPush.swift` is
