@@ -1113,7 +1113,10 @@ public final class Store {
         ContextHistory.build(
             sessionId: sessionId,
             calls: try calls(sessionId: sessionId, scope: scope),
+            // Slash commands are typed on the main thread, so they explain the
+            // main thread's rebuilds only.
             events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue, scope: scope)
+                + (scope == .mainThread ? try events(sessionId: sessionId, kind: EventKind.command.rawValue) : [])
         )
     }
 

@@ -455,6 +455,9 @@ struct PopoverContent: View {
                         + (history.compactionTurns.isEmpty ? "" : " · \(history.compactionTurns.count) compaction\(history.compactionTurns.count == 1 ? "" : "s")"))
                     // Peak is a tick on the ring: same ratio, same window, and
                     // on a growing session it is the current value anyway.
+                    if !history.rebuilds.isEmpty {
+                        row("Cache rebuilt", "\(history.rebuilds.count)× · " + CacheRebuilds.causeSummary(history.rebuilds))
+                    }
                 }
                 // Under an agent, the session id and the session's agent count
                 // describe something other than every number around them, which
@@ -486,10 +489,17 @@ struct PopoverContent: View {
         if let history = model.history {
             parts.append(Readout("turns", history.points.count.formatted()))
             if !history.compactionTurns.isEmpty { parts.append(Readout("compacted", "\(history.compactionTurns.count)×")) }
+            // Only rebuilds the session caused earn a place on one line, and
+            // first, like every problem; an expired cache after a break is in
+            // the expanded table.
+            let avoidable = history.rebuilds.filter(\.cause.isAvoidable)
+            if !avoidable.isEmpty { parts.insert(Readout("re-cached", "\(avoidable.count)×", warning: true), at: 0) }
         }
         // The session id is in the expanded table; one line has no room for it.
         if let status = agent?.statusLabel { parts.append(Readout(status)) }
-        if let lastActivity {
+        // The time is the first thing to give way: it is in the expanded
+        // table, and the line has to fit (ReadoutWidthTests).
+        if let lastActivity, !parts.contains(where: \.isWarning) {
             parts.append(Readout(state.isIdle && agent == nil ? "idle" : "at",
                                  lastActivity.formatted(date: .omitted, time: .shortened)))
         }

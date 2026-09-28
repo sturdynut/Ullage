@@ -63,7 +63,10 @@ struct ContextChart: View {
         if let hovered {
             Text("Turn \(hovered.turnIndex)  ·  \(hovered.contextTokens.formatted()) tokens"
                  + (hovered.contextDelta.map { "  ·  \($0 >= 0 ? "+" : "")\($0.formatted())" } ?? "")
-                 + (history.compactionTurns.contains(hovered.turnIndex) ? "  ·  compacted before this turn" : ""))
+                 + (history.compactionTurns.contains(hovered.turnIndex) ? "  ·  compacted before this turn" : "")
+                 + (history.rebuilds.first { $0.turnIndex == hovered.turnIndex }.map {
+                     "  ·  re-cached \(Self.compact($0.cacheWrite)): \($0.cause.rawValue)" + ($0.detail.map { ", \($0)" } ?? "")
+                 } ?? ""))
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
         } else if showsIdleCaption {
             Text("Context per turn")
@@ -120,6 +123,16 @@ struct ContextChart: View {
                 RuleMark(x: .value("Compaction", turn))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                     .foregroundStyle(.secondary)
+            }
+
+            // Where the session paid to cache its context again: orange when
+            // something it did caused it, grey when the cache had simply
+            // expired over a break.
+            ForEach(history.rebuilds) { rebuild in
+                PointMark(x: .value("Turn", rebuild.turnIndex), y: .value("Context", rebuild.contextTokens))
+                    .symbol(.triangle)
+                    .symbolSize(28)
+                    .foregroundStyle(rebuild.cause.isAvoidable ? Color.orange : Color.secondary)
             }
 
             if let limit {

@@ -64,4 +64,50 @@ final class EfficiencyTests: XCTestCase {
         state.effort = "high"
         XCTAssertEqual(state.modelLine, "claude-opus-5-5 · high")
     }
+
+    // MARK: - Cache rebuilds
+
+    private func turn(_ i: Int, minute: Int, context: Int, write: Int, model: String = "opus", effort: String? = "high") -> CallRow {
+        var call = CallRow(dedupeKey: "m\(i)", ts: String(format: "2026-09-01T%02d:%02d:00.000Z", 10 + minute / 60, minute % 60),
+                           sessionId: "s", model: model, cacheRead: context - write, cacheWrite: write,
+                           contextTokens: context, turnIndex: i, sourceFile: "t")
+        call.effort = effort
+        return call
+    }
+
+    func testRebuildCausesInOrder() {
+        let calls = [
+            turn(0, minute: 0, context: 60_000, write: 60_000),            // first turn: always writes, never a rebuild
+            turn(1, minute: 1, context: 62_000, write: 2_000),             // ordinary
+            turn(2, minute: 2, context: 64_000, write: 64_000, model: "fable"),
+            turn(3, minute: 3, context: 66_000, write: 66_000, model: "fable", effort: "max"),
+            turn(4, minute: 90, context: 68_000, write: 68_000, model: "opus", effort: "low"),  // expiry wins over changes
+            turn(5, minute: 91, context: 70_000, write: 70_000, model: "opus", effort: "low"),
+            turn(6, minute: 92, context: 30_000, write: 30_000, model: "opus", effort: "low"),  // compacted: not a rebuild
+            turn(7, minute: 93, context: 40_000, write: 40_000, model: "opus", effort: "low"),  // under the minimum
+        ]
+        let commands = [EventRow(id: "c", sessionId: "s", ts: "2026-09-01T11:30:30.000Z", kind: EventKind.command.rawValue,
+                                 detail: SlashCommand(name: "fast", args: nil).detailJSON)]
+        let rebuilds = CacheRebuilds.detect(calls: calls, commands: commands)
+        XCTAssertEqual(rebuilds.map(\.turnIndex), [2, 3, 4, 5])
+        XCTAssertEqual(rebuilds.map(\.cause), [.modelChanged, .effortChanged, .expired, .command])
+        XCTAssertEqual(rebuilds.map(\.detail), ["opus → fable", "high → max", "idle 1h 27m", "/fast"])
+        XCTAssertEqual(rebuilds.first?.cacheWrite, 64_000, "the measured write, not an estimate")
+        XCTAssertEqual(rebuilds.filter(\.cause.isAvoidable).count, 3)
+        XCTAssertEqual(CacheRebuilds.causeSummary(rebuilds), "expired ×1, model changed ×1, effort changed ×1, command ×1")
+    }
+
+    func testUnknownEffortIsNotAChange() {
+        let calls = [turn(0, minute: 0, context: 60_000, write: 1_000, effort: nil),
+                     turn(1, minute: 1, context: 61_000, write: 61_000, effort: "high")]
+        XCTAssertEqual(CacheRebuilds.detect(calls: calls).first?.cause, .unknown)
+    }
+
+    func testHistoryCarriesRebuilds() throws {
+        let store = try Store.inMemory()
+        for call in [turn(0, minute: 0, context: 60_000, write: 60_000), turn(1, minute: 1, context: 61_000, write: 61_000, model: "fable")] {
+            try store.upsert(call: call)
+        }
+        XCTAssertEqual(try store.contextHistory(sessionId: "s").rebuilds.map(\.cause), [.modelChanged])
+    }
 }

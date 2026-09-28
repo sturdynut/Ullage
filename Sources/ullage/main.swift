@@ -25,6 +25,8 @@ USAGE
   ullage push [--test]       Devices subscribed to alerts; --test buzzes them
   ullage otlp                Export everything measured to an OTLP collector
   ullage limits [--fetch]    Plan limits left: Codex from disk; --fetch asks Anthropic for Claude's
+  ullage rebuilds [session]  Turns that re-cached most of their context, and why
+  ullage rebuilds --days N   Rebuilds across every session in the last N days, by cause
   ullage savers --days N     Each token saver across every session in the last N days
   ullage savers [session]    Token savers (rtk, Tokenade, caveman, Headroom): switched on, and what they did
   ullage savers enable|disable <name> [--dry-run]
@@ -415,6 +417,44 @@ func menuBarLine(_ store: Store) throws -> String {
 
 /// One line per limit: what is left, when it resets, and what Ullage itself
 /// saw in that window — the four counters apart, never summed.
+/// Measured figures only: each rebuild is the turn's own cache_write.
+func printRebuilds(_ store: Store, sessionPrefix: String?) throws {
+    let sessionId: String?
+    if let sessionPrefix {
+        sessionId = try store.sessionTotals().map(\.sessionId).first { $0.hasPrefix(sessionPrefix) }
+    } else {
+        sessionId = try store.latestCall()?.sessionId
+    }
+    guard let sessionId else { print("no session"); return }
+    let history = try store.contextHistory(sessionId: sessionId)
+    print("SESSION \(sessionId.prefix(8)) · main thread · \(history.points.count) turns")
+    if history.rebuilds.isEmpty { print("  no turn re-cached most of its context"); return }
+    for rebuild in history.rebuilds {
+        print("  turn " + padLeft("\(rebuild.turnIndex)", 4) + padLeft(thousands(rebuild.cacheWrite), 11) + " re-cached  "
+              + pad(rebuild.cause.rawValue, 15) + (rebuild.detail ?? ""))
+    }
+    print("  " + CacheRebuilds.causeSummary(history.rebuilds))
+}
+
+func printRebuildRange(_ store: Store, days: Int) throws {
+    let since = Timestamps.string(from: Date().addingTimeInterval(-Double(days) * 86_400))
+    var all: [CacheRebuild] = []
+    var turns = 0
+    for sessionId in try store.sessionsActive(since: since) {
+        let history = try store.contextHistory(sessionId: sessionId)
+        turns += history.points.filter { $0.ts >= since }.count
+        all += history.rebuilds.filter { $0.ts >= since }
+    }
+    print("CACHE REBUILDS, main threads, last \(days) days: \(all.count) of \(thousands(turns)) turns")
+    let byCause = Dictionary(grouping: all, by: \.cause)
+    for cause in CacheRebuild.Cause.allCases {
+        guard let rows = byCause[cause] else { continue }
+        let written = rows.reduce(0) { $0 + $1.cacheWrite }
+        print("  " + pad(cause.rawValue, 16) + padLeft("\(rows.count)×", 6) + padLeft(thousands(written), 14) + " re-cached"
+              + (cause.isAvoidable ? "" : "   (expected after a break)"))
+    }
+}
+
 func printSaverRange(_ store: Store, days: Int) throws {
     let range: SaverRange = days <= 7 ? .week : .month
     let ledger = SaverLedgers.load(since: Date().addingTimeInterval(-Double(days + 1) * 86_400))
@@ -830,6 +870,14 @@ do {
             }
         }
         try printLimits(store, fetched: options.fetch)
+
+    case "rebuilds":
+        let store = try Store(path: options.databasePath)
+        if options.daysWasSet {
+            try printRebuildRange(store, days: options.days)
+        } else {
+            try printRebuilds(store, sessionPrefix: options.paths.first)
+        }
 
     case "savers":
         let switchboard = SaverSwitchboard()

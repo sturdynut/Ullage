@@ -53,9 +53,13 @@ final class ReadoutWidthTests: XCTestCase {
     }
 
     func testSessionInformation() {
-        let items = [Readout("last turn", "+12,951"), Readout("turns", "1,112"), Readout("compacted", "3×"),
-                     Readout("idle", "11:27 PM")]
-        XCTAssertLessThanOrEqual(width(items), Self.available)
+        let calm = [Readout("last turn", "+12,951"), Readout("turns", "1,112"), Readout("compacted", "3×"),
+                    Readout("idle", "11:27 PM")]
+        XCTAssertLessThanOrEqual(width(calm), Self.available)
+        // With a rebuild warning the time gives way (PopoverContent.statsReadouts).
+        let warned = [Readout("re-cached", "12×", warning: true), Readout("last turn", "+12,951"),
+                      Readout("turns", "1,112"), Readout("compacted", "3×")]
+        XCTAssertLessThanOrEqual(width(warned), Self.available)
     }
 }
 #endif

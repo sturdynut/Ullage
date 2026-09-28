@@ -122,6 +122,8 @@ public struct ContextHistory: Equatable {
     public var points: [ContextPoint]
     /// Turn indexes whose prompt was the first one *after* a compaction.
     public var compactionTurns: [Int]
+    /// Turns that re-cached most of their context, with the cause.
+    public var rebuilds: [CacheRebuild] = []
 
     public var peakContextTokens: Int { points.map(\.contextTokens).max() ?? 0 }
 
@@ -133,7 +135,8 @@ public struct ContextHistory: Equatable {
     }
 
     /// `calls` in turn order (the store's `calls(sessionId:)` ordering);
-    /// `events` of any kind, only compactions are used. Timestamps are the
+    /// `events` of any kind: compactions mark the chart, slash commands
+    /// explain cache rebuilds. Timestamps are the
     /// store's normalised UTC strings, so string comparison is chronological.
     public static func build(sessionId: String, calls: [CallRow], events: [EventRow]) -> ContextHistory {
         let points = calls.compactMap { call -> ContextPoint? in
@@ -155,12 +158,14 @@ public struct ContextHistory: Equatable {
                 compactionTurns.insert(next.turnIndex)
             }
         }
-        return ContextHistory(
+        var history = ContextHistory(
             sessionId: sessionId,
             windowLimit: windowLimit,
             points: points,
             compactionTurns: compactionTurns.sorted()
         )
+        history.rebuilds = CacheRebuilds.detect(calls: calls, commands: events)
+        return history
     }
 }
 

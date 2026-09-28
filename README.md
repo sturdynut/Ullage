@@ -76,8 +76,10 @@ anything away.
     Install… option for the ones you don't have. See
     [Token savers](#token-savers).
   - **Session information**: collapsed, the last turn's change, turn count and
-    last-active time (`last turn +951 · turns 112 · idle 5:27 PM`). Expanded, a
-    table that adds the session id.
+    last-active time (`last turn +951 · turns 112 · idle 5:27 PM`), led by
+    `re-cached 2×` when something the session did made it cache its context
+    again. Expanded, a table that adds the session id and every cache rebuild
+    by cause.
   - **Agents**: collapsed, how many there are, how many haven't finished, and
     whose window is fullest. Expanded, the tree of **subagents the session
     spawned**, each named by the description the agent above it wrote and each
@@ -190,6 +192,8 @@ ullage env <session>         # a session's configuration snapshot
 ullage limits [--fetch]      # plan limits left; --fetch asks Anthropic for Claude's
 ullage savers [session]      # token savers: switched on, and what each did
 ullage savers --days 30      # each saver across every session in the range
+ullage rebuilds [session]    # turns that re-cached most of their context, and why
+ullage rebuilds --days 30    # the same across sessions, by cause
 ullage savers disable rtk --dry-run   # what switching one off would change
 ullage savers install caveman         # the tool's own install commands, after asking
 ullage info                  # resolved paths, retention, row counts
@@ -394,6 +398,26 @@ ullage push --test     # buzz them all, to prove it works
 ```
 
 [`docs/PHONE.md`](docs/PHONE.md) has the setup in full.
+
+## Cache rebuilds
+
+Claude caches the conversation between turns, so each turn only pays full price
+for what is new. Some turns re-cache almost everything instead. Ullage flags a
+turn whose cache write is over half its context (50k tokens or more, and not
+straight after a compaction), marks it on the chart with a triangle, and names
+the cause from what changed since the turn before:
+
+| Cause | What changed | Marker |
+|---|---|---|
+| expired | more than an hour since the previous turn: the cache timed out | grey |
+| model changed | a different model answered, e.g. `claude-opus-5-5 → claude-fable-5-1` | orange |
+| effort changed | the recorded effort changed, e.g. `high → max` | orange |
+| command | `/model`, `/effort`, `/fast`, `/config` or similar was typed in between | orange |
+| unknown | nothing on disk explains it | orange |
+
+The size shown is that turn's own measured cache write. Nothing is converted to
+money or called waste: an expired cache after a break is expected, which is why
+only the other causes appear in the collapsed popover line.
 
 ## How the number is computed
 
