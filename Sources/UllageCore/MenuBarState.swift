@@ -28,6 +28,14 @@ public struct MenuBarState: Equatable {
     public var contextDelta: Int?
 
     public var isIdle: Bool { status == .idle || status == .empty }
+
+    /// The last percentage, kept for an idle menu bar to draw *faded*: still
+    /// readable at a glance, visibly not current. Nil unless idle with a known
+    /// window. `title` stays the glyph for every other surface.
+    public var idleReading: String? {
+        guard status == .idle, let occupancy else { return nil }
+        return MenuBarFormatter.percentage(occupancy)
+    }
 }
 
 public enum MenuBarFormatter {

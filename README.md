@@ -43,9 +43,9 @@ anything away.
 
 - **Menu bar:** a gauge icon whose needle rises with occupancy, followed by the
   percentage &nbsp;<img src="docs/screenshots/menu-bar.png" alt="Ullage menu bar item showing a gauge icon and 44%" height="18" valign="middle">&nbsp;. It
-  turns amber past 85%, and drops to a plain gauge with no number once a session
-  has been idle for 30 minutes, so a stale figure is never mistaken for a live
-  one.
+  turns amber past 85%. Once a session has been idle for 30 minutes the
+  percentage fades: you can still read the last value, and it doesn't look
+  current.
 - **Popover** — click the menu bar item. The top stays put while the rest
   scrolls, so the session is always named even when the popover is taller than
   the screen:

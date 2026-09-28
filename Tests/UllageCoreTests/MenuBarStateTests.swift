@@ -54,6 +54,8 @@ final class MenuBarStateTests: XCTestCase {
         XCTAssertEqual(stale.status, .idle)
         XCTAssertEqual(stale.title, MenuBarFormatter.idleGlyph)
         XCTAssertTrue(stale.isIdle)
+        XCTAssertEqual(stale.idleReading, "72%", "the menu bar keeps it, faded")
+        XCTAssertNil(fresh.idleReading, "a live number is not an idle reading")
         // The detail is still there for the menu; only the headline goes quiet.
         XCTAssertEqual(stale.contextTokens, 144_000)
     }
