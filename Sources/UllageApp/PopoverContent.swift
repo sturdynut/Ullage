@@ -16,6 +16,7 @@ struct PopoverContent: View {
     @AppStorage("compositionExpanded") private var compositionExpanded = false
     @AppStorage("detailsExpanded") private var detailsExpanded = false
     @AppStorage("planLimitsExpanded") private var planLimitsExpanded = false
+    @AppStorage("saversExpanded") private var saversExpanded = true
 
     var body: some View {
         // A MenuBarExtra window taller than the screen is clipped at the top,
@@ -78,6 +79,13 @@ struct PopoverContent: View {
                 }
                 CompositionView(composition: composition, expanded: compositionExpanded, showsTitle: false,
                                 onOpen: openExplorer)
+            }
+            if !model.savers.isEmpty {
+                CollapsibleSectionRule("Token savers", isExpanded: $saversExpanded,
+                                       help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from"))
+                SaversView(panel: model.savers, message: model.saverMessage, expanded: saversExpanded) {
+                    model.setSaver($0, on: $1)
+                }
             }
             if model.state.status != .empty {
                 CollapsibleSectionRule("Session information", scope: scopeName, isExpanded: $detailsExpanded,

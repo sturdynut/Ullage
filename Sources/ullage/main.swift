@@ -25,6 +25,9 @@ USAGE
   ullage push [--test]       Devices subscribed to alerts; --test buzzes them
   ullage otlp                Export everything measured to an OTLP collector
   ullage limits [--fetch]    Plan limits left: Codex from disk; --fetch asks Anthropic for Claude's
+  ullage savers [session]    Token savers (rtk, Tokenade, caveman, Headroom): switched on, and what they did
+  ullage savers enable|disable <name> [--dry-run]
+                             Switch one in Claude Code's user config (applies to new sessions)
   ullage info                Resolved paths and row counts
 
 OPTIONS
@@ -404,6 +407,62 @@ func menuBarLine(_ store: Store) throws -> String {
 
 /// One line per limit: what is left, when it resets, and what Ullage itself
 /// saw in that window — the four counters apart, never summed.
+func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: String?) throws {
+    let states = switchboard.states()
+    print("SWITCHED ON IN CLAUDE CODE (user config)")
+    for saver in TokenSaver.allCases {
+        print("  " + pad(saver.displayName, 10) + pad(states[saver]?.rawValue ?? "—", 15) + "shrinks " + saver.shrinks)
+    }
+
+    let sessionId: String?
+    if let sessionPrefix {
+        sessionId = try store.sessionTotals().map(\.sessionId).first { $0.hasPrefix(sessionPrefix) }
+        if sessionId == nil { print("\nno session starting with \(sessionPrefix)"); return }
+    } else {
+        sessionId = try store.latestCall()?.sessionId
+    }
+    guard let sessionId else { return }
+    let report = try store.saverReport(sessionId: sessionId, ledger: SaverLedgers.load())
+    print("")
+    print("SESSION \(sessionId.prefix(8))  \(report.cwd ?? "")  ·  \(report.bashCalls) Bash calls")
+    if report.visible.isEmpty {
+        print("  no token saver left a trace in this session")
+    }
+    for usage in report.visible {
+        var facts: [String] = []
+        if usage.hookRuns > 0 { facts.append("hook ran \(usage.hookRuns)×") }
+        if usage.rewrites > 0 { facts.append("rewrote \(usage.rewrites) commands") }
+        if usage.failedRuns > 0 { facts.append("\(usage.failedRuns) runs failed") }
+        if usage.mcpCalls > 0 { facts.append("\(usage.mcpCalls) MCP calls") }
+        if usage.idle { facts.append("configured, never called") }
+        if usage.invocations > 0 { facts.append("invoked \(usage.invocations)×") }
+        print("  " + pad(usage.saver.displayName, 10) + facts.joined(separator: " · "))
+        if usage.broken, let message = usage.failureMessage {
+            print("  " + pad("", 10) + "says: " + message.replacingOccurrences(of: "\n", with: " "))
+        }
+        if let ledger = usage.ledger {
+            let reduction = ledger.reduction.map { "  (≈\(Int(($0 * 100).rounded()))% smaller)" } ?? ""
+            print("  " + pad("", 10) + "≈\(thousands(ledger.savedTokens)) tokens kept out over \(ledger.entries) commands\(reduction)")
+            print("  " + pad("", 10) + usage.saver.savingSource)
+            for group in ledger.groups.prefix(5) {
+                print("  " + pad("", 12) + pad(group.command, 18) + padLeft("\(group.entries)×", 5) + padLeft("≈" + thousands(group.savedTokens), 10))
+            }
+        }
+    }
+    if report.doubleHookedCalls > 0 {
+        print("")
+        print("  ! \(report.doubleHookedCalls) Bash calls went through both rtk and Tokenade; their savings overlap and cannot be added")
+    }
+    if let cwd = report.cwd,
+       let since = Calendar.current.date(byAdding: .day, value: -30, to: Date()),
+       let comparison = try store.outputComparison(cwd: cwd, since: Timestamps.string(from: since)) {
+        print("")
+        print("CAVEMAN, this directory, 30 days (measured output per main-thread turn; a comparison, not a saving)")
+        print("  with     median \(thousands(comparison.withMedian))  over \(comparison.withTurns) turns in \(comparison.withSessions) sessions")
+        print("  without  median \(thousands(comparison.withoutMedian))  over \(comparison.withoutTurns) turns in \(comparison.withoutSessions) sessions")
+    }
+}
+
 func printLimits(_ store: Store, now: Date = Date(), fetched: Bool) throws {
     let displays = PlanLimitFormatter.displays(for: try store.planLimits(), now: now)
     if displays.isEmpty {
@@ -706,6 +765,31 @@ do {
             }
         }
         try printLimits(store, fetched: options.fetch)
+
+    case "savers":
+        let switchboard = SaverSwitchboard()
+        if let verb = options.paths.first, verb == "enable" || verb == "disable" {
+            guard let name = options.paths.dropFirst().first,
+                  let saver = TokenSaver.allCases.first(where: { $0.rawValue == name.lowercased() }) else {
+                print("usage: ullage savers enable|disable <\(TokenSaver.allCases.map(\.rawValue).joined(separator: "|"))> [--dry-run]")
+                break
+            }
+            let on = verb == "enable"
+            let change = options.dryRun ? try switchboard.plan(saver, on: on) : try switchboard.set(saver, on: on)
+            if change.summary.isEmpty {
+                print("\(saver.displayName) is already \(on ? "on" : "off")")
+            } else {
+                print((options.dryRun ? "would change:" : "changed:"))
+                change.summary.forEach { print("  " + $0) }
+                if !options.dryRun {
+                    print("backups in \(switchboard.parkedURL.deletingLastPathComponent().appendingPathComponent("backups").path)")
+                    print("applies to Claude Code sessions started from now; running ones keep what they loaded")
+                }
+            }
+            break
+        }
+        let store = try Store(path: options.databasePath)
+        try printSavers(store, switchboard: switchboard, sessionPrefix: options.paths.first)
 
     case "info":
         let store = try Store(path: options.databasePath)

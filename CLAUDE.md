@@ -24,6 +24,12 @@ default), the app asks `api.anthropic.com/api/oauth/usage` for plan limits every
 refreshed; `ullage limits --fetch` does the same once. Serving itself uploads nothing: the page is bound to
 127.0.0.1 and `tailscale serve` fronts it for your own devices.
 
+Ullage reads Claude Code's config and writes it in exactly one case: a token
+saver switch (popover, or `ullage savers enable|disable`) edits
+`~/.claude/settings.json` / `~/.claude.json` for that one saver. It backs the
+file up first, and parks what it removes rather than deleting it
+(`SaverSwitchboard`).
+
 ### Harness support
 
 | Harness | Reads | Occupancy | Notes |
@@ -42,14 +48,15 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 192 tests on macOS; 186 on Linux (six need CryptoKit)
+swift test                 # 208 tests on macOS; 202 on Linux (six need CryptoKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
 
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
 `composition <session>`, `agents <session>`, `env <session>`, `serve`,
-`push [--test]`, `otlp`, `limits [--fetch]`, `info`.
+`push [--test]`, `otlp`, `limits [--fetch]`, `savers [session]`,
+`savers enable|disable <name> [--dry-run]`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
   have no macOS-only imports, with one guarded exception: `WebPush.swift` is
@@ -122,6 +129,13 @@ plausible and are wrong.
    only beside plan-wide limits (a per-model limit's window would count every
    model). Claude's come from the undocumented `/api/oauth/usage` — parse it
    like a transcript, and never refresh Claude Code's token.
+10. **A token saver's saving is its own claim.** rtk and Tokenade shrink tool
+    output before Ullage sees it, so a saving can't be measured here. It comes
+    from their own ledgers, is shown with `≈` and labelled with where it came
+    from (`TokenSaver.savingSource`), and never enters a counter, occupancy or
+    composition. Two savers' claims about the same call overlap and are never
+    summed. caveman's with/without comparison uses measured output, but it
+    compares different turns and is labelled as a comparison.
 
 ## Architecture and conventions
 
@@ -194,6 +208,13 @@ plausible and are wrong.
   node's `http_ece` — the library `web-push` uses — which decrypts what it
   produces, and the VAPID JWT against `crypto.verify`. Note `UllageCore` ships
   its own `SHA256`, so CryptoKit's needs qualifying as `CryptoKit.SHA256`.
+- **Token savers are detected from hook runs, not config.** Claude Code writes
+  every hook it runs as an `attachment` line (command, `toolUseID`, stdout,
+  stderr, exit code); parser v4 keeps them as `hook` events and slash commands
+  as `command` events. That is how a hook that runs but fails (rtk's hook with no
+  `rtk` binary) is told apart from one that works. Config is read only to know
+  what can be switched now. Logic lives in `TokenSavers`, `SaverReport`,
+  `SaverLedgers`, `SaverPanel` and `SaverSwitchboard`.
 - **`session_env` is the one irreproducible table.** MCP servers, skills and
   CLAUDE.md are snapshotted at ingest because nothing on disk records what they
   were when a session ran. It is Claude-Code-only; other vendors skip it.

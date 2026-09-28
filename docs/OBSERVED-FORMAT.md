@@ -306,3 +306,35 @@ or `~/.claude/.credentials.json` where there is no Keychain. The body:
 `limits` is parsed; the top-level windows are the fallback. `utilization` and
 `percent` are 0–100. Code-named keys (`nimbus_quill`, `tangelo`, …) are ignored.
 
+
+## Hook runs and slash commands (parser v4)
+
+Observed on Claude Code 2.1.207 through 2.1.280. Every hook Claude Code runs is
+written as its own line, `type: "attachment"`:
+
+```json
+{"type":"attachment","uuid":"…","timestamp":"2026-07-11T19:42:19.128Z","sessionId":"…","cwd":"…",
+ "attachment":{"type":"hook_success","hookEvent":"PreToolUse","hookName":"PreToolUse:Bash",
+   "toolUseID":"toolu_…","command":"/Users/me/.claude/hooks/rtk-rewrite.sh",
+   "stdout":"","stderr":"[rtk] WARNING: rtk is not installed or not in PATH. …","exitCode":0,"durationMs":31}}
+```
+
+- `toolUseID` is the tool_use id for tool hooks; for `SessionStart` it is a uuid
+  that names nothing.
+- A PreToolUse hook that rewrites a command answers on stdout with
+  `hookSpecificOutput.updatedInput.command`. The tool_use block in the assistant
+  line keeps the *model's* command, so the rewrite is only visible here.
+- A hook can exit 0 and still do nothing: rtk's hook with no `rtk` binary warns
+  on stderr and exits 0. `HookRun.failed` treats "not installed" / "not found" /
+  "not in PATH" on stderr as a failure.
+- Stored as `event` rows of kind `hook`; the detail keeps the command, ids, exit
+  code, rewrite and the first 300 bytes of stderr, never stdout.
+
+A slash command is a `type: "user"` line whose content *starts* with the tags:
+
+```json
+{"type":"user","message":{"role":"user","content":"<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args></command-args>"}, …}
+```
+
+Stored as `event` rows of kind `command` with `{name, args}`. The same tags quoted
+mid-prompt are not a command.

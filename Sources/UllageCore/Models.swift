@@ -180,6 +180,10 @@ public enum EventKind: String {
     case summary
     case clear
     case sessionStart = "session_start"
+    /// A hook Claude Code ran, from an `attachment` line. Detail is a `HookRun`.
+    case hook
+    /// A slash command the user typed. Detail is a `SlashCommand`.
+    case command
 }
 
 /// A timeline marker. Mirrors the `event` table.

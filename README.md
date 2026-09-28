@@ -25,6 +25,11 @@ Anthropic for them the way Claude Code's `/usage` does, sending Claude Code's
 own sign-in to api.anthropic.com and nothing else. None of these happens until
 you set it up.
 
+Ullage only reads Claude Code's config, with one exception: when you flip a
+[token saver](#token-savers) switch, it edits Claude Code's user settings to
+switch that one tool on or off. It backs the file up first and never throws
+anything away.
+
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
 
@@ -70,6 +75,9 @@ you set it up.
     named by the description the agent above it wrote and each with **its own
     window and occupancy** — click one and the chart, the composition and the
     session information switch to its context, and say so;
+  - **Token savers** — rtk, Tokenade, caveman and Headroom, each with an on/off
+    switch, when one is installed or showed up in the session. See
+    [Token savers](#token-savers).
   - **Plan limits** — collapsed, one row per harness with what is left in every
     limit (`Claude 5h 88% week 39% Fable 22%`), the tightest in bold. Expanded,
     every limit with its bar, when it resets and what Ullage itself saw in that
@@ -174,6 +182,8 @@ ullage push [--test]         # devices subscribed to alerts; --test buzzes them
 ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
 ullage limits [--fetch]      # plan limits left; --fetch asks Anthropic for Claude's
+ullage savers [session]      # token savers: switched on, and what each did
+ullage savers disable rtk --dry-run   # what switching one off would change
 ullage info                  # resolved paths, retention, row counts
 ```
 
@@ -210,6 +220,51 @@ machines).
   says so until Claude Code's next request renews it. The endpoint is not a
   public API and may change; if it does, the limits disappear rather than show
   a wrong number.
+
+### Token savers
+
+[rtk](https://github.com/rtk-ai/rtk), [Tokenade](https://github.com/pi-infected/tokenade-npm),
+[caveman](https://github.com/juliusbrussee/caveman) and
+[Headroom](https://github.com/headroomlabs-ai/headroom) all exist to spend fewer
+tokens. Ullage shows what each one actually did and lets you switch it on or off.
+It never adds up a single "tokens saved" number, because nothing on disk records
+what a session would have cost without the tool.
+
+- **Did it run?** Claude Code logs every hook it runs in the transcript: the
+  command, the tool call it ran for, the command it was rewritten to, and any
+  error. Ullage reads those logs directly, so it can tell when a tool's hook
+  ran but failed. For example, rtk's hook keeps running after the `rtk` binary
+  is gone, and prints "rtk is not installed" every time.
+- **rtk and Tokenade** filter tool output before the model sees it, so Ullage
+  only ever sees the smaller version. Their savings come from their own logs
+  (rtk's `history.db`, Tokenade's `~/.tokenade/gain.jsonl`), matched to a
+  session by directory and time. They are shown with `≈` as that tool's own
+  claim: rtk counts bytes ÷ 4, and Tokenade doesn't say how it counts. When
+  both rewrite the same Bash call, the popover warns that their figures
+  overlap and can't be added together.
+- **caveman** shortens the model's replies, and Ullage measures output tokens
+  exactly. It compares the median output per turn with caveman on and with it
+  off, over the same directory's last 30 days of main-thread turns. That is a
+  comparison of different work, not a saving, and it is labelled as one. It
+  needs 20 turns on each side.
+- **Headroom** is an MCP server. Ullage shows whether it was loaded and
+  whether it was ever called; a loaded server that is never called still puts
+  its tool definitions in every prompt.
+
+**The switches** change Claude Code's user config (`~/.claude/settings.json`,
+`~/.claude.json`), and only when you click one or run `ullage savers
+enable|disable`:
+
+| Tool | Switching it off | Switching it on |
+|---|---|---|
+| caveman | sets its `enabledPlugins` flag to false | sets the flag back to true |
+| rtk, Tokenade | moves its hooks, unchanged, into `parked-savers.json` next to Ullage's database | puts the hooks back from there |
+| Headroom (and Tokenade's MCP server) | moves its `mcpServers` entry into the same file | puts the entry back |
+
+Each file is backed up to `backups/` next to the database before it is written.
+Sessions already running keep what they loaded; the change applies from the
+next one. Project-level config (`.claude/settings.json`, `.mcp.json`) is never
+touched.
 
 ### Aggregating across machines and harnesses
 

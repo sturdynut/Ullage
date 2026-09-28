@@ -132,6 +132,56 @@ final class MenuBarModel: ObservableObject {
         }
     }
 
+    // MARK: Token savers
+
+    @Published private(set) var savers = SaverPanel()
+    /// The last switch's outcome, shown under the section until the next one.
+    @Published private(set) var saverMessage: String?
+
+    private let switchboard = SaverSwitchboard()
+    // Other programs' files and a 30-day scan: re-read on a slower clock than
+    // the 15-second refresh, and at once after a switch.
+    private var saverStates: (at: Date, states: [TokenSaver: SaverSwitchState])?
+    private var saverLedger: (at: Date, entries: [LedgerEntry])?
+    private var saverComparison: (at: Date, cwd: String, value: OutputComparison?)?
+    static let saverCacheInterval: TimeInterval = 60
+
+    /// Writes Claude Code's user config. Only ever from the user's own click.
+    func setSaver(_ saver: TokenSaver, on: Bool) {
+        do {
+            let change = try switchboard.set(saver, on: on)
+            saverMessage = change.summary.isEmpty
+                ? "\(saver.displayName) was already \(on ? "on" : "off")"
+                : "\(saver.displayName) \(on ? "on" : "off") · \(SaverPanel.nextSessionNote)"
+        } catch {
+            saverMessage = "\(error)"
+        }
+        saverStates = nil
+        refresh()
+    }
+
+    private func refreshSavers(store: Store, sessionId: String?) throws {
+        let now = Date()
+        if saverStates.map({ now.timeIntervalSince($0.at) > Self.saverCacheInterval }) ?? true {
+            saverStates = (now, switchboard.states())
+        }
+        if saverLedger.map({ now.timeIntervalSince($0.at) > Self.saverCacheInterval }) ?? true {
+            saverLedger = (now, SaverLedgers.load(since: now.addingTimeInterval(-31 * 86_400)))
+        }
+        let report = try sessionId.map { try store.saverReport(sessionId: $0, ledger: saverLedger?.entries ?? []) }
+        var comparison: OutputComparison?
+        if let cwd = report?.cwd {
+            if let cached = saverComparison, cached.cwd == cwd, now.timeIntervalSince(cached.at) < Self.saverCacheInterval * 5 {
+                comparison = cached.value
+            } else {
+                let since = Timestamps.string(from: now.addingTimeInterval(-30 * 86_400))
+                comparison = try store.outputComparison(cwd: cwd, since: since)
+                saverComparison = (now, cwd, comparison)
+            }
+        }
+        savers = SaverPanel.build(report: report, states: saverStates?.states ?? [:], comparison: comparison)
+    }
+
     private var readStore: Store?
     private var tailer: SessionTailer?
     private var refreshTimer: Timer?
@@ -226,6 +276,7 @@ final class MenuBarModel: ObservableObject {
 
             history = try shown.map { try readStore.contextHistory(sessionId: $0.sessionId, scope: focus) }
             composition = try shown.flatMap { try readStore.composition(sessionId: $0.sessionId, scope: focus) }
+            try refreshSavers(store: readStore, sessionId: shown?.sessionId)
 
             let limits = PlanLimitFormatter.displays(for: try readStore.planLimits())
             planLimits = limits
