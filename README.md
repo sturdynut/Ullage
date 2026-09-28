@@ -63,19 +63,21 @@ anything away.
   left it):
   - **Context composition**: what the used part of the window is made of,
     always in the same order and colours. Collapsed, the four totals in one
-    row (`Baseline 48k · Tools ≈41k · Output 85k · Other ≈55k`), with `≈` on
+    row (`● Baseline 48k · ● Tools ≈41k · ● Output 85k · ● Other ≈55k`), with `≈` on
     every estimate. Expanded, a treemap (tool results split by the tool that
     produced them, the baseline into CLAUDE.md and the rest), the four totals,
     the baseline's parts (CLAUDE.md, MCP servers, skills), every tool in the
     window, and the targets **called most** (`Bash git status ×12`). The ⤢
     button, or a click on the row or treemap, opens the
     [composition explorer](#composition-explorer).
-  - **Token savers**: collapsed, each installed tool's headline figure.
+  - **Token savers**: collapsed, problems first, then how many are on and off
+    (`rtk not running · Headroom idle · 1 on`).
     Expanded, each tool's on/off switch, where its figure comes from, and an
     Install… option for the ones you don't have. See
     [Token savers](#token-savers).
-  - **Session information**: the last turn's change, turn count, session id
-    and last-active time. One line collapsed, a table expanded.
+  - **Session information**: collapsed, the last turn's change, turn count and
+    last-active time (`last turn +951 · turns 112 · idle 5:27 PM`). Expanded, a
+    table that adds the session id.
   - **Agents**: collapsed, how many there are, how many haven't finished, and
     whose window is fullest. Expanded, the tree of **subagents the session
     spawned**, each named by the description the agent above it wrote and each
@@ -83,7 +85,7 @@ anything away.
     composition and the session information switch to its context, and say
     so. The tree stays open while an agent is selected.
   - **Plan limits**: collapsed, each harness's tightest limit in one row
-    (`Claude 5h 88% · Codex week 100% left`). Expanded, every limit with its
+    (`Claude 5h 88% left · Codex week 100% left`). Expanded, every limit with its
     bar, when it resets, and what Ullage itself saw in that window. See
     [Plan limits](#plan-limits).
 

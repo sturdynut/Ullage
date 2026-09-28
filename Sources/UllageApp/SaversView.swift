@@ -8,11 +8,13 @@ import UllageCore
 /// draws it.
 struct SaversView: View {
     let panel: SaverPanel
-    let message: String?
     let expanded: Bool
     let onSwitch: (TokenSaver, Bool) -> Void
     /// Install or uninstall, after the user has confirmed the exact commands.
     let onPlan: (TokenSaver, SaverAction) -> Void
+
+    /// Wide enough for a mini switch, so rows align whichever control they show.
+    private static let controlWidth: CGFloat = 32
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -26,15 +28,14 @@ struct SaversView: View {
                 ForEach(panel.rows) { row in
                     rowView(row)
                 }
+                ForEach(panel.pendingInstalls, id: \.self) { note in
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if !panel.installable.isEmpty { installMenu }
             } else {
-                summary
-            }
-            if let message {
-                Text(message)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                ReadoutLine(panel.summary)
             }
         }
     }
@@ -42,18 +43,8 @@ struct SaversView: View {
     private func rowView(_ row: SaverPanel.Row) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Toggle(isOn: Binding(
-                    get: { row.switchState == .on },
-                    set: { onSwitch(row.saver, $0) }
-                )) { EmptyView() }
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .labelsHidden()
-                    .disabled(!row.canSwitch)
-                    .help(row.canSwitch
-                          ? "Switch \(row.saver.displayName) \(row.switchState == .on ? "off" : "on") in Claude Code's user config. \(SaverPanel.nextSessionNote.capitalizedFirst)."
-                          : "Not installed in Claude Code's user config, so there is nothing to switch")
-                    .accessibilityLabel("\(row.saver.displayName) enabled")
+                control(for: row)
+                    .frame(width: Self.controlWidth, alignment: .leading)
                 Text(row.saver.displayName)
                     .font(.callout.weight(.semibold))
                 Spacer(minLength: 8)
@@ -84,6 +75,11 @@ struct SaversView: View {
                 }
             }
             Group {
+                if let pending = row.pending {
+                    Text(pending)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Color.accentColor)
+                }
                 Text(row.line)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -93,10 +89,35 @@ struct SaversView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            .padding(.leading, 40)
+            .padding(.leading, Self.controlWidth + 8)
             .fixedSize(horizontal: false, vertical: true)
         }
         .help(row.saver.savingSource)
+    }
+
+    /// A switch when there is something to switch; otherwise the action that
+    /// would make one appear — never a dead, greyed-out switch.
+    @ViewBuilder
+    private func control(for row: SaverPanel.Row) -> some View {
+        if row.canSwitch {
+            Toggle(isOn: Binding(
+                get: { row.switchState == .on },
+                set: { onSwitch(row.saver, $0) }
+            )) { EmptyView() }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .labelsHidden()
+                .help("Switch \(row.saver.displayName) \(row.switchState == .on ? "off" : "on") in Claude Code's user config. \(SaverPanel.nextSessionNote.capitalizedFirst).")
+                .accessibilityLabel("\(row.saver.displayName) enabled")
+        } else {
+            Button(row.isInstalled ? "Set up" : "Install") { onPlan(row.saver, .install) }
+                .buttonStyle(.link)
+                .font(.caption)
+                .fixedSize()
+                .help(row.isInstalled
+                      ? "\(row.saver.displayName) is on this Mac but not connected to Claude Code"
+                      : "\(row.saver.displayName) ran in this session but isn't installed now")
+        }
     }
 
     private var installMenu: some View {
@@ -116,20 +137,6 @@ struct SaversView: View {
             .help("Shows the tool's own install commands first; nothing runs until you confirm")
         }
     }
-
-    private var summary: some View {
-        let parts = panel.rows.isEmpty ? ["None installed"] : panel.rows.map { row in
-            row.switchState == .off
-                ? "\(row.saver.displayName) off"
-                : "\(row.saver.displayName) \(row.metric)" + (row.metricCaption.isEmpty ? "" : " \(row.metricCaption)")
-        }
-        return Text(parts.joined(separator: "  ·  "))
-            .font(.caption)
-            .monospacedDigit()
-            .foregroundStyle(panel.warning == nil ? .secondary : Color.orange)
-            .lineLimit(1)
-            .truncationMode(.tail)
-    }
 }
 
 /// The exact commands, shown before anything runs. Returns true to go ahead.
@@ -137,8 +144,8 @@ enum InstallConfirmation {
     @MainActor
     static func confirm(_ plan: InstallPlan) -> Bool {
         let alert = NSAlert()
-        let verb = plan.action == .install ? "Install" : "Uninstall"
-        alert.messageText = "\(verb) \(plan.saver.displayName)?"
+        let uninstalling = plan.action == .uninstall
+        alert.messageText = "\(uninstalling ? "Uninstall" : "Install") \(plan.saver.displayName)?"
         var lines: [String] = []
         if !plan.missing.isEmpty {
             lines.append("Needs \(plan.missing.joined(separator: " and ")), which isn't on this Mac.")
@@ -152,14 +159,23 @@ enum InstallConfirmation {
         }
         lines += plan.notes
         alert.informativeText = lines.joined(separator: "\n\n")
-        if plan.isRunnable {
-            alert.addButton(withTitle: "Run in Terminal")
-            alert.addButton(withTitle: "Cancel")
-        } else {
+        guard plan.isRunnable else {
             alert.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            return false
+        }
+        let run = alert.addButton(withTitle: uninstalling ? "Uninstall in Terminal" : "Install in Terminal")
+        let cancel = alert.addButton(withTitle: "Cancel")
+        if uninstalling {
+            // Return must never remove anything: Cancel takes the default.
+            alert.alertStyle = .warning
+            run.hasDestructiveAction = true
+            run.keyEquivalent = ""
+            cancel.keyEquivalent = "\r"
         }
         NSApp.activate(ignoringOtherApps: true)
-        return alert.runModal() == .alertFirstButtonReturn && plan.isRunnable
+        return alert.runModal() == .alertFirstButtonReturn
     }
 }
 

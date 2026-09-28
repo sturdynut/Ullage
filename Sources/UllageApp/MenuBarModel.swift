@@ -56,6 +56,7 @@ final class MenuBarModel: ObservableObject {
     func popoverDidClose() {
         popoverIsOpen = false
         heldSessionId = nil
+        saverPending = [:]
     }
     @Published private(set) var sessions: [SessionSummary] = []
     /// The picker's shape: sessions under the project they ran in.
@@ -136,8 +137,10 @@ final class MenuBarModel: ObservableObject {
     // MARK: Token savers
 
     @Published private(set) var savers = SaverPanel()
-    /// The last switch's outcome, shown under the section until the next one.
-    @Published private(set) var saverMessage: String?
+    /// What was done to each saver while the popover has been open — shown on
+    /// that saver's own row, and forgotten when the popover closes (by then
+    /// the config itself says it, see `SaverPanel.build`).
+    private var saverPending: [TokenSaver: String] = [:]
 
     private let switchboard = SaverSwitchboard()
     private lazy var installer = SaverInstaller(switchboard: switchboard)
@@ -152,12 +155,10 @@ final class MenuBarModel: ObservableObject {
     /// Writes Claude Code's user config. Only ever from the user's own click.
     func setSaver(_ saver: TokenSaver, on: Bool) {
         do {
-            let change = try switchboard.set(saver, on: on)
-            saverMessage = change.summary.isEmpty
-                ? "\(saver.displayName) was already \(on ? "on" : "off")"
-                : "\(saver.displayName) \(on ? "on" : "off") · \(SaverPanel.nextSessionNote)"
+            try switchboard.set(saver, on: on)
+            saverPending[saver] = on ? SaverPanel.onNextSession : SaverPanel.offNextSession
         } catch {
-            saverMessage = "\(error)"
+            saverPending[saver] = "Couldn't switch: \(error)"
         }
         saverStates = nil
         refresh()
@@ -175,11 +176,12 @@ final class MenuBarModel: ObservableObject {
             let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
             let url = try SaverInstaller.writeCommandFile(for: plan, shell: shell)
             NSWorkspace.shared.open(url)
-            saverMessage = "\(plan.action == .install ? "Installing" : "Uninstalling") \(plan.saver.displayName) in Terminal · reopen this to see it"
+            saverPending[plan.saver] = "\(plan.action == .install ? "Installing" : "Uninstalling") \(plan.saver.displayName) in Terminal…"
         } catch {
-            saverMessage = "\(error)"
+            saverPending[plan.saver] = "Couldn't start Terminal: \(error)"
         }
         saverStates = nil
+        refresh()
     }
 
     private func refreshSavers(store: Store, sessionId: String?) throws {
@@ -203,7 +205,8 @@ final class MenuBarModel: ObservableObject {
             }
         }
         savers = SaverPanel.build(report: report, states: saverStates?.states ?? [:], comparison: comparison,
-                                  installed: Set(saverInstalls.filter { $0.value.isInstalled }.keys))
+                                  installed: Set(saverInstalls.filter { $0.value.isInstalled }.keys),
+                                  pending: saverPending)
     }
 
     private var readStore: Store?

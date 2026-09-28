@@ -84,7 +84,7 @@ struct PopoverContent: View {
             if !model.savers.isEmpty {
                 CollapsibleSectionRule("Token savers", isExpanded: $saversExpanded,
                                        help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from"))
-                SaversView(panel: model.savers, message: model.saverMessage, expanded: saversExpanded,
+                SaversView(panel: model.savers, expanded: saversExpanded,
                            onSwitch: { model.setSaver($0, on: $1) },
                            onPlan: { saver, action in
                                let plan = model.installPlan(saver, action)
@@ -97,11 +97,16 @@ struct PopoverContent: View {
                 if detailsExpanded { stats } else { statsSummary }
             }
             if let tree = model.agents, !tree.isEmpty {
-                CollapsibleSectionRule("Agents", isExpanded: $agentsExpanded,
-                                       help: ("Collapse to one line", "Show every agent and its window")) { agentsTrailing }
+                // A selected agent keeps the tree open — collapsing it would hide
+                // the only control that says which window you are in — so while
+                // one is selected the rule is not a toggle at all.
+                if model.focusedAgent != nil {
+                    SectionRule("Agents") { agentsTrailing }
+                } else {
+                    CollapsibleSectionRule("Agents", isExpanded: $agentsExpanded,
+                                           help: ("Collapse to one line", "Show every agent and its window")) { agentsTrailing }
+                }
                 if agentsExpanded || model.focusedAgent != nil {
-                    // A selected agent keeps the tree open: collapsing it would
-                    // hide the only control that says which window you are in.
                     AgentTreeView(
                         tree: tree,
                         mainThreadDetail: mainThreadDetail,
@@ -110,12 +115,7 @@ struct PopoverContent: View {
                         onSelect: { model.focus(on: $0) }
                     )
                 } else {
-                    Text(tree.summaryLine)
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(tree.crowded().isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    ReadoutLine(tree.summary)
                 }
             }
             // Last: the account's allowance, not this session's window — the
@@ -457,27 +457,26 @@ struct PopoverContent: View {
     }
 
     /// The collapsed Details: the same figures as `stats`, on one line.
-    @ViewBuilder
-    private var statsSummary: some View {
+    private var statsSummary: some View { ReadoutLine(statsReadouts) }
+
+    private var statsReadouts: [Readout] {
         let state = model.state
         let agent = model.focusedAgent
         let delta = agent == nil ? state.contextDelta : model.history?.points.last?.contextDelta
         let lastActivity = agent.flatMap { $0.lastTs.flatMap(Timestamps.date(from:)) } ?? state.lastActivity
-        let parts: [String] = [
-            delta.map { (($0 >= 0 ? "+" : "") + $0.formatted()) + " last turn" },
-            model.history.map { "\($0.points.count) turn\($0.points.count == 1 ? "" : "s")"
-                + ($0.compactionTurns.isEmpty ? "" : " · \($0.compactionTurns.count) compacted") },
-            agent == nil ? state.sessionId.map { String($0.prefix(8)) } : agent?.statusLabel,
-            lastActivity.map { (state.isIdle && agent == nil ? "idle since " : "")
-                + $0.formatted(date: .omitted, time: .shortened) },
-        ].compactMap { $0 }
-        Text(parts.joined(separator: "  ·  "))
-            .font(.caption)
-            .monospacedDigit()
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .textSelection(.enabled)
+        var parts: [Readout] = []
+        if let delta { parts.append(Readout("last turn", (delta >= 0 ? "+" : "") + delta.formatted())) }
+        if let history = model.history {
+            parts.append(Readout("turns", history.points.count.formatted()))
+            if !history.compactionTurns.isEmpty { parts.append(Readout("compacted", "\(history.compactionTurns.count)×")) }
+        }
+        // The session id is in the expanded table; one line has no room for it.
+        if let status = agent?.statusLabel { parts.append(Readout(status)) }
+        if let lastActivity {
+            parts.append(Readout(state.isIdle && agent == nil ? "idle" : "at",
+                                 lastActivity.formatted(date: .omitted, time: .shortened)))
+        }
+        return parts
     }
 
     private func row(_ name: String, _ value: String) -> some View {

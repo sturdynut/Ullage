@@ -52,7 +52,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 215 tests on macOS; 209 on Linux (six need CryptoKit)
+swift test                 # 222 tests on macOS; 211 on Linux (six need CryptoKit, five AppKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -164,6 +164,16 @@ plausible and are wrong.
   which positions and labels every tile so `CompositionView` only draws them.
   The explorer window's tree (`CompositionNode`), its squarified layout and the
   grouping of tool calls by target (`ToolTargets`) live there too.
+- **Collapsed sections are one `Readout` line.** Every section under the chart
+  collapses to a `[Readout]` built in Core and drawn by `ReadoutLine`: `label
+  value`, one separator, orange on the item that needs attention and never on
+  the whole line, problems first. `ReadoutWidthTests` checks every line fits the
+  popover (332pt) at worst-case values; a new collapsed line gets a case there.
+  Figures in different units never share a line or a column.
+- **Nothing destructive is the default.** An alert for an action that removes
+  something outside Ullage's own folder makes Cancel the Return default
+  (`InstallConfirmation`). A saver switch shows what changed on its own row
+  ("Off from the next session"), not in a message shared by the popover.
 - **Fixed order for anything colour-coded.** Composition segments and history
   projects keep a stable order so a colour follows an entity, never its rank.
   The composition treemap is *ordered*, not squarified, for the same reason —

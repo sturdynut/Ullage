@@ -405,6 +405,7 @@ final class AgentTests: XCTestCase {
         let busy = AgentSummary(agentId: "b", sessionId: "s", label: "Review the diff", status: nil,
                                 lastContextTokens: 20_000, windowLimit: 200_000)
         let tree = AgentTree(sessionId: "s", roots: [.init(agent: done, depth: 0), .init(agent: busy, depth: 0)])
-        XCTAssertEqual(tree.summaryLine, "2 agents  ·  1 not finished  ·  fullest Explore 45%")
+        XCTAssertEqual(Readout.line(tree.summary), "2 agents · 1 not finished · fullest Explore 45%")
+        XCTAssertFalse(tree.summary.contains(where: \.isWarning))
     }
 }

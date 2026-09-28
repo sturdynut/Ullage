@@ -93,24 +93,18 @@ struct CompositionView: View {
     // MARK: - Collapsed row
 
     private var summaryRow: some View {
-        HStack(spacing: 10) {
-            ForEach(composition.segments) { segment in
-                HStack(spacing: 4) {
-                    Circle().fill(Self.color(for: segment.name)).frame(width: 7, height: 7)
-                    Text(segment.name == ContextComposition.toolResultsName ? "Tools" : segment.name)
-                        .foregroundStyle(.secondary)
-                    Text((Self.isEstimated(segment.name) ? "≈" : "") + Self.compact(segment.tokens))
-                        .monospacedDigit()
-                }
-                .fixedSize()
-                .help(segment.name + " · " + MenuBarFormatter.percentage(composition.share(segment.tokens))
-                      + " of the window\n" + Self.note(for: segment.name))
-            }
-            Spacer(minLength: 0)
-        }
-        .font(.caption)
-        .lineLimit(1)
-        .help(caption)
+        ReadoutLine(items: composition.segments.map { segment in
+            ReadoutLine.Item(
+                readout: Readout(segment.name == ContextComposition.toolResultsName ? "Tools" : segment.name,
+                                 (Self.isEstimated(segment.name) ? "≈" : "") + Self.compact(segment.tokens)),
+                dot: Self.color(for: segment.name)
+            )
+        })
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .help(caption + "\n" + composition.segments.map {
+            "\($0.name): " + MenuBarFormatter.percentage(composition.share($0.tokens)) + " — " + Self.note(for: $0.name)
+        }.joined(separator: "\n"))
     }
 
     // MARK: - Treemap

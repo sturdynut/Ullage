@@ -28,6 +28,13 @@ public struct SaverPanel: Equatable {
         public var note: String?
         /// On this machine, so it can be uninstalled.
         public var isInstalled = false
+        /// What has changed since this session loaded its config, e.g. "Off
+        /// from the next session". The switch shows config *now*; the figures
+        /// show *this session*; this line is what reconciles the two.
+        public var pending: String?
+        /// The one-word state for the collapsed line.
+        public var status: String = ""
+        public var statusIsWarning = false
         public var canSwitch: Bool { switchState != .notInstalled }
     }
 
@@ -37,22 +44,63 @@ public struct SaverPanel: Equatable {
     /// Not on this machine: offered for the user to install, never installed
     /// on their behalf.
     public var installable: [TokenSaver]
+    /// Installs or uninstalls started from here that have not shown up yet.
+    public var pendingInstalls: [String]
 
-    public init(rows: [Row] = [], warning: String? = nil, installable: [TokenSaver] = []) {
+    public init(rows: [Row] = [], warning: String? = nil, installable: [TokenSaver] = [], pendingInstalls: [String] = []) {
         self.rows = rows
         self.warning = warning
         self.installable = installable
+        self.pendingInstalls = pendingInstalls
+    }
+
+    /// The collapsed line: problems first, then how many are on and off. The
+    /// figures live in the expanded rows — they are in different units and
+    /// must never sit side by side as if comparable.
+    public var summary: [Readout] {
+        guard !rows.isEmpty else { return [Readout("None installed")] }
+        // Savers with the same problem share one item: "rtk, Tokenade not running".
+        var items: [Readout] = []
+        for status in rows.filter(\.statusIsWarning).map(\.status).uniqued() {
+            let names = rows.filter { $0.statusIsWarning && $0.status == status }.map(\.saver.displayName)
+            items.append(Readout(names.joined(separator: ", "), status, warning: true))
+        }
+        // Two savers can only overlap if both are actually rewriting; a broken
+        // one already has its own, more urgent item.
+        let bashSaversBroken = rows.contains { [.rtk, .tokenade].contains($0.saver) && $0.statusIsWarning }
+        if warning != nil, !bashSaversBroken { items.append(Readout("rtk + Tokenade overlap", warning: true)) }
+        let calm = rows.filter { !$0.statusIsWarning }
+        let on = calm.filter { $0.switchState == .on }.count
+        let off = calm.filter { $0.switchState == .off }.count
+        let unset = calm.filter { $0.switchState == .notInstalled }.count
+        if on > 0 { items.append(Readout("\(on) on")) }
+        if off > 0 { items.append(Readout("\(off) off")) }
+        if unset > 0 { items.append(Readout("\(unset) not set up")) }
+        return items
     }
 
     public var isEmpty: Bool { rows.isEmpty && installable.isEmpty }
 
     public static let nextSessionNote = "applies to sessions started from now"
+    public static let offNextSession = "Off from the next session"
+    public static let onNextSession = "On from the next session"
+
+    static func status(state: SaverSwitchState, usage: SaverUsage) -> String {
+        if usage.broken { return "not running" }
+        if usage.idle { return "idle" }
+        switch state {
+        case .on: return "on"
+        case .off: return "off"
+        case .notInstalled: return "not set up"
+        }
+    }
 
     public static func build(
         report: SaverSessionReport?,
         states: [TokenSaver: SaverSwitchState],
         comparison: OutputComparison?,
-        installed: Set<TokenSaver> = []
+        installed: Set<TokenSaver> = [],
+        pending: [TokenSaver: String] = [:]
     ) -> SaverPanel {
         var rows: [Row] = []
         var installable: [TokenSaver] = []
@@ -68,6 +116,11 @@ public struct SaverPanel: Equatable {
             if onMachine, state == .notInstalled, !usage.broken, !usage.ran {
                 row.line = "Installed, not set up in Claude Code"
             }
+            // A saver that ran in this session but is switched off now: the
+            // figures above are real, and they stop from the next session.
+            row.pending = pending[saver] ?? (state == .off && usage.ran ? offNextSession : nil)
+            row.status = status(state: state, usage: usage)
+            row.statusIsWarning = usage.broken || usage.idle
             rows.append(row)
         }
         var warning: String?
@@ -76,7 +129,10 @@ public struct SaverPanel: Equatable {
         } else if states[.rtk] == .on, states[.tokenade] == .on {
             warning = "rtk and Tokenade are both switched on and both rewrite Bash. Keep one on."
         }
-        return SaverPanel(rows: rows, warning: warning, installable: installable)
+        let pendingInstalls = TokenSaver.allCases
+            .filter { saver in !rows.contains { $0.saver == saver } }
+            .compactMap { pending[$0] }
+        return SaverPanel(rows: rows, warning: warning, installable: installable, pendingInstalls: pendingInstalls)
     }
 
     static func row(
@@ -151,5 +207,13 @@ public struct SaverPanel: Equatable {
             .replacingOccurrences(of: #"^\[[^\]]+\]\s*"#, with: "", options: .regularExpression)
         if let end = cleaned.range(of: ". ") { return String(cleaned[..<end.lowerBound]) }
         return String(cleaned.prefix(90))
+    }
+}
+
+private extension Array where Element: Hashable {
+    /// First occurrence of each, in order.
+    func uniqued() -> [Element] {
+        var seen = Set<Element>()
+        return filter { seen.insert($0).inserted }
     }
 }

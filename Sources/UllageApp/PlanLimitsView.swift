@@ -31,27 +31,15 @@ struct PlanLimitsView: View {
     /// Collapsed: every harness on one line, each by its tightest limit — the
     /// one that stops you first. The rest are one click away.
     private var summaryRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            ForEach(PlanLimitFormatter.summaries(limits)) { summary in
-                let limit = summary.binding
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(summary.vendorName).fontWeight(.semibold)
-                    Text(PlanLimitFormatter.shortLabel(limit.label)).foregroundStyle(.secondary)
-                    Text(limit.remainingFraction.map { MenuBarFormatter.percentage($0) } ?? "—")
-                        .monospacedDigit()
-                        .foregroundStyle(limit.isWarning ? AnyShapeStyle(Color.orange)
-                                         : limit.isStale ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
-                }
-                .fixedSize()
-                .help(limits.filter { $0.vendor == summary.vendor }
-                    .map { "\($0.label): " + PlanLimitFormatter.caption(for: $0) }
-                    .joined(separator: "\n"))
-            }
-            Spacer(minLength: 0)
-            Text("left").font(.caption2).foregroundStyle(.tertiary)
-        }
-        .font(.caption)
-        .lineLimit(1)
+        let summaries = PlanLimitFormatter.summaries(limits)
+        return ReadoutLine(summaries.map { summary in
+            let limit = summary.binding
+            return Readout("\(summary.vendorName) \(PlanLimitFormatter.shortLabel(limit.label))",
+                           (limit.remainingFraction.map { MenuBarFormatter.percentage($0) } ?? "—") + " left",
+                           warning: limit.isWarning, muted: limit.isStale)
+        })
+        .help(limits.map { "\($0.vendorName) \($0.label): " + PlanLimitFormatter.caption(for: $0) }
+            .joined(separator: "\n"))
     }
 
     private func percentLeft(_ limit: PlanLimitDisplay) -> some View {

@@ -171,18 +171,26 @@ public struct AgentTree: Equatable {
 
     public var count: Int { flattened.count }
 
-    /// The collapsed Agents section, one line: how many, how many still going,
-    /// and whose window is fullest — the one a person would click first.
-    public var summaryLine: String {
+    /// The collapsed Agents section: how many, how many still going, and whose
+    /// window is fullest — the one a person would click first. The fullest is
+    /// a warning only when it is past the menu bar's threshold.
+    public static let summaryNameLimit = 22
+
+    public var summary: [Readout] {
         let agents = flattened.map(\.agent)
-        var parts = ["\(agents.count) agent\(agents.count == 1 ? "" : "s")"]
+        var items = [Readout("\(agents.count) agent\(agents.count == 1 ? "" : "s")")]
         let running = agents.filter(\.isUnfinished).count
-        if running > 0 { parts.append("\(running) not finished") }
+        if running > 0 { items.append(Readout("\(running) not finished")) }
         if let fullest = agents.filter({ $0.occupancy != nil }).max(by: { $0.occupancy! < $1.occupancy! }),
            let occupancy = fullest.occupancy {
-            parts.append("fullest \(fullest.displayName) \(MenuBarFormatter.percentage(occupancy))")
+            // A label is whatever the parent wrote, often a sentence; shortened
+            // here so the percentage after it always survives the line's edge.
+            let name = fullest.displayName.count > Self.summaryNameLimit
+                ? String(fullest.displayName.prefix(Self.summaryNameLimit - 1)) + "…" : fullest.displayName
+            items.append(Readout("fullest \(name)", MenuBarFormatter.percentage(occupancy),
+                                 warning: occupancy >= MenuBarFormatter.warningThreshold))
         }
-        return parts.joined(separator: "  ·  ")
+        return items
     }
 
     /// Agents whose window is at or above the menu bar's warning threshold.

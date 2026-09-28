@@ -369,4 +369,33 @@ final class TokenSaverTests: XCTestCase {
         XCTAssertEqual(panel.installable, [.tokenade, .caveman])
         XCTAssertFalse(SaverPanel.build(report: nil, states: [:], comparison: nil).isEmpty, "nothing installed still offers installs")
     }
+
+    // MARK: - Collapsed line and pending state
+
+    func testSummaryPutsProblemsFirstAndNeverFigures() {
+        var broken = SaverUsage(saver: .rtk)
+        broken.hookRuns = 2
+        broken.failedRuns = 2
+        var idle = SaverUsage(saver: .headroom)
+        idle.mcpConfigured = true
+        var ranThenOff = SaverUsage(saver: .caveman)
+        ranThenOff.invocations = 1
+        let report = SaverSessionReport(sessionId: "s", cwd: "/r", bashCalls: 3,
+                                        usages: [broken, SaverUsage(saver: .tokenade), ranThenOff, idle], doubleHookedCalls: 0)
+        let panel = SaverPanel.build(report: report, states: [.tokenade: .on, .caveman: .off, .headroom: .on],
+                                     comparison: nil, installed: [.tokenade, .caveman, .headroom])
+        XCTAssertEqual(Readout.line(panel.summary), "rtk not running · Headroom idle · 1 on · 1 off")
+        XCTAssertEqual(panel.summary.filter(\.isWarning).count, 2)
+        XCTAssertEqual(panel.rows.first { $0.saver == .caveman }?.pending, SaverPanel.offNextSession,
+                       "ran this session, switched off now")
+        XCTAssertNil(panel.rows.first { $0.saver == .tokenade }?.pending)
+    }
+
+    func testExplicitPendingAndPendingInstalls() {
+        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], comparison: nil, installed: [.headroom],
+                                     pending: [.headroom: SaverPanel.onNextSession, .rtk: "Installing rtk in Terminal…"])
+        XCTAssertEqual(panel.rows.first?.pending, SaverPanel.onNextSession)
+        XCTAssertEqual(panel.pendingInstalls, ["Installing rtk in Terminal…"])
+        XCTAssertEqual(Readout.line(SaverPanel().summary), "None installed")
+    }
 }
