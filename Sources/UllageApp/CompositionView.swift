@@ -62,12 +62,11 @@ struct CompositionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(caption)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
             if expanded {
+                Text(caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 // The full view: the treemap, and the table view of it — every
                 // figure a tile was too small to label is here, so nothing is
                 // reachable only by hovering.
@@ -82,46 +81,36 @@ struct CompositionView: View {
                 .padding(.top, 2)
                 .transition(.opacity)
             } else {
-                // The overview: one bar of the four shares, and the legend
-                // that names and sizes them.
-                distributionBar
+                // One row: the four totals in their colours, `≈` on the
+                // estimates. Everything else is one click away.
+                summaryRow
                     .onTapGesture { onOpen?() }
-                totals
                     .transition(.opacity)
             }
         }
     }
 
-    // MARK: - Distribution bar
+    // MARK: - Collapsed row
 
-    private static let barHeight: CGFloat = 10
-    private static let barGap: CGFloat = 1.5
-
-    /// The four segments end to end, each as wide as its share. Same colours,
-    /// same fixed order as the treemap, so collapsing changes the view and not
-    /// the vocabulary.
-    private var distributionBar: some View {
-        let segments = composition.segments.filter { $0.tokens > 0 }
-        let total = segments.reduce(0) { $0 + $1.tokens }
-        return GeometryReader { geometry in
-            let usable = max(0, geometry.size.width - Self.barGap * CGFloat(max(segments.count - 1, 0)))
-            HStack(spacing: Self.barGap) {
-                ForEach(segments) { segment in
-                    Rectangle()
-                        .fill(Self.color(for: segment.name))
-                        .frame(width: total > 0 ? max(2, usable * CGFloat(segment.tokens) / CGFloat(total)) : 0)
-                        .help(segment.name + " · " + (Self.isEstimated(segment.name) ? "≈" : "")
-                              + segment.tokens.formatted() + " tokens · "
-                              + MenuBarFormatter.percentage(composition.share(segment.tokens)))
+    private var summaryRow: some View {
+        HStack(spacing: 10) {
+            ForEach(composition.segments) { segment in
+                HStack(spacing: 4) {
+                    Circle().fill(Self.color(for: segment.name)).frame(width: 7, height: 7)
+                    Text(segment.name == ContextComposition.toolResultsName ? "Tools" : segment.name)
+                        .foregroundStyle(.secondary)
+                    Text((Self.isEstimated(segment.name) ? "≈" : "") + Self.compact(segment.tokens))
+                        .monospacedDigit()
                 }
+                .fixedSize()
+                .help(segment.name + " · " + MenuBarFormatter.percentage(composition.share(segment.tokens))
+                      + " of the window\n" + Self.note(for: segment.name))
             }
-            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            Spacer(minLength: 0)
         }
-        .frame(height: Self.barHeight)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(segments.map {
-            $0.name + " " + MenuBarFormatter.percentage(composition.share($0.tokens))
-        }.joined(separator: ", "))
+        .font(.caption)
+        .lineLimit(1)
+        .help(caption)
     }
 
     // MARK: - Treemap

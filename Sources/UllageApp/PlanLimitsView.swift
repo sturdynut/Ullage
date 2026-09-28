@@ -23,42 +23,35 @@ struct PlanLimitsView: View {
                     row(limit)
                 }
             } else {
-                ForEach(PlanLimitFormatter.summaries(limits)) { summary in
-                    compactRow(summary)
-                }
+                summaryRow
             }
         }
     }
 
-    /// Every limit of one harness on one line: short label, then what is left.
-    /// The binding limit — the one that stops you first — is set in bold.
-    private func compactRow(_ summary: PlanLimitSummary) -> some View {
-        let own = limits.filter { $0.vendor == summary.vendor }
-        return HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(summary.vendorName)
-                .font(.caption.weight(.semibold))
-                .frame(width: 48, alignment: .leading)
-            ForEach(own) { limit in
-                let isBinding = limit.id == summary.binding.id && own.count > 1
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text(PlanLimitFormatter.shortLabel(limit.label))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+    /// Collapsed: every harness on one line, each by its tightest limit — the
+    /// one that stops you first. The rest are one click away.
+    private var summaryRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            ForEach(PlanLimitFormatter.summaries(limits)) { summary in
+                let limit = summary.binding
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(summary.vendorName).fontWeight(.semibold)
+                    Text(PlanLimitFormatter.shortLabel(limit.label)).foregroundStyle(.secondary)
                     Text(limit.remainingFraction.map { MenuBarFormatter.percentage($0) } ?? "—")
-                        .fontWeight(isBinding ? .semibold : .regular)
                         .monospacedDigit()
                         .foregroundStyle(limit.isWarning ? AnyShapeStyle(Color.orange)
                                          : limit.isStale ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
                 }
-                .font(.caption)
                 .fixedSize()
-                .help(limit.vendorName + " " + limit.label + "\n" + PlanLimitFormatter.caption(for: limit))
+                .help(limits.filter { $0.vendor == summary.vendor }
+                    .map { "\($0.label): " + PlanLimitFormatter.caption(for: $0) }
+                    .joined(separator: "\n"))
             }
             Spacer(minLength: 0)
-            Text("left")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            Text("left").font(.caption2).foregroundStyle(.tertiary)
         }
+        .font(.caption)
+        .lineLimit(1)
     }
 
     private func percentLeft(_ limit: PlanLimitDisplay) -> some View {

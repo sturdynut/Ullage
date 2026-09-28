@@ -58,30 +58,34 @@ anything away.
     line is the room left, with the 85% line and a marker wherever a compaction
     dropped the window (hover for the exact turn, tokens, and change).
 
-  Below it, three sections that each collapse to one glance and expand for
-  everything (click the section's rule; each remembers how you left it):
-  - **Context composition** — what the used part of the window is made of:
-    baseline, tool results, output, and everything else, always in that order
-    and colour. Collapsed, one bar of the four shares with a legend of their
-    tokens and percentages. Expanded, a treemap — tool results split into the
-    tools that produced them, the baseline into CLAUDE.md and the rest, `≈` on
-    every estimate — with the four totals, the baseline's parts (CLAUDE.md, MCP
-    servers, skills), every tool in the window, and the targets **called most**
-    (`Bash git status ×12`, `Read Store.swift ×4`). The ⤢ button, or a click on
-    the bar or treemap, opens the [composition explorer](#composition-explorer).
-  - **Session information** — the last turn's change, turn count, session id and
-    last-active time: one line collapsed, a table expanded.
-  - the **subagents that session spawned**, as the tree that spawned them, each
-    named by the description the agent above it wrote and each with **its own
-    window and occupancy** — click one and the chart, the composition and the
-    session information switch to its context, and say so;
-  - **Token savers** — rtk, Tokenade, caveman and Headroom, each with an on/off
-    switch, when one is installed or showed up in the session. See
+  Below it, every section collapses to **one row of its key figures** and
+  expands to the full view (click the section's rule; each remembers how you
+  left it):
+  - **Context composition**: what the used part of the window is made of,
+    always in the same order and colours. Collapsed, the four totals in one
+    row (`Baseline 48k · Tools ≈41k · Output 85k · Other ≈55k`), with `≈` on
+    every estimate. Expanded, a treemap (tool results split by the tool that
+    produced them, the baseline into CLAUDE.md and the rest), the four totals,
+    the baseline's parts (CLAUDE.md, MCP servers, skills), every tool in the
+    window, and the targets **called most** (`Bash git status ×12`). The ⤢
+    button, or a click on the row or treemap, opens the
+    [composition explorer](#composition-explorer).
+  - **Token savers**: collapsed, each installed tool's headline figure.
+    Expanded, each tool's on/off switch, where its figure comes from, and an
+    Install… option for the ones you don't have. See
     [Token savers](#token-savers).
-  - **Plan limits** — collapsed, one row per harness with what is left in every
-    limit (`Claude 5h 88% week 39% Fable 22%`), the tightest in bold. Expanded,
-    every limit with its bar, when it resets and what Ullage itself saw in that
-    window. See [Plan limits](#plan-limits).
+  - **Session information**: the last turn's change, turn count, session id
+    and last-active time. One line collapsed, a table expanded.
+  - **Agents**: collapsed, how many there are, how many haven't finished, and
+    whose window is fullest. Expanded, the tree of **subagents the session
+    spawned**, each named by the description the agent above it wrote and each
+    with **its own window and occupancy**. Click one and the chart, the
+    composition and the session information switch to its context, and say
+    so. The tree stays open while an agent is selected.
+  - **Plan limits**: collapsed, each harness's tightest limit in one row
+    (`Claude 5h 88% · Codex week 100% left`). Expanded, every limit with its
+    bar, when it resets, and what Ullage itself saw in that window. See
+    [Plan limits](#plan-limits).
 
   It follows the most recently active session and holds still on it while the
   popover is open. The chevron at the top switches session — grouped by

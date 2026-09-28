@@ -16,7 +16,8 @@ struct PopoverContent: View {
     @AppStorage("compositionExpanded") private var compositionExpanded = false
     @AppStorage("detailsExpanded") private var detailsExpanded = false
     @AppStorage("planLimitsExpanded") private var planLimitsExpanded = false
-    @AppStorage("saversExpanded") private var saversExpanded = true
+    @AppStorage("saversExpanded") private var saversExpanded = false
+    @AppStorage("agentsExpanded") private var agentsExpanded = false
 
     var body: some View {
         // A MenuBarExtra window taller than the screen is clipped at the top,
@@ -96,14 +97,26 @@ struct PopoverContent: View {
                 if detailsExpanded { stats } else { statsSummary }
             }
             if let tree = model.agents, !tree.isEmpty {
-                SectionRule("Agents") { agentsTrailing }
-                AgentTreeView(
-                    tree: tree,
-                    mainThreadDetail: mainThreadDetail,
-                    mainThreadOccupancy: model.state.occupancy,
-                    focus: model.focus,
-                    onSelect: { model.focus(on: $0) }
-                )
+                CollapsibleSectionRule("Agents", isExpanded: $agentsExpanded,
+                                       help: ("Collapse to one line", "Show every agent and its window")) { agentsTrailing }
+                if agentsExpanded || model.focusedAgent != nil {
+                    // A selected agent keeps the tree open: collapsing it would
+                    // hide the only control that says which window you are in.
+                    AgentTreeView(
+                        tree: tree,
+                        mainThreadDetail: mainThreadDetail,
+                        mainThreadOccupancy: model.state.occupancy,
+                        focus: model.focus,
+                        onSelect: { model.focus(on: $0) }
+                    )
+                } else {
+                    Text(tree.summaryLine)
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(tree.crowded().isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
             // Last: the account's allowance, not this session's window — the
             // sections above all describe the session.
