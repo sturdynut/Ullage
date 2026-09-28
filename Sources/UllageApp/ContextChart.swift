@@ -73,7 +73,8 @@ struct ContextChart: View {
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
         } else if let limit, let last = history.points.last {
             // Says what the band is, once, where the hover text will replace it.
-            Text("\(Self.compact(max(0, limit - last.contextTokens))) left in the window")
+            Text("\(Self.compact(max(0, limit - last.contextTokens))) left"
+                 + (history.resend?.multiple.map { " · each turn re-sends \(Self.compact(last.contextTokens)), \(ContextHistory.multiple($0)) the first" } ?? " in the window"))
                 .font(.caption).foregroundStyle(.tertiary).monospacedDigit().lineLimit(1)
         } else {
             Text(" ").font(.caption)

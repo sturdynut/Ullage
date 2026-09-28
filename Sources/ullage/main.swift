@@ -239,8 +239,10 @@ func printSessions(_ store: Store) throws {
     }
     print("""
 
-    CONTEXT is the last turn's prompt tokens, not a sum: the cached prefix is
-    re-sent every turn, so summing prompt counters across turns is meaningless.
+    CONTEXT is the last turn's prompt tokens, not a sum. For how full the window
+    is, summing across turns would be wrong: the cached prefix is re-sent every
+    turn. For cost the sum is exactly right, one counter at a time (IN, CACHE R,
+    CACHE W above) — never merged into one total.
     It is the main thread's window; each agent has its own — see `ullage agents`.
     OUT is a mid-stream snapshot and undercounts (plan §9 trap 2).
     """)

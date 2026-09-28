@@ -110,4 +110,18 @@ final class EfficiencyTests: XCTestCase {
         }
         XCTAssertEqual(try store.contextHistory(sessionId: "s").rebuilds.map(\.cause), [.modelChanged])
     }
+
+    // MARK: - What each turn re-sends
+
+    func testResendAgainstTheFirstTurn() {
+        var calls = [turn(0, minute: 0, context: 10_000, write: 10_000), turn(1, minute: 1, context: 380_000, write: 5_000)]
+        calls[1].cacheRead = 370_000
+        let history = ContextHistory.build(sessionId: "s", calls: calls, events: [])
+        XCTAssertEqual(history.resend?.lastTokens, 380_000)
+        XCTAssertEqual(history.resend?.multiple ?? 0, 38, accuracy: 0.001)
+        XCTAssertEqual(history.resend?.cachedShare ?? 0, 370_000.0 / 380_000.0, accuracy: 0.0001)
+        XCTAssertEqual(ContextHistory.multiple(38), "38×")
+        XCTAssertEqual(ContextHistory.multiple(1.42), "1.4×")
+        XCTAssertNil(ContextHistory.build(sessionId: "s", calls: [calls[0]], events: []).resend, "one turn has nothing to compare")
+    }
 }

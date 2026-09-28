@@ -52,6 +52,13 @@ final class ReadoutWidthTests: XCTestCase {
         XCTAssertTrue(tree.summary.last?.isWarning == true)
     }
 
+    /// The caption under the chart, worst case: a million-token window.
+    func testChartCaption() {
+        let font = NSFont.systemFont(ofSize: 10)
+        let caption = "999k left · each turn re-sends 1.0M, 999× the first"
+        XCTAssertLessThanOrEqual((caption as NSString).size(withAttributes: [.font: font]).width, Self.available)
+    }
+
     func testSessionInformation() {
         let calm = [Readout("last turn", "+12,951"), Readout("turns", "1,112"), Readout("compacted", "3×"),
                     Readout("idle", "11:27 PM")]

@@ -55,7 +55,8 @@ anything away.
   - **the room left in the window**, in tokens, over a bar marked at 85% and at
     the session's own peak, with the exact `used / window` beneath it;
   - directly under that, **context tokens per turn**, where the band above the
-    line is the room left, with the 85% line and a marker wherever a compaction
+    line is the room left, captioned with what each turn now re-sends against
+    the first (`591k left · each turn re-sends 409k, 38× the first`), with the 85% line and a marker wherever a compaction
     dropped the window (hover for the exact turn, tokens, and change).
 
   Below it, every section collapses to **one row of its key figures** and

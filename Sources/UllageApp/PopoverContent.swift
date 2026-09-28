@@ -455,6 +455,11 @@ struct PopoverContent: View {
                         + (history.compactionTurns.isEmpty ? "" : " · \(history.compactionTurns.count) compaction\(history.compactionTurns.count == 1 ? "" : "s")"))
                     // Peak is a tick on the ring: same ratio, same window, and
                     // on a growing session it is the current value anyway.
+                    if let resend = history.resend {
+                        row("Re-sent per turn", resend.lastTokens.formatted()
+                            + (resend.multiple.map { " · \(ContextHistory.multiple($0)) turn 1" } ?? "")
+                            + " · " + MenuBarFormatter.percentage(resend.cachedShare) + " cached")
+                    }
                     if !history.rebuilds.isEmpty {
                         row("Cache rebuilt", "\(history.rebuilds.count)× · " + CacheRebuilds.causeSummary(history.rebuilds))
                     }
