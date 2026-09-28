@@ -97,10 +97,11 @@ public enum MenuBarFormatter {
             project: call.project,
             cwd: call.cwd,
             model: call.model,
+            effort: call.effort,
             modelWindowIsAssumed: !WindowLimits.isKnown(call.model),
             lastActivity: timestamp,
             contextDelta: call.contextDelta
-        ).with(effort: call.effort)
+        )
     }
 
     /// `cwd` with the home directory folded to `~`, for display only.
@@ -120,12 +121,6 @@ public enum MenuBarFormatter {
 }
 
 extension MenuBarState {
-    func with(effort: String?) -> MenuBarState {
-        var copy = self
-        copy.effort = effort
-        return copy
-    }
-
     /// `claude-opus-5-5 · high` — the two settings that multiply everything
     /// else, side by side. Just the model when no effort was recorded.
     public var modelLine: String? {

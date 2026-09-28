@@ -52,7 +52,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 239 tests on macOS; 228 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 241 tests on macOS; 230 on Linux (six need CryptoKit, five AppKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -189,8 +189,10 @@ plausible and are wrong.
   not right after a compaction), then names the cause in order: expired (a
   gap over an hour: 267 of 275 such turns rebuilt on real data), model
   changed, effort changed, a slash command, unknown. The figure shown is that
-  turn's own `cache_write`; nothing is priced or called wasted. Only causes
-  other than expiry reach the collapsed line.
+  turn's own `cache_write`; nothing is priced or called wasted. Only the three
+  causes the session produced (`isAvoidable`) reach the collapsed line; expired
+  and unknown are shown but not put on the user. The turn after a compaction
+  boundary or a `/clear` command is skipped, not approximated by a ratio.
 - **Compaction is a first-class event.** Context falls off a cliff at a
   compaction boundary: `context_delta` is NULL across it, charts mark it, and
   composition restarts the window at the post-compaction summary.

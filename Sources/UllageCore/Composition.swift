@@ -163,7 +163,9 @@ public struct ContextComposition: Equatable {
 
         var shares: [String: ToolShare] = [:]
         var callsByTool: [String: [ToolCallRow]] = [:]
+        var inWindow: [ToolCallRow] = []
         for tool in toolCalls where priorKeys.contains(tool.callId) {
+            inWindow.append(tool)
             var share = shares[tool.name] ?? ToolShare(
                 name: tool.name, kind: tool.kind, server: tool.mcpServer, calls: 0, resultTokens: 0
             )
@@ -183,9 +185,8 @@ public struct ContextComposition: Equatable {
         // Along for the ride: what is still in the window only because nothing
         // takes it out. Both figures are length estimates, like every tool
         // result size.
-        let turnOf = Dictionary(prior.compactMap { call in call.turnIndex.map { (call.dedupeKey, $0) } },
-                                uniquingKeysWith: { first, _ in first })
-        let inWindow = toolCalls.filter { priorKeys.contains($0.callId) }
+        // Dedupe keys are the call table's primary key, so this cannot collide.
+        let turnOf = Dictionary(uniqueKeysWithValues: prior.compactMap { call in call.turnIndex.map { (call.dedupeKey, $0) } })
         let stale = inWindow.reduce(0) { total, tool in
             guard let turn = turnOf[tool.callId], lastTurn - turn >= staleAfterTurns else { return total }
             return total + (tool.resultTokens ?? 0)
@@ -193,7 +194,11 @@ public struct ContextComposition: Equatable {
         let reads = Dictionary(grouping: inWindow.filter { $0.name == "Read" && $0.target != nil }, by: { $0.target! })
         let repeated = reads.compactMap { target, copies -> RepeatedRead? in
             guard copies.count > 1 else { return nil }
-            let ordered = copies.sorted { $0.ts < $1.ts }
+            // Calls in one turn share its timestamp, so turn then id decide
+            // which copy is the latest — the same answer on every refresh.
+            let ordered = copies.sorted {
+                ($0.ts, turnOf[$0.callId] ?? 0, $0.id) < ($1.ts, turnOf[$1.callId] ?? 0, $1.id)
+            }
             let extra = ordered.dropLast().reduce(0) { $0 + ($1.resultTokens ?? 0) }
             return RepeatedRead(target: target, reads: copies.count, extraTokens: extra)
         }.sorted { $0.extraTokens != $1.extraTokens ? $0.extraTokens > $1.extraTokens : $0.target < $1.target }

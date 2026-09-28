@@ -417,11 +417,14 @@ the cause from what changed since the turn before:
 | model changed | a different model answered, e.g. `claude-opus-5-5 → claude-fable-5-1` | orange |
 | effort changed | the recorded effort changed, e.g. `high → max` | orange |
 | command | `/model`, `/effort`, `/fast`, `/config` or similar was typed in between | orange |
-| unknown | nothing on disk explains it | orange |
+| unknown | nothing on disk explains it | grey |
 
 The size shown is that turn's own measured cache write. Nothing is converted to
-money or called waste: an expired cache after a break is expected, which is why
-only the other causes appear in the collapsed popover line.
+money or called waste. An expired cache after a break is expected, and an
+unexplained one is not pinned on you, so only the three causes the session
+itself produced count toward the `re-cached N×` warning in the collapsed line.
+The turn straight after a compaction or `/clear` re-caches its new, smaller
+context on purpose and is never counted.
 
 ## How the number is computed
 

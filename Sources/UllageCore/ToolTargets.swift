@@ -80,7 +80,20 @@ public enum ToolTargets {
             return noTarget
         }
         if tool == "Bash" || tool == "BashOutput" { return program(of: target) }
-        return target
+        return fileTools.contains(tool) ? rangeFree(target) : target
+    }
+
+    /// `@<offset>+<limit>` after a Read target, either part omitted when absent.
+    public static func rangeSuffix(offset: Int?, limit: Int?) -> String? {
+        guard offset != nil || limit != nil else { return nil }
+        return "@" + (offset.map(String.init) ?? "") + "+" + (limit.map(String.init) ?? "")
+    }
+
+    /// The path without its read range: what a file is grouped and named by.
+    public static func rangeFree(_ target: String) -> String {
+        guard let at = target.lastIndex(of: "@"), target[at...].dropFirst().contains("+"),
+              target[at...].dropFirst().allSatisfy({ $0.isNumber || $0 == "+" }) else { return target }
+        return String(target[..<at])
     }
 
     /// `cd ~/x && FOO=1 git status -s | head` → `git status`.

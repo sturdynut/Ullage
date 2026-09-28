@@ -19,8 +19,14 @@ public struct CacheRebuild: Equatable, Identifiable {
         /// Nothing on disk explains it.
         case unknown
 
-        /// Something the session did, rather than time passing.
-        public var isAvoidable: Bool { self != .expired }
+        /// Something the session did, rather than time passing or nothing
+        /// Ullage can see. Only these are put to the user as a warning.
+        public var isAvoidable: Bool {
+            switch self {
+            case .modelChanged, .effortChanged, .command: return true
+            case .expired, .unknown: return false
+            }
+        }
     }
 
     public var turnIndex: Int
@@ -50,19 +56,22 @@ public enum CacheRebuilds {
 
     /// `calls`: one stream (main thread or one agent), in turn order.
     /// `commands`: that session's slash-command events.
-    public static func detect(calls: [CallRow], commands: [EventRow] = []) -> [CacheRebuild] {
+    /// `boundaryTurns`: the first turn after each compaction. Re-caching the
+    /// summary there is the point of compacting, so those turns are skipped —
+    /// as is the first turn after a `/clear`, found here from the commands.
+    public static func detect(calls: [CallRow], commands: [EventRow] = [], boundaryTurns: Set<Int> = []) -> [CacheRebuild] {
         var rebuilds: [CacheRebuild] = []
-        let commandsByTs = commands
+        let slashCommands = commands
             .filter { $0.kind == EventKind.command.rawValue }
             .compactMap { event in SlashCommand(detail: event.detail).map { (event.ts, $0) } }
-            .filter { cacheCommands.contains($0.1.name) }
+        let commandsByTs = slashCommands.filter { cacheCommands.contains($0.1.name) }
+        let clears = slashCommands.filter { $0.1.name == "clear" }.map(\.0)
         for (previous, call) in zip(calls, calls.dropFirst()) {
             guard let turn = call.turnIndex,
+                  !boundaryTurns.contains(turn),
+                  !clears.contains(where: { $0 > previous.ts && $0 <= call.ts }),
                   call.contextTokens >= minimumContext,
-                  Double(call.cacheWrite) > rebuildShare * Double(call.contextTokens),
-                  // A compaction or /clear shrinks the window; re-caching the
-                  // summary after it is the point of it, not a rebuild.
-                  Double(call.contextTokens) >= 0.6 * Double(previous.contextTokens) else { continue }
+                  Double(call.cacheWrite) > rebuildShare * Double(call.contextTokens) else { continue }
 
             let gap = Timestamps.date(from: call.ts).flatMap { now in
                 Timestamps.date(from: previous.ts).map { now.timeIntervalSince($0) }

@@ -196,7 +196,7 @@ public struct ContextHistory: Equatable {
             points: points,
             compactionTurns: compactionTurns.sorted()
         )
-        history.rebuilds = CacheRebuilds.detect(calls: calls, commands: events)
+        history.rebuilds = CacheRebuilds.detect(calls: calls, commands: events, boundaryTurns: compactionTurns)
         return history
     }
 }

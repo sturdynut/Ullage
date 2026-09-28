@@ -6,7 +6,7 @@ public final class Store {
     public let database: SQLiteDatabase
     public let path: String
 
-    public static let schemaVersion = 7
+    public static let schemaVersion = 8
 
     public init(path: String) throws {
         self.path = path
@@ -89,6 +89,17 @@ public final class Store {
                 try database.run("UPDATE file_cursor SET byte_offset = 0;")
             }
             try database.execute("PRAGMA user_version=7;")
+        }
+        if current < 8 {
+            // Parser v6 keeps a Read's range on its target; rewind Claude files
+            // once so partial reads stop counting as repeated ones.
+            if current > 0 {
+                let paths = try database.query("SELECT path FROM file_cursor;") { $0.text(0) }
+                for path in paths where TranscriptFormat.detect(path: path) == .claudeCode {
+                    try database.run("UPDATE file_cursor SET byte_offset = 0 WHERE path = ?1;", [.text(path)])
+                }
+            }
+            try database.execute("PRAGMA user_version=8;")
         }
     }
 
@@ -1280,6 +1291,7 @@ public final class Store {
             cacheWrite: row.int(12),
             reasoning: row.optionalInt(13),
             webSearch: row.optionalInt(14),
+            effort: row.optionalText(28),
             contextTokens: row.int(15),
             windowLimit: row.optionalInt(16),
             turnIndex: row.optionalInt(17),
@@ -1293,7 +1305,7 @@ public final class Store {
             sourceFile: row.text(25),
             confidence: row.text(26),
             parserVersion: row.int(27)
-        ).withEffort(row.optionalText(28))
+        )
     }
 
     // MARK: - Plan limits
@@ -1381,13 +1393,5 @@ public final class Store {
             WindowUsage(calls: row.int(0), input: row.int(1), output: row.int(2),
                         cacheRead: row.int(3), cacheWrite: row.int(4))
         }.first ?? WindowUsage()
-    }
-}
-
-extension CallRow {
-    func withEffort(_ effort: String?) -> CallRow {
-        var copy = self
-        copy.effort = effort
-        return copy
     }
 }

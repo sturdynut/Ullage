@@ -26,7 +26,7 @@ final class HistoryModel: ObservableObject {
 
     @Published var days = 30 { didSet { reload() } }
     @Published var metric: Metric = .turns
-    @Published var grouping: Store.ActivityGrouping = .project { didSet { reload() } }
+    @Published var grouping: Store.ActivityGrouping = .project { didSet { reloadActivity() } }
     @Published var selectedSession: String? {
         didSet {
             guard selectedSession != oldValue else { return }
@@ -49,6 +49,13 @@ final class HistoryModel: ObservableObject {
 
     init(databasePath: String = ClaudePaths.defaultDatabaseURL().path) {
         do { store = try Store(path: databasePath) } catch { errorMessage = "\(error)" }
+    }
+
+    /// The day chart alone: the only thing the grouping changes.
+    private func reloadActivity() {
+        guard let store else { return }
+        let since = Timestamps.string(from: Date().addingTimeInterval(-Double(days) * 86_400))
+        activity = (try? store.dailyActivity(since: since, groupedBy: grouping)) ?? activity
     }
 
     func reload() {

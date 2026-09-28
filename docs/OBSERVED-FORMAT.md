@@ -351,3 +351,11 @@ mid-prompt are not a command.
 - `permissionMode` is on `user` lines and separate `permission-mode` lines,
   never on assistant lines. Not stored: tying it to a turn would need state
   carried across lines, and it does not change what a turn costs.
+
+## Read ranges on tool targets (parser v6)
+
+A `Read` with `offset` and/or `limit` records its target as
+`<file_path>@<offset>+<limit>` (either number omitted when absent). Grouping
+and display strip the range (`ToolTargets.rangeFree`), so the explorer still
+shows one file; only the repeated-read check keys on the full target, because
+two chunks of one file are different content, not copies.

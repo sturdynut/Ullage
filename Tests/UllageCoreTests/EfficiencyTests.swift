@@ -94,6 +94,7 @@ final class EfficiencyTests: XCTestCase {
         XCTAssertEqual(rebuilds.map(\.detail), ["opus → fable", "high → max", "idle 1h 27m", "/fast"])
         XCTAssertEqual(rebuilds.first?.cacheWrite, 64_000, "the measured write, not an estimate")
         XCTAssertEqual(rebuilds.filter(\.cause.isAvoidable).count, 3)
+        XCTAssertFalse(CacheRebuild.Cause.unknown.isAvoidable, "unexplained is not the same as caused")
         XCTAssertEqual(CacheRebuilds.causeSummary(rebuilds), "expired ×1, model changed ×1, effort changed ×1, command ×1")
     }
 
@@ -129,12 +130,8 @@ final class EfficiencyTests: XCTestCase {
 
     func testStaleResultsAndRepeatedReads() throws {
         let calls = (0...60).map { i in
-            CallRow(dedupeKey: "m\(i)", ts: String(format: "2026-09-01T10:%02d:00.000Z", i % 60) + "", sessionId: "s",
-                    contextTokens: 10_000 + i * 100, turnIndex: i, sourceFile: "t")
-        }.enumerated().map { index, call -> CallRow in
-            var copy = call
-            copy.ts = Timestamps.string(from: Date(timeIntervalSince1970: 1_788_000_000 + Double(index) * 60))
-            return copy
+            CallRow(dedupeKey: "m\(i)", ts: Timestamps.string(from: Date(timeIntervalSince1970: 1_788_000_000 + Double(i) * 60)),
+                    sessionId: "s", contextTokens: 10_000 + i * 100, turnIndex: i, sourceFile: "t")
         }
         func tool(_ id: String, turn: Int, name: String, target: String, tokens: Int) -> ToolCallRow {
             ToolCallRow(id: id, callId: "m\(turn)", sessionId: "s", ts: calls[turn].ts, name: name, kind: "builtin",
@@ -151,5 +148,47 @@ final class EfficiencyTests: XCTestCase {
         XCTAssertEqual(c.staleToolResults, 3_800)
         XCTAssertEqual(c.repeatedReads, [.init(target: "/r/Store.swift", reads: 3, extraTokens: 1_700)])
         XCTAssertEqual(c.repeatedReadTokens, 1_700)
+    }
+
+    func testBoundaryTurnsAndClearAreNotRebuilds() {
+        // Context falls from 90k to a 60k baseline after /clear, and is re-cached
+        // in full: exactly what clearing does, so never a rebuild.
+        let calls = [turn(0, minute: 0, context: 90_000, write: 2_000),
+                     turn(1, minute: 1, context: 60_000, write: 60_000),
+                     turn(2, minute: 2, context: 62_000, write: 62_000)]
+        let clear = [EventRow(id: "c", sessionId: "s", ts: "2026-09-01T10:00:30.000Z", kind: EventKind.command.rawValue,
+                              detail: SlashCommand(name: "clear", args: nil).detailJSON)]
+        XCTAssertEqual(CacheRebuilds.detect(calls: calls, commands: clear).map(\.turnIndex), [2],
+                       "the turn after /clear is skipped; the one after that is a real (unknown) rebuild")
+        XCTAssertEqual(CacheRebuilds.detect(calls: calls, boundaryTurns: [1]).map(\.turnIndex), [2],
+                       "a compaction boundary is skipped the same way")
+        XCTAssertEqual(CacheRebuilds.detect(calls: calls).map(\.turnIndex), [1, 2], "without either, both count")
+    }
+
+    func testChunkedReadsAreNotCopies() throws {
+        func parsed(_ input: String) -> String? {
+            let line = #"{"type":"assistant","uuid":"u","timestamp":"2026-09-01T10:00:00.000Z","sessionId":"s","message":{"id":"m","model":"x","usage":{"input_tokens":1},"content":[{"type":"tool_use","id":"t","name":"Read","input":\#(input)}]}}"#
+            guard case .call(let call)? = ClaudeCodeParser.parse(line: Data(line.utf8),
+                context: LineContext(sourceFile: "t.jsonl", fallbackSessionId: "s")) else { return nil }
+            return call.toolCalls.first?.target
+        }
+        XCTAssertEqual(parsed(#"{"file_path":"/r/Big.swift","offset":1000,"limit":1000}"#), "/r/Big.swift@1000+1000")
+        XCTAssertEqual(parsed(#"{"file_path":"/r/Big.swift","limit":200}"#), "/r/Big.swift@+200")
+        XCTAssertEqual(parsed(#"{"file_path":"/r/Big.swift"}"#), "/r/Big.swift")
+        XCTAssertEqual(ToolTargets.groupKey(tool: "Read", target: "/r/Big.swift@1000+1000"), "/r/Big.swift",
+                       "grouped and named by the file, whatever the range")
+        XCTAssertEqual(ToolTargets.rangeFree("/r/a@b.swift"), "/r/a@b.swift", "an @ in a name is not a range")
+
+        let calls = (0...3).map { i in
+            CallRow(dedupeKey: "m\(i)", ts: Timestamps.string(from: Date(timeIntervalSince1970: 1_788_000_000 + Double(i) * 60)),
+                    sessionId: "s", contextTokens: 10_000, turnIndex: i, sourceFile: "t")
+        }
+        let chunks = (0..<3).map { i in
+            ToolCallRow(id: "c\(i)", callId: "m\(i)", sessionId: "s", ts: calls[i].ts, name: "Read", kind: "builtin",
+                        target: "/r/Big.swift@\(i * 1000)+1000", resultTokens: 900)
+        }
+        let c = try XCTUnwrap(ContextComposition.build(sessionId: "s", calls: calls, toolCalls: chunks, events: []))
+        XCTAssertTrue(c.repeatedReads.isEmpty, "three different ranges of one file are not copies")
+        XCTAssertEqual(c.tools.first?.targets.first?.calls, 3, "but they still group under the file")
     }
 }

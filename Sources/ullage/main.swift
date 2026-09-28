@@ -273,11 +273,7 @@ func printHistory(_ store: Store, days: Int) throws {
 }
 
 func printComposition(_ store: Store, sessionPrefix: String) throws {
-    let matches = try store.recentSessions(limit: 10_000).map(\.sessionId).filter { $0.hasPrefix(sessionPrefix) }
-    guard let sessionId = matches.first else {
-        print("no session starting with \(sessionPrefix)")
-        return
-    }
+    guard let sessionId = try resolveSession(store, prefix: sessionPrefix) else { return }
     guard let c = try store.composition(sessionId: sessionId) else {
         print("no turns recorded for \(sessionId)")
         return
@@ -322,11 +318,8 @@ func printComposition(_ store: Store, sessionPrefix: String) throws {
 /// The tree the menu bar's popover draws, in text: who spawned whom, and how
 /// full each one's own window got.
 func printAgents(_ store: Store, sessionPrefix: String) throws {
-    let matches = try store.sessionTotals().filter { $0.sessionId.hasPrefix(sessionPrefix) }
-    guard let session = matches.first else {
-        print("no session starting with \(sessionPrefix)")
-        return
-    }
+    guard let sessionId = try resolveSession(store, prefix: sessionPrefix),
+          let session = try store.sessionTotals().first(where: { $0.sessionId == sessionId }) else { return }
     let tree = try store.agentTree(sessionId: session.sessionId)
     print("""
     session    \(session.sessionId)
@@ -433,11 +426,12 @@ func menuBarLine(_ store: Store) throws -> String {
 func printRebuilds(_ store: Store, sessionPrefix: String?) throws {
     let sessionId: String?
     if let sessionPrefix {
-        sessionId = try store.sessionTotals().map(\.sessionId).first { $0.hasPrefix(sessionPrefix) }
+        sessionId = try resolveSession(store, prefix: sessionPrefix)
+        if sessionId == nil { return }
     } else {
         sessionId = try store.latestCall()?.sessionId
     }
-    guard let sessionId else { print("no session"); return }
+    guard let sessionId else { print("no sessions ingested yet"); return }
     let history = try store.contextHistory(sessionId: sessionId)
     print("SESSION \(sessionId.prefix(8)) · main thread · \(history.points.count) turns")
     if history.rebuilds.isEmpty { print("  no turn re-cached most of its context"); return }
@@ -463,7 +457,7 @@ func printRebuildRange(_ store: Store, days: Int) throws {
         guard let rows = byCause[cause] else { continue }
         let written = rows.reduce(0) { $0 + $1.cacheWrite }
         print("  " + pad(cause.rawValue, 16) + padLeft("\(rows.count)×", 6) + padLeft(thousands(written), 14) + " re-cached"
-              + (cause.isAvoidable ? "" : "   (expected after a break)"))
+              + (cause == .expired ? "   (expected after a break)" : cause == .unknown ? "   (nothing on disk explains these)" : ""))
     }
 }
 
@@ -487,6 +481,21 @@ func printSaverRange(_ store: Store, days: Int) throws {
     }
 }
 
+/// One rule for every `<session-id or prefix>` argument. Nil after printing
+/// why: no match, or more than one — a prefix that fits two sessions must not
+/// silently pick one.
+func resolveSession(_ store: Store, prefix: String) throws -> String? {
+    let matches = try store.sessionTotals().map(\.sessionId).filter { $0.hasPrefix(prefix) }
+    switch matches.count {
+    case 0: print("no session starting with \(prefix)"); return nil
+    case 1: return matches[0]
+    default:
+        print("\(matches.count) sessions start with \(prefix); give more of the id:")
+        matches.prefix(8).forEach { print("  " + $0) }
+        return nil
+    }
+}
+
 func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: String?) throws {
     let states = switchboard.states()
     print("SWITCHED ON IN CLAUDE CODE (user config)")
@@ -496,8 +505,8 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
 
     let sessionId: String?
     if let sessionPrefix {
-        sessionId = try store.sessionTotals().map(\.sessionId).first { $0.hasPrefix(sessionPrefix) }
-        if sessionId == nil { print("\nno session starting with \(sessionPrefix)"); return }
+        sessionId = try resolveSession(store, prefix: sessionPrefix)
+        if sessionId == nil { return }
     } else {
         sessionId = try store.latestCall()?.sessionId
     }
@@ -667,11 +676,7 @@ do {
             print("usage: ullage env <session-id or prefix>")
             break
         }
-        let sessions = try store.sessionTotals().map(\.sessionId).filter { $0.hasPrefix(needle) }
-        guard let sessionId = sessions.first else {
-            print("no session starting with \(needle)")
-            break
-        }
+        guard let sessionId = try resolveSession(store, prefix: needle) else { break }
         guard let env = try store.sessionEnv(sessionId: sessionId) else {
             print("no environment snapshot for \(sessionId)")
             break

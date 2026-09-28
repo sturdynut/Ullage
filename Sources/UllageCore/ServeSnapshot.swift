@@ -21,6 +21,8 @@ public struct ServeSnapshot: Codable, Equatable {
         public var sessionId: String?
         public var project: String?
         public var model: String?
+        /// The effort recorded on the turn, when the harness wrote one.
+        public var effort: String?
         public var modelWindowIsAssumed: Bool
         public var lastActivity: String?
         public var ageSeconds: Double?
@@ -108,6 +110,7 @@ extension ServeSnapshot.Live {
             sessionId: state.sessionId,
             project: state.project,
             model: state.model,
+            effort: state.effort,
             modelWindowIsAssumed: state.modelWindowIsAssumed,
             lastActivity: state.lastActivity.map(Timestamps.string(from:)),
             ageSeconds: state.lastActivity.map { now.timeIntervalSince($0) }
