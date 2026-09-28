@@ -43,6 +43,19 @@ public struct ContextComposition: Equatable {
         public var id: String { name }
     }
 
+    /// A file read more than once while every copy stays in the window.
+    public struct RepeatedRead: Equatable, Identifiable {
+        public var target: String
+        public var reads: Int
+        /// ≈ tokens of every copy but the latest: the ones only along for the ride.
+        public var extraTokens: Int
+        public var id: String { target }
+    }
+
+    /// Results older than this many turns count as "from long ago". A first
+    /// guess, stated wherever the figure is shown — not a finding.
+    public static let staleAfterTurns = 50
+
     public static let baselineName = "Baseline"
     public static let toolResultsName = "Tool results"
     // "Assistant output" did not fit the popover's legend column and was
@@ -71,6 +84,12 @@ public struct ContextComposition: Equatable {
 
     /// Tools whose results landed in the current window, largest first.
     public var tools: [ToolShare]
+    /// ≈ tokens of tool results from `staleAfterTurns` or more turns ago that
+    /// are still in the window.
+    public var staleToolResults: Int = 0
+    /// Files read more than once in this window, most extra tokens first.
+    public var repeatedReads: [RepeatedRead] = []
+    public var repeatedReadTokens: Int { repeatedReads.reduce(0) { $0 + $1.extraTokens } }
     public var environment: SessionEnvRow?
 
     public var occupancy: Double? {
@@ -161,8 +180,26 @@ public struct ContextComposition: Equatable {
         }
         let toolResults = tools.reduce(0) { $0 + $1.resultTokens }
 
+        // Along for the ride: what is still in the window only because nothing
+        // takes it out. Both figures are length estimates, like every tool
+        // result size.
+        let turnOf = Dictionary(prior.compactMap { call in call.turnIndex.map { (call.dedupeKey, $0) } },
+                                uniquingKeysWith: { first, _ in first })
+        let inWindow = toolCalls.filter { priorKeys.contains($0.callId) }
+        let stale = inWindow.reduce(0) { total, tool in
+            guard let turn = turnOf[tool.callId], lastTurn - turn >= staleAfterTurns else { return total }
+            return total + (tool.resultTokens ?? 0)
+        }
+        let reads = Dictionary(grouping: inWindow.filter { $0.name == "Read" && $0.target != nil }, by: { $0.target! })
+        let repeated = reads.compactMap { target, copies -> RepeatedRead? in
+            guard copies.count > 1 else { return nil }
+            let ordered = copies.sorted { $0.ts < $1.ts }
+            let extra = ordered.dropLast().reduce(0) { $0 + ($1.resultTokens ?? 0) }
+            return RepeatedRead(target: target, reads: copies.count, extraTokens: extra)
+        }.sorted { $0.extraTokens != $1.extraTokens ? $0.extraTokens > $1.extraTokens : $0.target < $1.target }
+
         let remainder = last.contextTokens - baseline - toolResults - assistantOutput
-        return ContextComposition(
+        var composition = ContextComposition(
             sessionId: sessionId,
             windowLimit: last.windowLimit,
             contextTokens: last.contextTokens,
@@ -177,6 +214,9 @@ public struct ContextComposition: Equatable {
             tools: tools,
             environment: environment
         )
+        composition.staleToolResults = stale
+        composition.repeatedReads = repeated
+        return composition
     }
 }
 

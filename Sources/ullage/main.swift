@@ -307,6 +307,16 @@ func printComposition(_ store: Store, sessionPrefix: String) throws {
         }
         if c.tools.count > 15 { print("… and \(c.tools.count - 15) more") }
     }
+    if c.staleToolResults > 0 || !c.repeatedReads.isEmpty {
+        print("")
+        print("ALONG FOR THE RIDE (length estimates)")
+        if c.staleToolResults > 0 {
+            print(pad("results from \(ContextComposition.staleAfterTurns)+ turns ago", 44) + padLeft("≈" + thousands(c.staleToolResults), 22))
+        }
+        for read in c.repeatedReads.prefix(8) {
+            print(pad("Read \(ToolTargets.shortPath(read.target)) ×\(read.reads)", 44) + padLeft("≈" + thousands(read.extraTokens), 22) + " in earlier copies")
+        }
+    }
 }
 
 /// The tree the menu bar's popover draws, in text: who spawned whom, and how

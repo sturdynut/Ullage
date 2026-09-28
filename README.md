@@ -68,7 +68,10 @@ anything away.
     every estimate. Expanded, a treemap (tool results split by the tool that
     produced them, the baseline into CLAUDE.md and the rest), the four totals,
     the baseline's parts (CLAUDE.md, MCP servers, skills), every tool in the
-    window, and the targets **called most** (`Bash git status ×12`). The ⤢
+    window, and the targets **called most** (`Bash git status ×12`), and what is **along for
+    the ride**: tool results from 50+ turns ago that are still re-sent every turn,
+    and files read more than once, with the tokens in their earlier copies (all
+    `≈`; 50 is a rule of thumb, not a measurement). The ⤢
     button, or a click on the row or treemap, opens the
     [composition explorer](#composition-explorer).
   - **Token savers**: collapsed, problems first, then how many are on and off

@@ -124,4 +124,32 @@ final class EfficiencyTests: XCTestCase {
         XCTAssertEqual(ContextHistory.multiple(1.42), "1.4×")
         XCTAssertNil(ContextHistory.build(sessionId: "s", calls: [calls[0]], events: []).resend, "one turn has nothing to compare")
     }
+
+    // MARK: - Along for the ride
+
+    func testStaleResultsAndRepeatedReads() throws {
+        let calls = (0...60).map { i in
+            CallRow(dedupeKey: "m\(i)", ts: String(format: "2026-09-01T10:%02d:00.000Z", i % 60) + "", sessionId: "s",
+                    contextTokens: 10_000 + i * 100, turnIndex: i, sourceFile: "t")
+        }.enumerated().map { index, call -> CallRow in
+            var copy = call
+            copy.ts = Timestamps.string(from: Date(timeIntervalSince1970: 1_788_000_000 + Double(index) * 60))
+            return copy
+        }
+        func tool(_ id: String, turn: Int, name: String, target: String, tokens: Int) -> ToolCallRow {
+            ToolCallRow(id: id, callId: "m\(turn)", sessionId: "s", ts: calls[turn].ts, name: name, kind: "builtin",
+                        target: target, resultTokens: tokens)
+        }
+        let tools = [
+            tool("a", turn: 2, name: "Bash", target: "git log", tokens: 3_000),        // 58 turns ago: stale
+            tool("b", turn: 5, name: "Read", target: "/r/Store.swift", tokens: 800),   // stale, and an earlier copy
+            tool("c", turn: 40, name: "Read", target: "/r/Store.swift", tokens: 900),  // earlier copy
+            tool("d", turn: 55, name: "Read", target: "/r/Store.swift", tokens: 950),  // the latest: not extra
+            tool("e", turn: 56, name: "Read", target: "/r/Other.swift", tokens: 100),  // read once
+        ]
+        let c = try XCTUnwrap(ContextComposition.build(sessionId: "s", calls: calls, toolCalls: tools, events: []))
+        XCTAssertEqual(c.staleToolResults, 3_800)
+        XCTAssertEqual(c.repeatedReads, [.init(target: "/r/Store.swift", reads: 3, extraTokens: 1_700)])
+        XCTAssertEqual(c.repeatedReadTokens, 1_700)
+    }
 }
