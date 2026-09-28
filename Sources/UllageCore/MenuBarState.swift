@@ -23,6 +23,8 @@ public struct MenuBarState: Equatable {
     /// worktrees and same-named checkouts.
     public var cwd: String?
     public var model: String?
+    /// The effort on the latest turn, when the harness recorded one.
+    public var effort: String? = nil
     public var modelWindowIsAssumed: Bool
     public var lastActivity: Date?
     public var contextDelta: Int?
@@ -98,7 +100,7 @@ public enum MenuBarFormatter {
             modelWindowIsAssumed: !WindowLimits.isKnown(call.model),
             lastActivity: timestamp,
             contextDelta: call.contextDelta
-        )
+        ).with(effort: call.effort)
     }
 
     /// `cwd` with the home directory folded to `~`, for display only.
@@ -114,5 +116,20 @@ public enum MenuBarFormatter {
     /// Rounded down: 99% must not read as 100% while there is still room.
     public static func percentage(_ occupancy: Double) -> String {
         "\(Int(floor(occupancy * 100)))%"
+    }
+}
+
+extension MenuBarState {
+    func with(effort: String?) -> MenuBarState {
+        var copy = self
+        copy.effort = effort
+        return copy
+    }
+
+    /// `claude-opus-5-5 · high` — the two settings that multiply everything
+    /// else, side by side. Just the model when no effort was recorded.
+    public var modelLine: String? {
+        guard let model else { return nil }
+        return [model, effort].compactMap { $0 }.joined(separator: " · ")
     }
 }

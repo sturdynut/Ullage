@@ -366,6 +366,7 @@ func printLatest(_ store: Store) throws {
     session    \(call.sessionId)
     project    \(call.project ?? "—")
     model      \(call.model ?? "—")\(WindowLimits.isKnown(call.model) ? "" : "  (window assumed)")
+    effort     \(call.effort ?? "not recorded")
     context    \(thousands(call.contextTokens)) / \(call.windowLimit.map(thousands) ?? "?")  \(percent(call.occupancy))
     delta      \(call.contextDelta.map { ($0 >= 0 ? "+" : "") + thousands($0) } ?? "—")
     turn       \(call.turnIndex.map(String.init) ?? "—")

@@ -200,7 +200,7 @@ struct PopoverContent: View {
     /// what is answering, then how much it has done.
     private var mainThreadDetail: String {
         [
-            model.state.model,
+            model.state.modelLine,
             model.history.map { "\($0.points.count) turn\($0.points.count == 1 ? "" : "s")" },
         ].compactMap { $0 }.joined(separator: " · ")
     }
@@ -369,7 +369,7 @@ struct PopoverContent: View {
                 .compactMap { $0 }
                 .joined(separator: " · ")
         }
-        return state.model
+        return state.modelLine
     }
 
     // MARK: Session picker

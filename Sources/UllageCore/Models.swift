@@ -46,6 +46,9 @@ public struct CallRow: Equatable {
     public var cacheWrite: Int
     public var reasoning: Int?
     public var webSearch: Int?
+    /// Reasoning effort the harness recorded for this turn (`low`…`max`).
+    /// Nil when the line predates the field — never assumed.
+    public var effort: String?
     public var contextTokens: Int
     public var windowLimit: Int?
     public var turnIndex: Int?          // assigned at ingest, not present on disk
@@ -76,6 +79,7 @@ public struct CallRow: Equatable {
         cacheWrite: Int = 0,
         reasoning: Int? = nil,
         webSearch: Int? = nil,
+        effort: String? = nil,
         contextTokens: Int,
         windowLimit: Int? = nil,
         turnIndex: Int? = nil,
@@ -105,6 +109,7 @@ public struct CallRow: Equatable {
         self.cacheWrite = cacheWrite
         self.reasoning = reasoning
         self.webSearch = webSearch
+        self.effort = effort
         self.contextTokens = contextTokens
         self.windowLimit = windowLimit
         self.turnIndex = turnIndex

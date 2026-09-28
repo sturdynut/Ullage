@@ -26,6 +26,7 @@ final class HistoryModel: ObservableObject {
 
     @Published var days = 30 { didSet { reload() } }
     @Published var metric: Metric = .turns
+    @Published var grouping: Store.ActivityGrouping = .project { didSet { reload() } }
     @Published var selectedSession: String? {
         didSet {
             guard selectedSession != oldValue else { return }
@@ -54,7 +55,7 @@ final class HistoryModel: ObservableObject {
         guard let store else { return }
         do {
             let since = Timestamps.string(from: Date().addingTimeInterval(-Double(days) * 86_400))
-            activity = try store.dailyActivity(since: since)
+            activity = try store.dailyActivity(since: since, groupedBy: grouping)
             sessions = try store.sessionTotals().filter { $0.lastTs >= since }
             if let selectedSession, sessions.contains(where: { $0.sessionId == selectedSession }) {
                 loadSelection()
@@ -182,6 +183,12 @@ struct HistoryWindow: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 320)
+            Picker("Stack by", selection: $model.grouping) {
+                ForEach(Store.ActivityGrouping.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            .help("Stack each day by project, by model, or by the effort recorded on each turn")
             Spacer()
             Button("Refresh") { model.reload() }
         }
