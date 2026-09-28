@@ -131,8 +131,12 @@ public enum SaverReport {
         }
 
         let cwd = calls.first { $0.agentId == nil && $0.cwd != nil }?.cwd ?? calls.first { $0.cwd != nil }?.cwd
-        let dates = calls.compactMap { Timestamps.date(from: $0.ts) }
-        if let cwd, let start = dates.min(), let end = dates.max() {
+        // `ts` is normalised and sorts as text, so only the two ends are
+        // parsed — and only when there is a ledger to match against.
+        let span = ledger.isEmpty ? nil : calls.lazy.map(\.ts).min().flatMap { first in
+            calls.lazy.map(\.ts).max().map { (first, $0) }
+        }
+        if let cwd, let span, let start = Timestamps.date(from: span.0), let end = Timestamps.date(from: span.1) {
             let from = start.addingTimeInterval(-ledgerSlack)
             let to = end.addingTimeInterval(ledgerSlack)
             for saver in [TokenSaver.rtk, .tokenade] {

@@ -189,6 +189,7 @@ ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
 ullage limits [--fetch]      # plan limits left; --fetch asks Anthropic for Claude's
 ullage savers [session]      # token savers: switched on, and what each did
+ullage savers --days 30      # each saver across every session in the range
 ullage savers disable rtk --dry-run   # what switching one off would change
 ullage savers install caveman         # the tool's own install commands, after asking
 ullage info                  # resolved paths, retention, row counts
@@ -257,6 +258,18 @@ what a session would have cost without the tool.
 - **Headroom** is an MCP server. Ullage shows whether it was loaded and
   whether it was ever called; a loaded server that is never called still puts
   its tool definitions in every prompt.
+
+The ⤢ button on the section opens the **Token savers window**. It shows each
+tool over this session, 7 days or 30 days:
+- what the transcripts prove: sessions it ran in, hook runs, rewrites, failures
+  with the last error message, and MCP calls;
+- for rtk and Tokenade, their own count per command (before, after and saved,
+  all marked `≈`);
+- for caveman, the two medians with their sample sizes, plus this session's
+  output per reply, coloured by whether caveman was on;
+- for Headroom, the sessions where it was loaded but never used.
+
+`ullage savers --days 30` prints the same summary.
 
 **The switches** change Claude Code's user config (`~/.claude/settings.json`,
 `~/.claude.json`), and only when you click one or run `ullage savers

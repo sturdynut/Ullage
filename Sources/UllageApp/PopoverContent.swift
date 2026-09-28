@@ -115,7 +115,18 @@ struct PopoverContent: View {
             // half of it is configuration, like the plan limits below it.
             if !model.savers.isEmpty {
                 CollapsibleSectionRule("Token savers", isExpanded: $saversExpanded,
-                                       help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from"))
+                                       help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from")) {
+                    Button {
+                        openWindow(id: SaversWindow.id)
+                        NSApp.activate(ignoringOtherApps: true)
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 9, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tertiary)
+                    .help("Open each saver over this session, 7 or 30 days")
+                }
                 SaversView(panel: model.savers, expanded: saversExpanded,
                            onSwitch: { model.setSaver($0, on: $1) },
                            onUndo: { model.undoSaver($0) },

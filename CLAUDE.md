@@ -52,7 +52,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 225 tests on macOS; 214 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 228 tests on macOS; 217 on Linux (six need CryptoKit, five AppKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -60,7 +60,7 @@ scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
 `composition <session>`, `agents <session>`, `env <session>`, `serve`,
 `push [--test]`, `otlp`, `limits [--fetch]`, `savers [session]`,
-`savers enable|disable <name> [--dry-run]`,
+`savers --days N`, `savers enable|disable <name> [--dry-run]`,
 `savers install|uninstall <name> [--dry-run] [--yes]`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
@@ -232,7 +232,10 @@ plausible and are wrong.
   as `command` events. That is how a hook that runs but fails (rtk's hook with no
   `rtk` binary) is told apart from one that works. Config is read only to know
   what can be switched now. Logic lives in `TokenSavers`, `SaverReport`,
-  `SaverLedgers`, `SaverPanel` and `SaverSwitchboard`.
+  `SaverLedgers`, `SaverPanel`, `SaverDetail` (the window's ranges) and
+  `SaverSwitchboard`. `Timestamps.date(from:)` builds two formatters per call;
+  parse only what you need from a loop (a 30-day saver range went from 24s to
+  1s by parsing each session's two ends instead of every turn).
 - **`session_env` is the one irreproducible table.** MCP servers, skills and
   CLAUDE.md are snapshotted at ingest because nothing on disk records what they
   were when a session ran. It is Claude-Code-only; other vendors skip it.

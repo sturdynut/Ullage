@@ -37,6 +37,12 @@ struct UllageApp: App {
             CompositionExplorer(model: model)
         }
         .defaultSize(width: 1000, height: 640)
+
+        // Each token saver over a session, a week or a month.
+        Window("Token Savers", id: SaversWindow.id) {
+            SaversWindow(model: model)
+        }
+        .defaultSize(width: 960, height: 640)
     }
 }
 

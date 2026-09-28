@@ -449,4 +449,51 @@ final class TokenSaverTests: XCTestCase {
         XCTAssertEqual(panel.rows.first { $0.saver == .headroom }?.canUndo, true)
         XCTAssertEqual(panel.rows.first { $0.saver == .caveman }?.canUndo, false)
     }
+
+    // MARK: - The window's ranges
+
+    func testDetailSumsFactsAndMergesLedgersAcrossSessions() {
+        func report(_ id: String, runs: Int, rewrites: Int, saved: Int, command: String, idle: Bool = false) -> SaverSessionReport {
+            var rtk = SaverUsage(saver: .rtk)
+            rtk.hookRuns = runs
+            rtk.rewrites = rewrites
+            if saved > 0 {
+                rtk.ledger = LedgerMatch(entries: 1, savedTokens: saved, beforeTokens: saved * 2, afterTokens: saved,
+                                         groups: [.init(command: command, entries: 1, beforeTokens: saved * 2, afterTokens: saved, savedTokens: saved)])
+            }
+            var headroom = SaverUsage(saver: .headroom)
+            headroom.mcpConfigured = idle
+            return SaverSessionReport(sessionId: id, cwd: "/r", bashCalls: 10, usages: [rtk, headroom], doubleHookedCalls: 0)
+        }
+        let reports = [report("a", runs: 3, rewrites: 2, saved: 100, command: "git status", idle: true),
+                       report("b", runs: 1, rewrites: 1, saved: 50, command: "git status"),
+                       report("c", runs: 0, rewrites: 0, saved: 0, command: "", idle: true)]
+        let rtk = SaverDetail.build(saver: .rtk, range: .month, reports: reports)
+        XCTAssertEqual(rtk.sessions, 3)
+        XCTAssertEqual(rtk.sessionsUsed, 2)
+        XCTAssertEqual(rtk.hookRuns, 4)
+        XCTAssertEqual(rtk.rewrites, 3)
+        XCTAssertEqual(rtk.bashCalls, 30)
+        XCTAssertEqual(rtk.ledger?.savedTokens, 150)
+        XCTAssertEqual(rtk.ledger?.groups.map(\.entries), [2], "same command adds up")
+        XCTAssertEqual(rtk.ledger?.beforeTokens, 300)
+        XCTAssertEqual(SaverDetail.build(saver: .headroom, range: .month, reports: reports).sessionsIdle, 2)
+    }
+
+    func testMergedLedgerLosesATotalItCannotKnow() {
+        let known = LedgerMatch(entries: 1, savedTokens: 10, beforeTokens: 20, afterTokens: 10, groups: [])
+        let unknown = LedgerMatch(entries: 1, savedTokens: 5, beforeTokens: nil, afterTokens: nil, groups: [])
+        XCTAssertNil(LedgerMatch.merged([known, unknown]).beforeTokens)
+        XCTAssertEqual(LedgerMatch.merged([known, unknown]).savedTokens, 15)
+    }
+
+    func testTurnsTakeTheLatestSignal() {
+        let calls = (0..<4).map { i in
+            CallRow(dedupeKey: "m\(i)", ts: "2026-09-01T10:0\(i):00.000Z", sessionId: "s", output: 100 * (i + 1),
+                    contextTokens: 1, turnIndex: i, sourceFile: "t")
+        }
+        let signals = [OutputComparison.Signal(sessionId: "s", ts: "2026-09-01T10:01:30.000Z", on: true),
+                       OutputComparison.Signal(sessionId: "s", ts: "2026-09-01T10:02:30.000Z", on: false)]
+        XCTAssertEqual(SaverDetail.turns(calls: calls, signals: signals).map(\.on), [false, false, true, false])
+    }
 }

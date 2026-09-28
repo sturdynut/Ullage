@@ -188,6 +188,23 @@ final class MenuBarModel: ObservableObject {
         refresh()
     }
 
+    /// One saver over a range, for the Token savers window. Anchored on the
+    /// session the popover is showing. A 30-day range reads every session in
+    /// it, so the window asks for this on a change, not on every redraw.
+    func saverDetail(_ saver: TokenSaver, range: SaverRange) -> SaverDetail? {
+        guard let readStore else { return nil }
+        let ledger = saverLedger?.entries ?? SaverLedgers.load(since: Date().addingTimeInterval(-31 * 86_400))
+        return try? readStore.saverDetail(saver, range: range, sessionId: state.sessionId, ledger: ledger)
+    }
+
+    func saverSwitchState(_ saver: TokenSaver) -> SaverSwitchState {
+        saverStates?.states[saver] ?? .notInstalled
+    }
+
+    func saverIsInstalled(_ saver: TokenSaver) -> Bool {
+        saverInstalls[saver]?.isInstalled ?? false || saverSwitchState(saver) != .notInstalled
+    }
+
     /// Puts a switch back the way it was before this popover changed it.
     func undoSaver(_ saver: TokenSaver) {
         guard let previous = saverUndo[saver] else { return }
