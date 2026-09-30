@@ -6,7 +6,7 @@ public final class Store {
     public let database: SQLiteDatabase
     public let path: String
 
-    public static let schemaVersion = 6
+    public static let schemaVersion = 8
 
     public init(path: String) throws {
         self.path = path
@@ -36,6 +36,9 @@ public final class Store {
             try database.execute(Store.schemaV1)
             try database.execute("PRAGMA user_version=1;")
         }
+        // Every read of `call` selects `effort`, including the repairs the
+        // older steps below run, so the column exists before any of them.
+        try addColumnIfMissing(table: "call", column: "effort", type: "TEXT")
         if current < 2 {
             // Column adds are checked rather than blind: `ALTER TABLE … ADD
             // COLUMN` fails on a column that already exists, and a migration
@@ -78,6 +81,25 @@ public final class Store {
                 }
             }
             try database.execute("PRAGMA user_version=6;")
+        }
+        if current < 7 {
+            // Effort rides on lines already ingested (Claude since 2026-07-26,
+            // Codex on turn_context); rewind once so past turns get it.
+            if current > 0 {
+                try database.run("UPDATE file_cursor SET byte_offset = 0;")
+            }
+            try database.execute("PRAGMA user_version=7;")
+        }
+        if current < 8 {
+            // Parser v6 keeps a Read's range on its target; rewind Claude files
+            // once so partial reads stop counting as repeated ones.
+            if current > 0 {
+                let paths = try database.query("SELECT path FROM file_cursor;") { $0.text(0) }
+                for path in paths where TranscriptFormat.detect(path: path) == .claudeCode {
+                    try database.run("UPDATE file_cursor SET byte_offset = 0 WHERE path = ?1;", [.text(path)])
+                }
+            }
+            try database.execute("PRAGMA user_version=8;")
         }
     }
 
@@ -379,8 +401,8 @@ public final class Store {
           input, output, cache_read, cache_write, reasoning, web_search,
           context_tokens, window_limit, turn_index, context_delta,
           service_tier, stop_reason, duration_ms, is_sidechain,
-          uuid, parent_uuid, source_file, confidence, parser_version
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)
+          uuid, parent_uuid, source_file, confidence, parser_version, effort
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29)
         ON CONFLICT(dedupe_key) DO UPDATE SET
           ts = excluded.ts,
           vendor = excluded.vendor,
@@ -408,7 +430,8 @@ public final class Store {
           parent_uuid = excluded.parent_uuid,
           source_file = excluded.source_file,
           confidence = excluded.confidence,
-          parser_version = excluded.parser_version;
+          parser_version = excluded.parser_version,
+          effort = COALESCE(excluded.effort, call.effort);
         """
         try database.run(sql, [
             .text(call.dedupeKey),
@@ -439,6 +462,7 @@ public final class Store {
             .text(call.sourceFile),
             .text(call.confidence),
             .integer(Int64(call.parserVersion)),
+            .string(call.effort),
         ])
     }
 
@@ -1100,7 +1124,10 @@ public final class Store {
         ContextHistory.build(
             sessionId: sessionId,
             calls: try calls(sessionId: sessionId, scope: scope),
+            // Slash commands are typed on the main thread, so they explain the
+            // main thread's rebuilds only.
             events: try events(sessionId: sessionId, kind: EventKind.compaction.rawValue, scope: scope)
+                + (scope == .mainThread ? try events(sessionId: sessionId, kind: EventKind.command.rawValue) : [])
         )
     }
 
@@ -1119,15 +1146,34 @@ public final class Store {
 
     /// Activity per local day and project since `since` (a normalised UTC
     /// timestamp), oldest day first (M6).
-    public func dailyActivity(since: String) throws -> [DailyActivity] {
+    /// What a day's activity is stacked by. Effort is `unknown` for turns
+    /// that predate the field: a missing value is shown, never assumed.
+    public enum ActivityGrouping: String, CaseIterable, Identifiable {
+        case project = "Project"
+        case model = "Model"
+        case effort = "Effort"
+
+        public var id: String { rawValue }
+
+        var column: String {
+            switch self {
+            case .project: return "COALESCE(project, '—')"
+            case .model: return "COALESCE(model, 'unknown')"
+            case .effort: return "COALESCE(effort, 'unknown')"
+            }
+        }
+    }
+
+    /// `DailyActivity.project` carries the group's label, whichever grouping.
+    public func dailyActivity(since: String, groupedBy grouping: ActivityGrouping = .project) throws -> [DailyActivity] {
         let sql = """
-        SELECT date(ts, 'localtime') AS day, COALESCE(project, '—') AS project,
+        SELECT date(ts, 'localtime') AS day, \(grouping.column) AS grp,
                COUNT(DISTINCT session_id), COUNT(*),
                SUM(input), SUM(output), SUM(cache_read), SUM(cache_write), MAX(context_tokens)
         FROM call
         WHERE ts >= ?1
-        GROUP BY day, project
-        ORDER BY day, project;
+        GROUP BY day, grp
+        ORDER BY day, grp;
         """
         return try database.query(sql, [.text(since)]) { row in
             DailyActivity(
@@ -1144,8 +1190,8 @@ public final class Store {
         }
     }
 
-    public func dailyActivity(days: Int, now: Date = Date()) throws -> [DailyActivity] {
-        try dailyActivity(since: Timestamps.string(from: now.addingTimeInterval(-Double(days) * 86_400)))
+    public func dailyActivity(days: Int, groupedBy grouping: ActivityGrouping = .project, now: Date = Date()) throws -> [DailyActivity] {
+        try dailyActivity(since: Timestamps.string(from: now.addingTimeInterval(-Double(days) * 86_400)), groupedBy: grouping)
     }
 
     public struct SessionTotals: Identifiable {
@@ -1225,7 +1271,7 @@ public final class Store {
            input, output, cache_read, cache_write, reasoning, web_search,
            context_tokens, window_limit, turn_index, context_delta,
            service_tier, stop_reason, duration_ms, is_sidechain,
-           uuid, parent_uuid, source_file, confidence, parser_version
+           uuid, parent_uuid, source_file, confidence, parser_version, effort
     """
 
     static func callRow(from row: SQLiteStatement) -> CallRow {
@@ -1245,6 +1291,7 @@ public final class Store {
             cacheWrite: row.int(12),
             reasoning: row.optionalInt(13),
             webSearch: row.optionalInt(14),
+            effort: row.optionalText(28),
             contextTokens: row.int(15),
             windowLimit: row.optionalInt(16),
             turnIndex: row.optionalInt(17),

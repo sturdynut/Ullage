@@ -52,7 +52,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 228 tests on macOS; 217 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 241 tests on macOS; 230 on Linux (six need CryptoKit, five AppKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -60,7 +60,7 @@ scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
 `composition <session>`, `agents <session>`, `env <session>`, `serve`,
 `push [--test]`, `otlp`, `limits [--fetch]`, `savers [session]`,
-`savers --days N`, `savers enable|disable <name> [--dry-run]`,
+`rebuilds [session]`, `rebuilds --days N`, `savers --days N`, `savers enable|disable <name> [--dry-run]`,
 `savers install|uninstall <name> [--dry-run] [--yes]`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
@@ -184,6 +184,15 @@ plausible and are wrong.
   tool's shade comes from its name, not its position; the long tail folds into
   "Other" rather than cycling hues. The explorer window does squarify: it draws
   one level at a time, large, where legibility matters more than stillness.
+- **A cache rebuild is measured, and named by its cause.** `CacheRebuilds`
+  flags a turn whose `cache_write` is over half its context (context 50k+,
+  not right after a compaction), then names the cause in order: expired (a
+  gap over an hour: 267 of 275 such turns rebuilt on real data), model
+  changed, effort changed, a slash command, unknown. The figure shown is that
+  turn's own `cache_write`; nothing is priced or called wasted. Only the three
+  causes the session produced (`isAvoidable`) reach the collapsed line; expired
+  and unknown are shown but not put on the user. The turn after a compaction
+  boundary or a `/clear` command is skipped, not approximated by a ratio.
 - **Compaction is a first-class event.** Context falls off a cliff at a
   compaction boundary: `context_delta` is NULL across it, charts mark it, and
   composition restarts the window at the post-compaction summary.

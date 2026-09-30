@@ -100,6 +100,8 @@ public struct ContextPoint: Equatable, Identifiable {
     public var ts: String
     public var contextTokens: Int
     public var contextDelta: Int?
+    /// Of `contextTokens`, what was read from cache rather than sent fresh.
+    public var cacheRead: Int = 0
 
     public var id: Int { turnIndex }
 
@@ -122,8 +124,38 @@ public struct ContextHistory: Equatable {
     public var points: [ContextPoint]
     /// Turn indexes whose prompt was the first one *after* a compaction.
     public var compactionTurns: [Int]
+    /// Turns that re-cached most of their context, with the cause.
+    public var rebuilds: [CacheRebuild] = []
 
     public var peakContextTokens: Int { points.map(\.contextTokens).max() ?? 0 }
+
+    /// What each turn sends again, now against the start: tip one of running a
+    /// session efficiently is that this grows every turn. The same three
+    /// prompt counters as `contextTokens` — measured, just read as cost.
+    public struct Resend: Equatable {
+        public var lastTokens: Int
+        public var firstTokens: Int
+        /// The latest turn against the first; nil when the first sent nothing.
+        public var multiple: Double?
+        /// Share of the latest turn read from cache (billed far below fresh input).
+        public var cachedShare: Double
+    }
+
+    public var resend: Resend? {
+        guard let first = points.first(where: { $0.contextTokens > 0 }), let last = points.last,
+              last.contextTokens > 0, points.count > 1 else { return nil }
+        return Resend(
+            lastTokens: last.contextTokens,
+            firstTokens: first.contextTokens,
+            multiple: Double(last.contextTokens) / Double(first.contextTokens),
+            cachedShare: Double(last.cacheRead) / Double(last.contextTokens)
+        )
+    }
+
+    /// `38×`, or `1.4×` below ten.
+    public static func multiple(_ value: Double) -> String {
+        value >= 10 ? "\(Int(value.rounded()))×" : String(format: "%.1f×", value)
+    }
 
     public init(sessionId: String, windowLimit: Int?, points: [ContextPoint], compactionTurns: [Int]) {
         self.sessionId = sessionId
@@ -133,17 +165,20 @@ public struct ContextHistory: Equatable {
     }
 
     /// `calls` in turn order (the store's `calls(sessionId:)` ordering);
-    /// `events` of any kind, only compactions are used. Timestamps are the
+    /// `events` of any kind: compactions mark the chart, slash commands
+    /// explain cache rebuilds. Timestamps are the
     /// store's normalised UTC strings, so string comparison is chronological.
     public static func build(sessionId: String, calls: [CallRow], events: [EventRow]) -> ContextHistory {
         let points = calls.compactMap { call -> ContextPoint? in
             guard let turn = call.turnIndex else { return nil }
-            return ContextPoint(
+            var point = ContextPoint(
                 turnIndex: turn,
                 ts: call.ts,
                 contextTokens: call.contextTokens,
                 contextDelta: call.contextDelta
             )
+            point.cacheRead = call.cacheRead
+            return point
         }
         // The last known limit describes the whole chart; a session does not
         // change window mid-flight, and if the model changed the newest wins.
@@ -155,12 +190,14 @@ public struct ContextHistory: Equatable {
                 compactionTurns.insert(next.turnIndex)
             }
         }
-        return ContextHistory(
+        var history = ContextHistory(
             sessionId: sessionId,
             windowLimit: windowLimit,
             points: points,
             compactionTurns: compactionTurns.sorted()
         )
+        history.rebuilds = CacheRebuilds.detect(calls: calls, commands: events, boundaryTurns: compactionTurns)
+        return history
     }
 }
 

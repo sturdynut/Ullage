@@ -15,12 +15,15 @@ import Foundation
 /// keep their meaning and still sum to the prompt size (`context_tokens`). All
 /// counts are real, so rows are `exact`; only tool-result sizes are estimates.
 public final class CodexParser: TranscriptLineParser {
-    public static let version = 2
+    public static let version = 3
 
     private var sourceFile = ""
     private var sessionId: String?
     private var cwd: String?
     private var model: String?
+    /// `turn_context.effort`, like the model: set by one line, true for the
+    /// turns after it.
+    private var effort: String?
     private var lastWindow: Int?
 
     /// `function_call` / `*_output` buffered until the next usage line, then
@@ -53,6 +56,7 @@ public final class CodexParser: TranscriptLineParser {
 
         case "turn_context":
             model = JSONAccess.string(payload, "model") ?? model
+            effort = JSONAccess.string(payload, "effort") ?? effort
             cwd = JSONAccess.string(payload, "cwd") ?? cwd
             return nil
 
@@ -187,6 +191,7 @@ public final class CodexParser: TranscriptLineParser {
             cacheWrite: cacheWrite,
             reasoning: JSONAccess.int(last, "reasoning_output_tokens"),
             webSearch: nil,
+            effort: effort,
             contextTokens: contextTokens,
             windowLimit: window,
             sourceFile: sourceFile,

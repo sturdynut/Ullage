@@ -77,6 +77,7 @@ struct CompositionView: View {
                     baseline
                     if !composition.tools.isEmpty { tools }
                     if !mostCalled.isEmpty { mostCalledList }
+                    if composition.staleToolResults > 0 || !composition.repeatedReads.isEmpty { alongForTheRide }
                 }
                 .padding(.top, 2)
                 .transition(.opacity)
@@ -340,6 +341,34 @@ struct CompositionView: View {
     // MARK: - Most called
 
     private var mostCalled: [ToolTargets.Called] { ToolTargets.mostCalled(composition) }
+
+    /// What stays in the window only because nothing takes it out: results
+    /// from long ago, and earlier copies of files read again. Length estimates.
+    private var alongForTheRide: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Along for the ride")
+                .font(.caption).foregroundStyle(.secondary)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 2) {
+                if composition.staleToolResults > 0 {
+                    GridRow {
+                        Text("Results from \(ContextComposition.staleAfterTurns)+ turns ago")
+                        Text("≈" + Self.compact(composition.staleToolResults)).monospacedDigit().gridColumnAlignment(.trailing)
+                    }
+                    .help("Tool results from \(ContextComposition.staleAfterTurns) or more turns back, still re-sent every turn. \(ContextComposition.staleAfterTurns) is a rule of thumb, not a measured cut-off.")
+                }
+                ForEach(composition.repeatedReads.prefix(4)) { read in
+                    GridRow {
+                        Text("Read \(ToolTargets.shortPath(read.target)) ×\(read.reads)")
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text("≈" + Self.compact(read.extraTokens)).monospacedDigit().gridColumnAlignment(.trailing)
+                    }
+                    .help("\(read.target) was read \(read.reads) times; every earlier copy is still in the window.")
+                }
+            }
+            .font(.caption2)
+        }
+    }
 
     private var mostCalledList: some View {
         VStack(alignment: .leading, spacing: 3) {

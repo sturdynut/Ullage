@@ -100,7 +100,7 @@ public enum ParsedLine: Equatable {
 public enum ClaudeCodeParser {
     /// Bump on every parser change. Tells you which rows to distrust after an
     /// upstream format shift.
-    public static let version = 4
+    public static let version = 6
 
     public static func parse(line: Data, context: LineContext) -> ParsedLine? {
         guard !line.isEmpty else { return nil }
@@ -194,6 +194,9 @@ public enum ClaudeCodeParser {
                 // Observed 2026-09-12: Claude Code 2.1.270 nests it here.
                 ?? JSONAccess.int(JSONAccess.dict(usage, "output_tokens_details"), "thinking_tokens"),
             webSearch: webSearch,
+            // Observed from 2.1.2xx (2026-07-26): `effort` is the session's
+            // setting, `perTurnEffort` a per-turn override when not null.
+            effort: JSONAccess.string(entry, "perTurnEffort") ?? JSONAccess.string(entry, "effort"),
             contextTokens: contextTokens,
             windowLimit: WindowLimits.limit(for: model),
             serviceTier: JSONAccess.string(usage, "service_tier"),
@@ -297,7 +300,16 @@ public enum ClaudeCodeParser {
         }
         for key in candidates {
             if let value = JSONAccess.string(input, key) {
-                return String(value.prefix(targetLimit))
+                let target = String(value.prefix(targetLimit))
+                // A partial read is a different piece of the file, not a copy
+                // of it: keep the range on the target so two reads only count
+                // as the same thing when they read the same lines. Grouping
+                // strips it again (`ToolTargets.rangeFree`).
+                if name == "Read", let range = ToolTargets.rangeSuffix(
+                    offset: JSONAccess.int(input, "offset"), limit: JSONAccess.int(input, "limit")) {
+                    return target + range
+                }
+                return target
             }
         }
         return nil

@@ -338,3 +338,24 @@ A slash command is a `type: "user"` line whose content *starts* with the tags:
 
 Stored as `event` rows of kind `command` with `{name, args}`. The same tags quoted
 mid-prompt are not a command.
+
+## Effort (parser v5 / Codex parser v3)
+
+- **Claude Code**, first seen 2026-07-26: every `type: "assistant"` line carries
+  `effort` (the session's setting: `low` … `max`) and `perTurnEffort` (an
+  override for that turn, often `null`). Ullage stores `perTurnEffort` when set,
+  else `effort`. Lines from before the field store NULL, shown as "unknown" —
+  never back-filled with a default.
+- **Codex** writes `effort` on `turn_context` (`low`, `medium`, `high`, `xhigh`,
+  `ultra` observed); like the model, it holds for the turns after it.
+- `permissionMode` is on `user` lines and separate `permission-mode` lines,
+  never on assistant lines. Not stored: tying it to a turn would need state
+  carried across lines, and it does not change what a turn costs.
+
+## Read ranges on tool targets (parser v6)
+
+A `Read` with `offset` and/or `limit` records its target as
+`<file_path>@<offset>+<limit>` (either number omitted when absent). Grouping
+and display strip the range (`ToolTargets.rangeFree`), so the explorer still
+shows one file; only the repeated-read check keys on the full target, because
+two chunks of one file are different content, not copies.

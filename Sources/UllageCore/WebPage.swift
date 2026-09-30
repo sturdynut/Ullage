@@ -174,7 +174,7 @@ public enum WebPage {
     } else {
       var bits = [];
       if (live.project) bits.push('<strong>' + esc(live.project) + '</strong>');
-      if (live.model) bits.push(esc(live.model));
+      if (live.model) bits.push(esc(live.model) + (live.effort ? ' · ' + esc(live.effort) : ''));
       bits.push(ago(live.ageSeconds));
       whereEl.innerHTML = bits.join(' &middot; ');
 

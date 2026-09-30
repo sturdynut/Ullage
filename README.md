@@ -55,7 +55,8 @@ anything away.
   - **the room left in the window**, in tokens, over a bar marked at 85% and at
     the session's own peak, with the exact `used / window` beneath it;
   - directly under that, **context tokens per turn**, where the band above the
-    line is the room left, with the 85% line and a marker wherever a compaction
+    line is the room left, captioned with what each turn now re-sends against
+    the first (`591k left · each turn re-sends 409k, 38× the first`), with the 85% line and a marker wherever a compaction
     dropped the window (hover for the exact turn, tokens, and change).
 
   Below it, every section collapses to **one row of its key figures** and
@@ -67,7 +68,10 @@ anything away.
     every estimate. Expanded, a treemap (tool results split by the tool that
     produced them, the baseline into CLAUDE.md and the rest), the four totals,
     the baseline's parts (CLAUDE.md, MCP servers, skills), every tool in the
-    window, and the targets **called most** (`Bash git status ×12`). The ⤢
+    window, and the targets **called most** (`Bash git status ×12`), and what is **along for
+    the ride**: tool results from 50+ turns ago that are still re-sent every turn,
+    and files read more than once, with the tokens in their earlier copies (all
+    `≈`; 50 is a rule of thumb, not a measurement). The ⤢
     button, or a click on the row or treemap, opens the
     [composition explorer](#composition-explorer).
   - **Token savers**: collapsed, problems first, then how many are on and off
@@ -76,8 +80,10 @@ anything away.
     Install… option for the ones you don't have. See
     [Token savers](#token-savers).
   - **Session information**: collapsed, the last turn's change, turn count and
-    last-active time (`last turn +951 · turns 112 · idle 5:27 PM`). Expanded, a
-    table that adds the session id.
+    last-active time (`last turn +951 · turns 112 · idle 5:27 PM`), led by
+    `re-cached 2×` when something the session did made it cache its context
+    again. Expanded, a table that adds the session id and every cache rebuild
+    by cause.
   - **Agents**: collapsed, how many there are, how many haven't finished, and
     whose window is fullest. Expanded, the tree of **subagents the session
     spawned**, each named by the description the agent above it wrote and each
@@ -190,6 +196,8 @@ ullage env <session>         # a session's configuration snapshot
 ullage limits [--fetch]      # plan limits left; --fetch asks Anthropic for Claude's
 ullage savers [session]      # token savers: switched on, and what each did
 ullage savers --days 30      # each saver across every session in the range
+ullage rebuilds [session]    # turns that re-cached most of their context, and why
+ullage rebuilds --days 30    # the same across sessions, by cause
 ullage savers disable rtk --dry-run   # what switching one off would change
 ullage savers install caveman         # the tool's own install commands, after asking
 ullage info                  # resolved paths, retention, row counts
@@ -394,6 +402,29 @@ ullage push --test     # buzz them all, to prove it works
 ```
 
 [`docs/PHONE.md`](docs/PHONE.md) has the setup in full.
+
+## Cache rebuilds
+
+Claude caches the conversation between turns, so each turn only pays full price
+for what is new. Some turns re-cache almost everything instead. Ullage flags a
+turn whose cache write is over half its context (50k tokens or more, and not
+straight after a compaction), marks it on the chart with a triangle, and names
+the cause from what changed since the turn before:
+
+| Cause | What changed | Marker |
+|---|---|---|
+| expired | more than an hour since the previous turn: the cache timed out | grey |
+| model changed | a different model answered, e.g. `claude-opus-5-5 → claude-fable-5-1` | orange |
+| effort changed | the recorded effort changed, e.g. `high → max` | orange |
+| command | `/model`, `/effort`, `/fast`, `/config` or similar was typed in between | orange |
+| unknown | nothing on disk explains it | grey |
+
+The size shown is that turn's own measured cache write. Nothing is converted to
+money or called waste. An expired cache after a break is expected, and an
+unexplained one is not pinned on you, so only the three causes the session
+itself produced count toward the `re-cached N×` warning in the collapsed line.
+The turn straight after a compaction or `/clear` re-caches its new, smaller
+context on purpose and is never counted.
 
 ## How the number is computed
 

@@ -25,6 +25,8 @@ USAGE
   ullage push [--test]       Devices subscribed to alerts; --test buzzes them
   ullage otlp                Export everything measured to an OTLP collector
   ullage limits [--fetch]    Plan limits left: Codex from disk; --fetch asks Anthropic for Claude's
+  ullage rebuilds [session]  Turns that re-cached most of their context, and why
+  ullage rebuilds --days N   Rebuilds across every session in the last N days, by cause
   ullage savers --days N     Each token saver across every session in the last N days
   ullage savers [session]    Token savers (rtk, Tokenade, caveman, Headroom): switched on, and what they did
   ullage savers enable|disable <name> [--dry-run]
@@ -237,8 +239,10 @@ func printSessions(_ store: Store) throws {
     }
     print("""
 
-    CONTEXT is the last turn's prompt tokens, not a sum: the cached prefix is
-    re-sent every turn, so summing prompt counters across turns is meaningless.
+    CONTEXT is the last turn's prompt tokens, not a sum. For how full the window
+    is, summing across turns would be wrong: the cached prefix is re-sent every
+    turn. For cost the sum is exactly right, one counter at a time (IN, CACHE R,
+    CACHE W above) — never merged into one total.
     It is the main thread's window; each agent has its own — see `ullage agents`.
     OUT is a mid-stream snapshot and undercounts (plan §9 trap 2).
     """)
@@ -269,11 +273,7 @@ func printHistory(_ store: Store, days: Int) throws {
 }
 
 func printComposition(_ store: Store, sessionPrefix: String) throws {
-    let matches = try store.recentSessions(limit: 10_000).map(\.sessionId).filter { $0.hasPrefix(sessionPrefix) }
-    guard let sessionId = matches.first else {
-        print("no session starting with \(sessionPrefix)")
-        return
-    }
+    guard let sessionId = try resolveSession(store, prefix: sessionPrefix) else { return }
     guard let c = try store.composition(sessionId: sessionId) else {
         print("no turns recorded for \(sessionId)")
         return
@@ -303,16 +303,23 @@ func printComposition(_ store: Store, sessionPrefix: String) throws {
         }
         if c.tools.count > 15 { print("… and \(c.tools.count - 15) more") }
     }
+    if c.staleToolResults > 0 || !c.repeatedReads.isEmpty {
+        print("")
+        print("ALONG FOR THE RIDE (length estimates)")
+        if c.staleToolResults > 0 {
+            print(pad("results from \(ContextComposition.staleAfterTurns)+ turns ago", 44) + padLeft("≈" + thousands(c.staleToolResults), 22))
+        }
+        for read in c.repeatedReads.prefix(8) {
+            print(pad("Read \(ToolTargets.shortPath(read.target)) ×\(read.reads)", 44) + padLeft("≈" + thousands(read.extraTokens), 22) + " in earlier copies")
+        }
+    }
 }
 
 /// The tree the menu bar's popover draws, in text: who spawned whom, and how
 /// full each one's own window got.
 func printAgents(_ store: Store, sessionPrefix: String) throws {
-    let matches = try store.sessionTotals().filter { $0.sessionId.hasPrefix(sessionPrefix) }
-    guard let session = matches.first else {
-        print("no session starting with \(sessionPrefix)")
-        return
-    }
+    guard let sessionId = try resolveSession(store, prefix: sessionPrefix),
+          let session = try store.sessionTotals().first(where: { $0.sessionId == sessionId }) else { return }
     let tree = try store.agentTree(sessionId: session.sessionId)
     print("""
     session    \(session.sessionId)
@@ -366,6 +373,7 @@ func printLatest(_ store: Store) throws {
     session    \(call.sessionId)
     project    \(call.project ?? "—")
     model      \(call.model ?? "—")\(WindowLimits.isKnown(call.model) ? "" : "  (window assumed)")
+    effort     \(call.effort ?? "not recorded")
     context    \(thousands(call.contextTokens)) / \(call.windowLimit.map(thousands) ?? "?")  \(percent(call.occupancy))
     delta      \(call.contextDelta.map { ($0 >= 0 ? "+" : "") + thousands($0) } ?? "—")
     turn       \(call.turnIndex.map(String.init) ?? "—")
@@ -414,6 +422,45 @@ func menuBarLine(_ store: Store) throws -> String {
 
 /// One line per limit: what is left, when it resets, and what Ullage itself
 /// saw in that window — the four counters apart, never summed.
+/// Measured figures only: each rebuild is the turn's own cache_write.
+func printRebuilds(_ store: Store, sessionPrefix: String?) throws {
+    let sessionId: String?
+    if let sessionPrefix {
+        sessionId = try resolveSession(store, prefix: sessionPrefix)
+        if sessionId == nil { return }
+    } else {
+        sessionId = try store.latestCall()?.sessionId
+    }
+    guard let sessionId else { print("no sessions ingested yet"); return }
+    let history = try store.contextHistory(sessionId: sessionId)
+    print("SESSION \(sessionId.prefix(8)) · main thread · \(history.points.count) turns")
+    if history.rebuilds.isEmpty { print("  no turn re-cached most of its context"); return }
+    for rebuild in history.rebuilds {
+        print("  turn " + padLeft("\(rebuild.turnIndex)", 4) + padLeft(thousands(rebuild.cacheWrite), 11) + " re-cached  "
+              + pad(rebuild.cause.rawValue, 15) + (rebuild.detail ?? ""))
+    }
+    print("  " + CacheRebuilds.causeSummary(history.rebuilds))
+}
+
+func printRebuildRange(_ store: Store, days: Int) throws {
+    let since = Timestamps.string(from: Date().addingTimeInterval(-Double(days) * 86_400))
+    var all: [CacheRebuild] = []
+    var turns = 0
+    for sessionId in try store.sessionsActive(since: since) {
+        let history = try store.contextHistory(sessionId: sessionId)
+        turns += history.points.filter { $0.ts >= since }.count
+        all += history.rebuilds.filter { $0.ts >= since }
+    }
+    print("CACHE REBUILDS, main threads, last \(days) days: \(all.count) of \(thousands(turns)) turns")
+    let byCause = Dictionary(grouping: all, by: \.cause)
+    for cause in CacheRebuild.Cause.allCases {
+        guard let rows = byCause[cause] else { continue }
+        let written = rows.reduce(0) { $0 + $1.cacheWrite }
+        print("  " + pad(cause.rawValue, 16) + padLeft("\(rows.count)×", 6) + padLeft(thousands(written), 14) + " re-cached"
+              + (cause == .expired ? "   (expected after a break)" : cause == .unknown ? "   (nothing on disk explains these)" : ""))
+    }
+}
+
 func printSaverRange(_ store: Store, days: Int) throws {
     let range: SaverRange = days <= 7 ? .week : .month
     let ledger = SaverLedgers.load(since: Date().addingTimeInterval(-Double(days + 1) * 86_400))
@@ -434,6 +481,21 @@ func printSaverRange(_ store: Store, days: Int) throws {
     }
 }
 
+/// One rule for every `<session-id or prefix>` argument. Nil after printing
+/// why: no match, or more than one — a prefix that fits two sessions must not
+/// silently pick one.
+func resolveSession(_ store: Store, prefix: String) throws -> String? {
+    let matches = try store.sessionTotals().map(\.sessionId).filter { $0.hasPrefix(prefix) }
+    switch matches.count {
+    case 0: print("no session starting with \(prefix)"); return nil
+    case 1: return matches[0]
+    default:
+        print("\(matches.count) sessions start with \(prefix); give more of the id:")
+        matches.prefix(8).forEach { print("  " + $0) }
+        return nil
+    }
+}
+
 func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: String?) throws {
     let states = switchboard.states()
     print("SWITCHED ON IN CLAUDE CODE (user config)")
@@ -443,8 +505,8 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
 
     let sessionId: String?
     if let sessionPrefix {
-        sessionId = try store.sessionTotals().map(\.sessionId).first { $0.hasPrefix(sessionPrefix) }
-        if sessionId == nil { print("\nno session starting with \(sessionPrefix)"); return }
+        sessionId = try resolveSession(store, prefix: sessionPrefix)
+        if sessionId == nil { return }
     } else {
         sessionId = try store.latestCall()?.sessionId
     }
@@ -614,11 +676,7 @@ do {
             print("usage: ullage env <session-id or prefix>")
             break
         }
-        let sessions = try store.sessionTotals().map(\.sessionId).filter { $0.hasPrefix(needle) }
-        guard let sessionId = sessions.first else {
-            print("no session starting with \(needle)")
-            break
-        }
+        guard let sessionId = try resolveSession(store, prefix: needle) else { break }
         guard let env = try store.sessionEnv(sessionId: sessionId) else {
             print("no environment snapshot for \(sessionId)")
             break
@@ -829,6 +887,14 @@ do {
             }
         }
         try printLimits(store, fetched: options.fetch)
+
+    case "rebuilds":
+        let store = try Store(path: options.databasePath)
+        if options.daysWasSet {
+            try printRebuildRange(store, days: options.days)
+        } else {
+            try printRebuilds(store, sessionPrefix: options.paths.first)
+        }
 
     case "savers":
         let switchboard = SaverSwitchboard()
