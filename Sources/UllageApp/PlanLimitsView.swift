@@ -31,15 +31,9 @@ struct PlanLimitsView: View {
     /// Collapsed: every harness on one line, each by its tightest limit — the
     /// one that stops you first. The rest are one click away.
     private var summaryRow: some View {
-        let summaries = PlanLimitFormatter.summaries(limits)
-        return ReadoutLine(summaries.map { summary in
-            let limit = summary.binding
-            return Readout("\(summary.vendorName) \(PlanLimitFormatter.shortLabel(limit.label))",
-                           (limit.remainingFraction.map { MenuBarFormatter.percentage($0) } ?? "—") + " left",
-                           warning: limit.isWarning, muted: limit.isStale)
-        })
-        .help(limits.map { "\($0.vendorName) \($0.label): " + PlanLimitFormatter.caption(for: $0) }
-            .joined(separator: "\n"))
+        ReadoutLine(PlanLimitFormatter.summary(limits))
+            .help(limits.map { "\($0.vendorName) \($0.label): " + PlanLimitFormatter.caption(for: $0) }
+                .joined(separator: "\n"))
     }
 
     private func percentLeft(_ limit: PlanLimitDisplay) -> some View {
@@ -75,14 +69,7 @@ struct PlanLimitsView: View {
     /// Reset and age first — they decide whether the number is still true —
     /// then what Ullage saw in the window.
     private func caption(_ limit: PlanLimitDisplay) -> String {
-        var parts = [PlanLimitFormatter.caption(for: limit)]
-            .filter { !$0.isEmpty }
-            // "N% left" is already on the line above.
-            .map { $0.replacingOccurrences(of: #"^\d+% left · "#, with: "", options: .regularExpression) }
-        if let seen = usage[limit.id], seen.calls > 0 {
-            parts.append("\(seen.calls.formatted()) turns · \(CompositionView.compact(seen.output)) out here")
-        }
-        return parts.joined(separator: " · ")
+        PlanLimitFormatter.detailCaption(for: limit, usage: usage[limit.id])
     }
 
     private func help(_ limit: PlanLimitDisplay) -> String {

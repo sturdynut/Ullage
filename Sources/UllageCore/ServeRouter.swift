@@ -10,15 +10,20 @@ public struct ServeRouter {
     /// Absent on a build that cannot push (no CryptoKit) or when alerts are
     /// switched off; the page copes, and says why.
     private let push: PushService?
+    /// Token savers: the section's data, and the switches and installs the
+    /// page can ask for. Nil serves the page without the section.
+    private let savers: SaverControl?
 
     public init(
         store: Store,
         push: PushService? = nil,
+        savers: SaverControl? = nil,
         sessionLimit: Int = 20,
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store
         self.push = push
+        self.savers = savers
         self.sessionLimit = sessionLimit
         self.now = now
     }
@@ -26,14 +31,15 @@ public struct ServeRouter {
     public func respond(to request: HTTPServer.Request) -> HTTPServer.Response {
         switch (request.method, request.path) {
         case ("GET", "/"), ("GET", "/index.html"):
-            return .html(WebPage.html)
+            return .html(WebPage.page)
 
         case ("GET", "/state.json"):
             // A read that throws is a database problem, not a reason to drop
             // the connection: the page shows "not reachable" either way, and a
             // 500 with the message in it is what makes it debuggable.
             do {
-                return .json(try ServeSnapshot.build(store: store, sessionLimit: sessionLimit, now: now()).json())
+                return .json(try ServeSnapshot.build(store: store, sessionId: request.query["session"], savers: savers,
+                                                     sessionLimit: sessionLimit, now: now()).json())
             } catch {
                 return .text(500, "state unavailable: \(error)")
             }
@@ -92,9 +98,89 @@ public struct ServeRouter {
         case ("GET", "/healthz"):
             return .text(200, "ok")
 
+        case ("GET", "/savers/plan"):
+            // Read-only: the exact commands, so the page can show them before
+            // asking. Nothing runs here.
+            guard let savers else { return .text(501, "token savers are not served by this process") }
+            guard let saver = request.query["saver"].flatMap(TokenSaver.init(rawValue:)),
+                  let action = request.query["action"].flatMap(SaverAction.init(rawValue:)) else {
+                return .text(400, "saver and action (install|uninstall) required")
+            }
+            let plan = savers.plan(saver, action)
+            return .json(PlanJSON(plan).data)
+
+        case ("POST", "/savers"):
+            // The one request that changes the Mac. A loopback server can be
+            // POSTed to by any page the Mac's browser has open, and the host
+            // check alone does not stop that, so the request must also come
+            // from this page: its own Origin, and a header a cross-site form
+            // cannot send without a CORS preflight this server never answers.
+            guard let savers else { return .text(501, "token savers are not served by this process") }
+            guard ServeRouter.isSameOrigin(request) else {
+                return .text(403, "only this page can change token savers")
+            }
+            guard let body = try? JSONDecoder().decode(SaverRequest.self, from: request.body),
+                  let saver = TokenSaver(rawValue: body.saver) else {
+                return .text(400, "expected {\"saver\": …, \"action\": on|off|undo|install|uninstall}")
+            }
+            do {
+                switch body.action {
+                case "on": try savers.set(saver, on: true, now: now())
+                case "off": try savers.set(saver, on: false, now: now())
+                case "undo": try savers.undo(saver, now: now())
+                case "install": try savers.run(saver, .install, now: now())
+                case "uninstall": try savers.run(saver, .uninstall, now: now())
+                default: return .text(400, "unknown action \(body.action)")
+                }
+                return .text(200, "ok")
+            } catch {
+                return .text(409, "\(error)")
+            }
+
         default:
             return .text(404, "no such path")
         }
+    }
+
+    /// The request names this page as its origin and carries the page's own
+    /// header. `Origin`'s host must equal `Host`: a page elsewhere sends its
+    /// own origin, and cannot add `X-Ullage` without a preflight.
+    static func isSameOrigin(_ request: HTTPServer.Request) -> Bool {
+        guard request.headers["x-ullage"] == "1",
+              let origin = request.headers["origin"], let host = request.host,
+              let url = URL(string: origin), let originHost = url.host else { return false }
+        let originAuthority = originHost + (url.port.map { ":\($0)" } ?? "")
+        return originAuthority.lowercased() == host.lowercased()
+            || originHost.lowercased() == host.lowercased()
+    }
+
+    struct SaverRequest: Decodable {
+        let saver: String
+        let action: String
+    }
+
+    /// What the page shows before it asks.
+    struct PlanJSON: Encodable {
+        struct Step: Encodable { let command: String; let purpose: String; let interactive: Bool }
+        let saver: String
+        let action: String
+        let steps: [Step]
+        let missing: [String]
+        let notes: [String]
+        let runnable: Bool
+        let needsPerson: Bool
+
+        init(_ plan: InstallPlan) {
+            saver = plan.saver.displayName
+            action = plan.action.rawValue
+            steps = plan.steps.map { Step(command: $0.command, purpose: $0.purpose, interactive: $0.interactive) }
+            missing = plan.missing
+            notes = plan.notes
+            runnable = plan.isRunnable
+            needsPerson = plan.needsPerson
+        }
+
+        var data: Data { (try? JSONEncoder().encode(self)) ?? Data("{}".utf8) }
     }
 
     /// A browser only ever hands out `https://` endpoints, and a push service

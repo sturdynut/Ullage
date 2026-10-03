@@ -191,4 +191,18 @@ final class EfficiencyTests: XCTestCase {
         XCTAssertTrue(c.repeatedReads.isEmpty, "three different ranges of one file are not copies")
         XCTAssertEqual(c.tools.first?.targets.first?.calls, 3, "but they still group under the file")
     }
+
+    // MARK: - An agent's collapsed line
+
+    func testAgentSummaryShowsStatusOnlyAndNeverAnEmptyItem() {
+        let agent = StreamFigures(status: .live, contextTokens: 1_000, windowLimit: 200_000, occupancy: 0.005,
+                                  contextDelta: 10, lastActivity: nil, sessionId: nil,
+                                  agentLine: "Explore · background", agentStatus: "background", isIdle: false)
+        XCTAssertEqual(Readout.line(SessionInfo.summary(agent, history: nil)), "last turn +10 · background")
+        var bare = agent
+        bare.agentLine = ""
+        bare.agentStatus = nil
+        XCTAssertEqual(Readout.line(SessionInfo.summary(bare, history: nil)), "last turn +10")
+        XCTAssertFalse(SessionInfo.rows(bare, history: nil).contains { $0.label == "Agent" }, "no empty Agent row")
+    }
 }

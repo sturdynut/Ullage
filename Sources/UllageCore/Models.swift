@@ -189,6 +189,9 @@ public enum EventKind: String {
     case hook
     /// A slash command the user typed. Detail is a `SlashCommand`.
     case command
+    /// Remote Control attached the session to claude.ai; detail is the URL
+    /// where it can be continued (and `/clear`ed, `/compact`ed, …) from.
+    case remote
 }
 
 /// A timeline marker. Mirrors the `event` table.

@@ -100,7 +100,7 @@ public enum ParsedLine: Equatable {
 public enum ClaudeCodeParser {
     /// Bump on every parser change. Tells you which rows to distrust after an
     /// upstream format shift.
-    public static let version = 6
+    public static let version = 7
 
     public static func parse(line: Data, context: LineContext) -> ParsedLine? {
         guard !line.isEmpty else { return nil }
@@ -128,6 +128,7 @@ public enum ClaudeCodeParser {
             if !results.isEmpty { return .toolResults(results) }
             return slashCommandEvent(entry: entry, rawLine: rawLine, context: context).map { .event($0) }
         case "attachment":
+            if let remote = remoteSessionEvent(entry: entry, rawLine: rawLine, context: context) { return .event(remote) }
             return hookEvent(entry: entry, rawLine: rawLine, context: context).map { .event($0) }
         case "summary":
             let event = EventRow(
@@ -313,6 +314,26 @@ public enum ClaudeCodeParser {
             }
         }
         return nil
+    }
+
+    // MARK: - Remote Control
+
+    /// `attachment.type == "remote_session_change"` carries the claude.ai URL
+    /// a Remote Control session can be driven from. Observed on 2.1.259.
+    /// Only a claude.ai/code URL is kept: it is put behind a link.
+    static func remoteSessionEvent(entry: [String: Any], rawLine: Data, context: LineContext) -> EventRow? {
+        guard let attachment = JSONAccess.dict(entry, "attachment"),
+              JSONAccess.string(attachment, "type") == "remote_session_change",
+              let url = JSONAccess.string(attachment, "url"),
+              url.hasPrefix("https://claude.ai/code/") else { return nil }
+        return EventRow(
+            id: eventID(kind: .remote, entry: entry, rawLine: rawLine, context: context),
+            sessionId: sessionId(entry: entry, context: context),
+            agentId: JSONAccess.string(entry, "agentId"),
+            ts: timestamp(entry: entry, context: context),
+            kind: EventKind.remote.rawValue,
+            detail: url
+        )
     }
 
     // MARK: - Hooks and slash commands

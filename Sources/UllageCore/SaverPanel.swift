@@ -122,9 +122,9 @@ public struct SaverPanel: Equatable {
             if onMachine, state == .notInstalled, !usage.broken, !usage.ran {
                 row.line = "Installed, not set up in Claude Code"
             }
-            // A saver that ran in this session but is switched off now: the
-            // figures above are real, and they stop from the next session.
-            row.pending = pending[saver] ?? (state == .off && usage.ran ? offNextSession : nil)
+            // A saver this session loaded but that is switched off now: what
+            // the row says is true of this session, and stops from the next.
+            row.pending = pending[saver] ?? (state == .off && (usage.ran || usage.idle) ? offNextSession : nil)
             row.canUndo = undoable.contains(saver) && pending[saver] != nil
             row.status = status(state: state, usage: usage)
             row.statusIsWarning = usage.broken || usage.idle

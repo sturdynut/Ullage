@@ -71,10 +71,9 @@ struct ContextChart: View {
         } else if showsIdleCaption {
             Text("Context per turn")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-        } else if let limit, let last = history.points.last {
+        } else if let caption = SessionInfo.chartCaption(windowLimit: limit, history: history) {
             // Says what the band is, once, where the hover text will replace it.
-            Text("\(Self.compact(max(0, limit - last.contextTokens))) left"
-                 + (history.resend?.multiple.map { " · each turn re-sends \(Self.compact(last.contextTokens)), \(ContextHistory.multiple($0)) the first" } ?? " in the window"))
+            Text(caption)
                 .font(.caption).foregroundStyle(.tertiary).monospacedDigit().lineLimit(1)
         } else {
             Text(" ").font(.caption)

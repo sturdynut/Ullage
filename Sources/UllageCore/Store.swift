@@ -6,7 +6,7 @@ public final class Store {
     public let database: SQLiteDatabase
     public let path: String
 
-    public static let schemaVersion = 8
+    public static let schemaVersion = 9
 
     public init(path: String) throws {
         self.path = path
@@ -100,6 +100,16 @@ public final class Store {
                 }
             }
             try database.execute("PRAGMA user_version=8;")
+        }
+        if current < 9 {
+            // Parser v7 keeps Remote Control's session URL; rewind Claude files.
+            if current > 0 {
+                let paths = try database.query("SELECT path FROM file_cursor;") { $0.text(0) }
+                for path in paths where TranscriptFormat.detect(path: path) == .claudeCode {
+                    try database.run("UPDATE file_cursor SET byte_offset = 0 WHERE path = ?1;", [.text(path)])
+                }
+            }
+            try database.execute("PRAGMA user_version=9;")
         }
     }
 
@@ -1393,5 +1403,42 @@ public final class Store {
             WindowUsage(calls: row.int(0), input: row.int(1), output: row.int(2),
                         cacheRead: row.int(3), cacheWrite: row.int(4))
         }.first ?? WindowUsage()
+    }
+}
+
+extension Store {
+    /// The claude.ai URL the session was last attached to by Remote Control:
+    /// where to go to type into it. Nil when it never was.
+    public func remoteURL(sessionId: String) throws -> String? {
+        try database.query(
+            "SELECT detail FROM event WHERE session_id = ?1 AND kind = 'remote' ORDER BY ts DESC LIMIT 1;",
+            [.text(sessionId)]
+        ) { $0.optionalText(0) }.first ?? nil
+    }
+}
+
+/// Where to go to type into a session: Claude Code's Remote Control page, or
+/// the Codex app's thread. That is where `/clear`, `/compact` and skills run;
+/// Ullage only links there.
+public struct SessionLink: Codable, Equatable {
+    public var label: String
+    public var url: String
+}
+
+extension Store {
+    public func sessionLink(sessionId: String) throws -> SessionLink? {
+        guard let vendor = try latestCall(sessionId: sessionId, scope: .all)?.vendor else { return nil }
+        switch vendor {
+        case Vendor.claudeCode:
+            // Only once Remote Control has attached it: there is no URL before.
+            return try remoteURL(sessionId: sessionId).map { SessionLink(label: "Open in Claude", url: $0) }
+        case Vendor.codex:
+            // The Codex app opens a thread by its id, which is the session id
+            // (`codex://threads/<id>`, as the app writes its own links).
+            guard let id = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+            return SessionLink(label: "Open in Codex", url: "codex://threads/" + id)
+        default:
+            return nil
+        }
     }
 }
