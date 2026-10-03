@@ -182,9 +182,12 @@ public enum WebPage {
   dialog .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
   dialog .cancel { font: inherit; background: none; border: 1px solid var(--rule); color: var(--ink); border-radius: 8px; padding: 9px 14px; }
   dialog .go.danger { background: var(--warn); }
+  /* A 44pt target around a small glyph; the negative margin keeps the
+     section rule from growing to fit it. */
   .info {
-    font: inherit; font-size: 14px; line-height: 1; color: var(--faint); background: none; border: 0;
-    padding: 6px; margin: -6px 0; cursor: pointer;
+    font: inherit; font-size: 18px; line-height: 1; color: var(--dim); background: none; border: 0;
+    min-width: 44px; min-height: 44px; margin: -13px -8px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none;
   }
   .caprow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   .caprow .caption { flex: 1; margin-top: 0; }
@@ -193,6 +196,18 @@ public enum WebPage {
   #help p { font-size: 14px; color: var(--dim); margin: 6px 0; line-height: 1.45; }
   #help ul { margin: 6px 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
   #help li { display: list-item; padding: 3px 0; border: 0; cursor: default; }
+  #help .intro { font-size: 14px; color: var(--dim); margin: 0 0 6px; }
+  #help details { border-top: 1px solid var(--rule); padding: 0; }
+  #help summary {
+    display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; font-weight: 600;
+  }
+  #help summary::after { content: '›'; margin-left: auto; color: var(--faint); transition: transform .15s; }
+  #help details[open] summary::after { transform: rotate(90deg); }
+  #help summary svg { width: 34px; height: 20px; flex: none; }
+  #help .ans { padding: 0 0 12px; font-size: 14px; line-height: 1.45; }
+  #help .ans.indent { padding-left: 44px; }
+  #help .ans p { margin: 0 0 6px; color: var(--ink); }
+  #help .ans .why { color: var(--dim); }
   footer { margin-top: 26px; color: var(--quiet); font-size: 12px; }
   [hidden] { display: none !important; }
 </style>
@@ -218,7 +233,7 @@ public enum WebPage {
     <div class="chart" id="chartbox" hidden>
       <svg id="chart" viewBox="0 0 320 96" preserveAspectRatio="none" aria-label="Context per turn"></svg>
       <div class="caprow"><div class="caption num" id="caption"></div>
-        <button class="info" data-help="chart,cache" aria-label="What does the chart show?">ⓘ</button></div>
+        <button class="info" data-help="chart" aria-label="What does the chart show?">ⓘ</button></div>
     </div>
     <div id="sections"></div>
     <a class="remote" id="remote" hidden target="_blank" rel="noopener"></a>
@@ -531,18 +546,27 @@ public enum WebPage {
       .catch(function (e) { alert(e.message || 'Could not load the plan.'); });
   }
 
+  // Each mark exactly as drawChart draws it: same paths, same colours.
+  var GLYPH = {
+    line: '<svg viewBox="0 0 34 20"><path d="M1 15 L33 6 L33 20 L1 20 Z" fill="var(--fill)" opacity=".12"/>' +
+          '<path d="M1 15 L33 6" stroke="var(--fill)" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
+    warningRule: '<svg viewBox="0 0 34 20"><line x1="0" x2="34" y1="10" y2="10" stroke="var(--warn)" stroke-dasharray="2 4" stroke-width="1.5" opacity=".8"/></svg>',
+    compaction: '<svg viewBox="0 0 34 20"><line x1="17" x2="17" y1="0" y2="20" stroke="var(--faint)" stroke-dasharray="3 3" stroke-width="1.5"/></svg>',
+    rebuildCaused: '<svg viewBox="0 0 34 20"><path d="M13 14 L17 6 L21 14 Z" fill="var(--warn)"/></svg>',
+    rebuildOther: '<svg viewBox="0 0 34 20"><path d="M13 14 L17 6 L21 14 Z" fill="var(--faint)"/></svg>'
+  };
+
   function showHelp(keys) {
+    // One line of context, then the questions, each closed until asked.
     var html = keys.split(',').map(function (k) {
       var t = HELP[k];
       if (!t) return '';
-      var out = '<h4>' + esc(t.title) + '</h4>', list = [];
-      function flush() { if (list.length) { out += '<ul>' + list.join('') + '</ul>'; list = []; } }
-      t.lines.forEach(function (line) {
-        if (line.indexOf('• ') === 0) { list.push('<li>' + esc(line.slice(2)) + '</li>'); }
-        else { flush(); out += '<p>' + esc(line) + '</p>'; }
-      });
-      flush();
-      return out;
+      return '<h4>' + esc(t.title) + '</h4><p class="intro">' + esc(t.intro) + '</p>' +
+        t.entries.map(function (q) {
+          return '<details><summary>' + (q.glyph ? GLYPH[q.glyph] : '') + '<span>' + esc(q.question) + '</span></summary>' +
+            '<div class="ans' + (q.glyph ? ' indent' : '') + '"><p>' + esc(q.answer) + '</p>' +
+            (q.why ? '<p class="why"><b>Why it matters:</b> ' + esc(q.why) + '</p>' : '') + '</div></details>';
+        }).join('');
     }).join('');
     el('help-body').innerHTML = html;
     el('help-close').onclick = function () { el('help').close(); };

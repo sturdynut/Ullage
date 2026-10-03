@@ -179,7 +179,10 @@ plausible and are wrong.
   the result stays on the row until it has been seen once.
 - **Help is one text, in Core.** `HelpText` holds what every ⓘ says, for the
   popover's `HelpButton` and the phone page (written into the page when it is
-  served). A new section or chart mark gets its line there, in plain words.
+  served). Each topic is one line of context, then the questions a reader
+  would ask, collapsed until opened, each with what it is and why it matters;
+  a question about a chart mark draws that mark exactly as the chart does. A
+  new section or mark gets its question there, in plain words.
 - **Fixed order for anything colour-coded.** Composition segments and history
   projects keep a stable order so a colour follows an entity, never its rank.
   The composition treemap is *ordered*, not squarified, for the same reason —

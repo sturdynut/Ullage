@@ -33,7 +33,7 @@ struct PopoverContent: View {
                     ContextChart(history: history, showsIdleCaption: false, readoutOverlay: true)
                         .frame(height: 72)
                         .overlay(alignment: .topLeading) {
-                            HelpButton(HelpText.chart, HelpText.cache).padding(2)
+                            HelpButton(HelpText.chart).padding(2)
                         }
                 }
             }
