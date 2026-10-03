@@ -349,9 +349,22 @@ transcripts changes nothing.
 
 ### Reading it from a phone
 
-A menu bar is only useful in front of the Mac. `ullage serve` puts the same
-gauge on a web page — the live occupancy, what it is made of, and every recent
-session — so a session you are driving from somewhere else is still visible.
+A menu bar is only useful in front of the Mac. `ullage serve` puts the whole
+popover on a web page: the room left, the context chart with its compaction and
+cache-rebuild markers, every section (composition, session information, agents,
+token savers, plan limits) collapsed to one row and expanding to the full view,
+and every recent session, any of which you can pick to look at instead of the
+latest. When a session is on Remote Control, **Open in Claude** takes you to it
+on claude.ai or the Claude app — the place to `/clear`, `/compact` or run a
+skill in it.
+
+The token savers section works here too: switches with Undo, and install or
+uninstall, after the page shows the tool's exact commands. Installs run in a
+Terminal window on the Mac, and the page reports how they went; a plan that
+needs someone at the Mac (Tokenade's browser sign-in) says so instead of
+starting. That one endpoint answers only to the page itself: it checks the
+request's origin and a header another site cannot add, so a web page you
+happen to have open cannot flip a switch.
 
 ```bash
 ullage serve                 # http://127.0.0.1:7878, and tails transcripts too

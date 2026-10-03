@@ -52,7 +52,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 241 tests on macOS; 230 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 249 tests on macOS; 238 on Linux (six need CryptoKit, five AppKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -217,10 +217,21 @@ plausible and are wrong.
   outside Ullage and there is no flag anyone can leave switched on by accident.
   The page is a string constant in Core (`WebPage.swift`) so the CLI and the app
   can both serve it without a resource bundle, and it fetches `state.json`,
-  whose shape is built by `ServeSnapshot` from the *same* `MenuBarFormatter` the
-  menu bar uses — a second set of display rules would be a second set of bugs.
+  whose shape is built by `ServeSnapshot` and `ServeDetail` from the *same* Core
+  rules the popover draws (`SessionInfo`, `SaverPanel`, `PlanLimitFormatter`,
+  `AgentTree`) — a second set of display rules would be a second set of bugs.
+  Anything the popover shows is computed in Core first, then drawn by both.
   The host allowlist is not decoration: a loopback server with no `Host` check
   is readable by any web page the user visits, via DNS rebinding.
+- **One endpoint changes the Mac, and only this page may call it.**
+  `POST /savers` switches, undoes, installs and uninstalls token savers through
+  `SaverControl` — the same switchboard and installer as the app. It requires
+  the page's own `Origin` and an `X-Ullage` header: a loopback server can be
+  POSTed to by any page the Mac's browser has open, the host check does not
+  stop that, and a custom header forces a CORS preflight this server never
+  answers. Installs run in a Terminal window on the Mac with the same exit
+  marker; a plan that needs a person (a browser sign-in) is refused from the
+  phone. Nothing else on the page writes.
 - **Alerts are edge-triggered, and the edge is persisted.** Level-triggered is
   the obvious implementation and the wrong one: it notifies on every turn above
   the threshold. `AlertRule` fires once per rung per stream, re-arms when a
