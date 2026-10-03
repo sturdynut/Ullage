@@ -182,12 +182,13 @@ public enum WebPage {
   dialog .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
   dialog .cancel { font: inherit; background: none; border: 1px solid var(--rule); color: var(--ink); border-radius: 8px; padding: 9px 14px; }
   dialog .go.danger { background: var(--warn); }
-  /* A 44pt target around a small glyph; the negative margin keeps the
+  /* "Explain": a word in the accent colour reads as a link where a small
+     glyph did not. 44pt tall for a finger; the negative margin keeps the
      section rule from growing to fit it. */
   .info {
-    font: inherit; font-size: 18px; line-height: 1; color: var(--dim); background: none; border: 0;
-    min-width: 44px; min-height: 44px; margin: -13px -8px; padding: 0;
-    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: none;
+    font: inherit; font-size: 13px; font-weight: 600; line-height: 1; color: var(--accent);
+    background: none; border: 0; min-height: 44px; margin: -14px 0; padding: 0 6px;
+    display: inline-flex; align-items: center; cursor: pointer; flex: none;
   }
   .caprow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   .caprow .caption { flex: 1; margin-top: 0; }
@@ -233,7 +234,7 @@ public enum WebPage {
     <div class="chart" id="chartbox" hidden>
       <svg id="chart" viewBox="0 0 320 96" preserveAspectRatio="none" aria-label="Context per turn"></svg>
       <div class="caprow"><div class="caption num" id="caption"></div>
-        <button class="info" data-help="chart" aria-label="What does the chart show?">ⓘ</button></div>
+        <button class="info" data-help="chart" aria-label="Explain the chart">Explain</button></div>
     </div>
     <div id="sections"></div>
     <a class="remote" id="remote" hidden target="_blank" rel="noopener"></a>
@@ -412,7 +413,7 @@ public enum WebPage {
     (sec.legend || []).forEach(function (line) { body += '<p class="legend">' + esc(line) + '</p>'; });
     return '<details data-id="' + sec.id + '"' + (isOpen(sec.id) ? ' open' : '') + '>' +
       '<summary><div class="rule"><span class="t">' + esc(sec.title) + '</span>' + collapsedRule +
-      (HELP_FOR[sec.id] ? '<button class="info" data-help="' + HELP_FOR[sec.id] + '" aria-label="What is ' + esc(sec.title) + '?">ⓘ</button>' : '') +
+      (HELP_FOR[sec.id] ? '<button class="info" data-help="' + HELP_FOR[sec.id] + '" aria-label="Explain ' + esc(sec.title) + '">Explain</button>' : '') +
       '<span class="chev">›</span></div>' +
       '<div class="readout num">' + readoutLine(sec.summary, sec.dots) + '</div></summary>' +
       '<div class="body">' + body + '</div></details>';

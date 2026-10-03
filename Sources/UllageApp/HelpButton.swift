@@ -2,7 +2,9 @@
 import SwiftUI
 import UllageCore
 
-/// An ⓘ that opens the plain-language explanation of what it sits next to.
+/// "Explain": a short link that opens the plain-language explanation of what
+/// it sits next to. A word in the accent colour, with a pointing-hand cursor,
+/// reads as clickable where a small grey glyph did not.
 /// The text is `HelpText`, the same the phone page shows.
 struct HelpButton: View {
     let topics: [HelpTopic]
@@ -12,15 +14,15 @@ struct HelpButton: View {
 
     var body: some View {
         Button { showing.toggle() } label: {
-            Image(systemName: "info.circle")
-                .font(.system(size: 12, weight: .semibold))
-                // The glyph stays small; the target does not.
-                .frame(width: 22, height: 22)
+            Text("Explain")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .padding(.vertical, 3)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.tertiary)
-        .help("What is this?")
+        .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+        .help("What this shows, and what to do about it")
         .accessibilityLabel("Help: " + topics.map(\.title).joined(separator: ", "))
         .popover(isPresented: $showing, arrowEdge: .bottom) {
             ScrollView {

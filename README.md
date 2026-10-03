@@ -61,8 +61,8 @@ anything away.
 
   Below it, every section collapses to **one row of its key figures** and
   expands to the full view (click the section's rule; each remembers how you
-  left it). The **ⓘ** on the chart and on each section explains it in plain
-  words — what the marks mean and what, if anything, to do about them. The
+  left it). **Explain**, on the chart and on each section, opens a plain-language
+  explanation: what the marks mean and what, if anything, to do about them. The
   phone page shows the same text:
   - **Context composition**: what the used part of the window is made of,
     always in the same order and colours. Collapsed, the four totals in one
