@@ -73,9 +73,9 @@ public enum HelpText {
             HelpEntry("How do I avoid cache rebuilds?",
                       answer: "Choose your model and effort when you start a session, not partway through. To use a different model, start a new session instead of switching in a long one."),
             HelpEntry("What's compaction?",
-                      answer: "The context window has a fixed size. When it's nearly full, Claude Code or Codex replaces the conversation with a short summary and continues from there. You can also run /compact yourself.",
-                      why: "It frees up room so a long task can continue, and the turns after it cost less. But a summary loses detail: exact code, error messages, file contents, and instructions you gave early on. The model may repeat work or need reminding.",
-                      tip: "Compact between steps, not in the middle of one. In Claude Code you can say what to keep, like /compact keep the API design decisions. For a new task, start a new session."),
+                      answer: "The context window has a fixed size. When it's nearly full, Claude Code or Codex replaces the conversation with a short summary and continues from there. You can also run /compact yourself. Only the conversation is summarized: the system prompt, tools, and CLAUDE.md or AGENTS.md are sent fresh every turn, so they're never lost.",
+                      why: "It frees up room so a long task can continue, and the turns after it cost less. But a summary loses detail: exact code, error messages, file contents, and instructions you only typed in the chat. The model may repeat work or need reminding.",
+                      tip: "Put instructions that should last in CLAUDE.md or AGENTS.md, not in the chat. Compact between steps, not in the middle of one. In Claude Code you can say what to keep, like /compact keep the API design decisions. For a new task, start a new session."),
         ]
     )
 
@@ -84,7 +84,7 @@ public enum HelpText {
         intro: "What's in the context window right now.",
         entries: [
             HelpEntry("What's the baseline?",
-                      answer: "What every turn starts with: the system prompt, tool definitions, skills, CLAUDE.md, and your first message.",
+                      answer: "What every turn starts with: the system prompt, tool definitions, skills, and CLAUDE.md, plus your first message. After a compaction, the summary takes the first message's place.",
                       why: "It's sent on every turn. Trimming CLAUDE.md or removing MCP servers you don't use saves tokens on every turn of every session."),
             HelpEntry("What are tool results?",
                       answer: "What tools returned, like files read, command output, and search results.",
