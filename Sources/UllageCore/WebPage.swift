@@ -188,13 +188,38 @@ public enum WebPage {
   dialog .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
   dialog .cancel { font: inherit; background: none; border: 1px solid var(--rule); color: var(--ink); border-radius: 8px; padding: 9px 14px; }
   dialog .go.danger { background: var(--warn); }
-  #help h4 { margin: 14px 0 6px; font-size: 16px; }
-  #help h4:first-child { margin-top: 0; }
+  /* Help is a page that slides in over the dashboard from the right. It owns
+     the whole screen, keeps its header below the status bar and notch, and
+     scrolls on its own while the page behind it stays put. */
+  .sheet {
+    position: fixed; inset: 0; z-index: 50; background: var(--bg);
+    display: flex; flex-direction: column;
+    transform: translateX(100%); visibility: hidden;
+    transition: transform .28s cubic-bezier(.2,.8,.2,1), visibility 0s linear .28s;
+  }
+  .sheet.open { transform: none; visibility: visible; transition: transform .28s cubic-bezier(.2,.8,.2,1); }
+  @media (prefers-reduced-motion: reduce) { .sheet, .sheet.open { transition: none; } }
+  .sheethead {
+    display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--rule);
+    padding: max(10px, env(safe-area-inset-top)) 16px 6px; background: var(--bg);
+  }
+  .sheethead h3 { flex: 1; margin: 0; font-size: 17px; }
+  .sheethead .done {
+    font: inherit; font-size: 16px; font-weight: 600; color: var(--accent); background: none; border: 0;
+    min-height: 44px; padding: 0 0 0 12px; cursor: pointer;
+  }
+  .sheetbody {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    padding: 4px 16px max(28px, env(safe-area-inset-bottom));
+  }
+  .sheetbody > div { max-width: 640px; margin: 0 auto; }
+  body.sheet-open { overflow: hidden; }
   #help p { font-size: 14px; color: var(--dim); margin: 6px 0; line-height: 1.45; }
   #help ul { margin: 6px 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
   #help li { display: list-item; padding: 3px 0; border: 0; cursor: default; }
   #help .intro { font-size: 14px; color: var(--dim); margin: 2px 0 6px; }
-  #help > #help-body > details.topic { border-top: 1px solid var(--rule); }
+  #help details.topic { border-top: 1px solid var(--rule); }
+  #help details.topic:first-child { border-top: 0; }
   #help details.topic > summary { font-size: 16px; font-weight: 650; min-height: 50px; }
   #help details.topic > .inner { padding: 0 0 8px 12px; }
   #help details.topic details:first-of-type { border-top: 0; }
@@ -257,10 +282,13 @@ public enum WebPage {
   <footer id="foot"></footer>
 </main>
 
-<dialog id="help">
-  <div id="help-body"></div>
-  <div class="acts"><button class="cancel" id="help-close">Done</button></div>
-</dialog>
+<section id="help" class="sheet" role="dialog" aria-modal="true" aria-labelledby="help-title" aria-hidden="true">
+  <header class="sheethead">
+    <h3 id="help-title">How to read Ullage</h3>
+    <button class="done" id="help-close">Done</button>
+  </header>
+  <div class="sheetbody" id="help-body"></div>
+</section>
 
 <dialog id="confirm">
   <h4 id="cf-title"></h4>
@@ -562,7 +590,7 @@ public enum WebPage {
   // One sheet: a section per part of the page, each closed until opened,
   // and inside each the questions, closed too.
   function showHelp() {
-    var html = '<h4>How to read Ullage</h4>' + HELP.map(function (t) {
+    var html = '<div>' + HELP.map(function (t) {
       return '<details class="topic"><summary><span>' + esc(t.title) + '</span></summary><div class="inner">' +
         '<p class="intro">' + esc(t.intro) + '</p>' +
         t.entries.map(function (q) {
@@ -571,12 +599,27 @@ public enum WebPage {
             (q.why ? '<p class="why"><b>Why it matters:</b> ' + esc(q.why) + '</p>' : '') +
             (q.tip ? '<p class="why"><b>What you can do:</b> ' + esc(q.tip) + '</p>' : '') + '</div></details>';
         }).join('') + '</div></details>';
-    }).join('');
+    }).join('') + '</div>';
+    var sheet = el('help');
     el('help-body').innerHTML = html;
-    el('help-close').onclick = function () { el('help').close(); };
-    el('help').showModal();
+    el('help-body').scrollTop = 0;
+    sheet.classList.add('open');
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('sheet-open');
+    el('help-close').focus();
+  }
+  function hideHelp() {
+    var sheet = el('help');
+    sheet.classList.remove('open');
+    sheet.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('sheet-open');
+    el('explain').focus();
   }
   el('explain').addEventListener('click', showHelp);
+  el('help-close').addEventListener('click', hideHelp);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && el('help').classList.contains('open')) hideHelp();
+  });
 
   el('sections').addEventListener('click', function (e) {
     var b = e.target.closest('button');

@@ -159,7 +159,8 @@ final class MobileParityTests: XCTestCase {
         let router = ServeRouter(store: try Store.inMemory())
         let page = String(decoding: router.respond(to: HTTPServer.Request(method: "GET", path: "/", host: "localhost")).body, as: UTF8.self)
         XCTAssertFalse(page.contains("/*HELP_JSON*/"), "the placeholder is filled")
-        XCTAssertTrue(page.contains("Cache rebuilds"))
+        XCTAssertTrue(page.contains("How do I avoid cache rebuilds?"))
+        XCTAssertFalse(HelpText.json.contains("summaris"), "American English")
         XCTAssertTrue(page.contains("What's an orange triangle?"))
         XCTAssertTrue(page.contains("rebuildCaused"), "marks carry their glyph so the page draws them as the chart does")
         XCTAssertEqual(HelpText.sections.map(\.title),
