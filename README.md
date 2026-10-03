@@ -353,7 +353,7 @@ A menu bar is only useful in front of the Mac. `ullage serve` puts the whole
 popover on a web page: the room left, the context chart with its compaction and
 cache-rebuild markers, every section (composition, session information, agents,
 token savers, plan limits) collapsed to one row and expanding to the full view,
-and every recent session, any of which you can pick to look at instead of the
+and every recent session with its path, any of which you can pick to look at instead of the
 latest. When a session is on Remote Control, **Open in Claude** takes you to it
 on claude.ai or the Claude app — the place to `/clear`, `/compact` or run a
 skill in it.

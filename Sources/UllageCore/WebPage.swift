@@ -141,8 +141,13 @@ public enum WebPage {
   li:last-child { border-bottom: 0; }
   li.on .name { color: var(--accent); }
   .name { grid-column: 1; grid-row: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .sub2 { grid-column: 1; grid-row: 2; color: var(--dim); font-size: 12px; }
-  .share { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; font-variant-numeric: tabular-nums; font-size: 17px; }
+  /* Right-aligned so a long path loses its start, not the folder you know. */
+  .path {
+    grid-column: 1; grid-row: 2; color: var(--dim); font-size: 12px; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
+  }
+  .sub2 { grid-column: 1; grid-row: 3; color: var(--faint); font-size: 12px; }
+  .share { grid-column: 2; grid-row: 1 / span 3; align-self: center; text-align: right; font-variant-numeric: tabular-nums; font-size: 17px; }
   .share.none { color: var(--quiet); font-size: 15px; }
   .share.warn { color: var(--warn); }
   #stale { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--rule); color: var(--dim); font-size: 13px; }
@@ -425,6 +430,7 @@ public enum WebPage {
       li.innerHTML =
         '<span class="name">' + esc(s.project || '—') + '</span>' +
         '<span class="share' + (p2 == null ? ' none' : (s.occupancy >= warn ? ' warn' : '')) + '">' + (p2 == null ? '—' : p2 + '%') + '</span>' +
+        (s.path ? '<span class="path">\u200E' + esc(s.path) + '\u200E</span>' : '') +
         '<span class="sub2">' + esc(s.sessionId.slice(0, 8)) + ' · ' + s.calls + ' turns' +
           (s.agents ? ' · ' + s.agents + ' agents' : '') + ' · ' + ago(s.ageSeconds) + '</span>';
       li.onclick = function () { choose(s.sessionId); window.scrollTo({ top: 0, behavior: 'smooth' }); };

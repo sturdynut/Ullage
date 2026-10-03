@@ -31,6 +31,9 @@ public struct ServeSnapshot: Codable, Equatable {
     public struct Session: Codable, Equatable {
         public var sessionId: String
         public var project: String?
+        /// The working directory with home folded to `~`: two worktrees or
+        /// checkouts with the same folder name are told apart by it.
+        public var path: String?
         public var model: String?
         public var lastTs: String
         public var contextTokens: Int
@@ -72,6 +75,7 @@ extension ServeSnapshot {
             Session(
                 sessionId: summary.sessionId,
                 project: summary.project,
+                path: MenuBarFormatter.displayPath(summary.cwd),
                 model: summary.model,
                 lastTs: summary.lastTs,
                 contextTokens: summary.lastContextTokens,

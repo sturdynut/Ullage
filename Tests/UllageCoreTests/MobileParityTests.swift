@@ -108,6 +108,7 @@ final class MobileParityTests: XCTestCase {
         let latest = try ServeSnapshot.build(store: store, now: now)
         XCTAssertEqual(latest.detail?.sessionId, "b", "unrequested: the session the menu bar follows")
         XCTAssertEqual(latest.detail?.isLatest, true)
+        XCTAssertEqual(Set(latest.sessions.compactMap(\.path)), ["/r/a", "/r/b"], "each session carries its working directory")
 
         let picked = try ServeSnapshot.build(store: store, sessionId: "a", now: now)
         let detail = try XCTUnwrap(picked.detail)
