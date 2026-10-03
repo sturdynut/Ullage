@@ -450,6 +450,7 @@ struct PopoverContent: View {
             lastActivity: agent.lastTs.flatMap(Timestamps.date(from:)) ?? state.lastActivity,
             sessionId: nil,
             agentLine: [agent.agentType, agent.statusLabel].compactMap { $0 }.joined(separator: " · "),
+            agentStatus: agent.statusLabel,
             isIdle: false
         )
     }

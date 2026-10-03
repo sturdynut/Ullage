@@ -28,7 +28,8 @@ you set it up.
 Ullage only reads Claude Code's config, with one exception: when you flip a
 [token saver](#token-savers) switch, it edits Claude Code's user settings to
 switch that one tool on or off. It backs the file up first and never throws
-anything away.
+anything away. Installing or uninstalling a token saver runs that tool's own
+commands, in Terminal, after showing them to you.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
@@ -50,14 +51,19 @@ anything away.
   scrolls, so the session is always named even when the popover is taller than
   the screen:
   - **which session**: its project, the full working directory (so two
-    worktrees or checkouts with the same folder name are told apart), and the
-    model;
+    worktrees or checkouts with the same folder name are told apart), the
+    model and its effort (`claude-opus-5-5 · high`), and **Open in Claude** or
+    **Open in Codex** to continue it where you can type into it;
   - **the room left in the window**, in tokens, over a bar marked at 85% and at
     the session's own peak, with the exact `used / window` beneath it;
   - directly under that, **context tokens per turn**, where the band above the
     line is the room left, captioned with what each turn now re-sends against
-    the first (`591k left · each turn re-sends 409k, 38× the first`), with the 85% line and a marker wherever a compaction
-    dropped the window (hover for the exact turn, tokens, and change).
+    the first (`591k left · each turn re-sends 409k, 38× the first`), with the
+    85% line, a dotted line wherever a compaction dropped the window, and a
+    triangle wherever a turn had to re-cache the whole conversation: orange
+    when the session caused it (a model or effort switch), grey when the cache
+    simply expired (hover for the exact turn, tokens, and cause; see
+    [Cache rebuilds](#cache-rebuilds)).
 
   Below it, every section collapses to **one row of its key figures** and
   expands to the full view (click the section's rule; each remembers how you
@@ -77,11 +83,6 @@ anything away.
     `≈`; 50 is a rule of thumb, not a measurement). The ⤢
     button, or a click on the row or treemap, opens the
     [composition explorer](#composition-explorer).
-  - **Token savers**: collapsed, problems first, then how many are on and off
-    (`rtk not running · Headroom idle · 1 on`).
-    Expanded, each tool's on/off switch, where its figure comes from, and an
-    Install… option for the ones you don't have. See
-    [Token savers](#token-savers).
   - **Session information**: collapsed, the last turn's change, turn count and
     last-active time (`last turn +951 · turns 112 · idle 5:27 PM`), led by
     `re-cached 2×` when something the session did made it cache its context
@@ -93,6 +94,11 @@ anything away.
     with **its own window and occupancy**. Click one and the chart, the
     composition and the session information switch to its context, and say
     so. The tree stays open while an agent is selected.
+  - **Token savers**: collapsed, problems first, then how many are on and off
+    (`rtk not running · Headroom idle · 1 on`).
+    Expanded, each tool's on/off switch, where its figure comes from, and an
+    Install… option for the ones you don't have; ⤢ opens the Token savers
+    window. See [Token savers](#token-savers).
   - **Plan limits**: collapsed, each harness's tightest limit in one row
     (`Claude 5h 88% left · Codex week 100% left`). Expanded, every limit with its
     bar, when it resets, and what Ullage itself saw in that window. See
@@ -105,7 +111,7 @@ anything away.
 - **Composition explorer** — the composition treemap at window size, one level
   at a time. See [below](#composition-explorer).
 - **History window** — the History button opens activity per day stacked by
-  project over 7, 30, 90, or 365 days, switchable between turns, output tokens,
+  project, model or effort over 7, 30, 90, or 365 days, switchable between turns, output tokens,
   and cache reads; a table of every session in range with its path and agent
   count; and
   the selected session's agent tree, chart and full composition.
@@ -351,6 +357,14 @@ source. Ingestion is incremental and idempotent: re-running it over the same
 transcripts changes nothing.
 
 ### Reading it from a phone
+
+<div align="center">
+
+<img src="docs/screenshots/phone.png" alt="The phone page: the Ullage session with 258k left of a 1M window, a bar at 74% used, the context chart with grey and orange cache-rebuild triangles, then Context composition, Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits each collapsed to one line, and Open in Claude and Explain at the bottom" width="300">
+&nbsp;&nbsp;
+<img src="docs/screenshots/phone-help.png" alt="The phone page's help: How to read Ullage, with The chart open and its questions listed, each beside the mark it explains; What's an orange triangle? is open, saying it is a cache rebuild you caused and why it costs full price or more" width="300">
+
+</div>
 
 A menu bar is only useful in front of the Mac. `ullage serve` puts the whole
 popover on a web page: the room left, the context chart with its compaction and

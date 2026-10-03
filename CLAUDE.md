@@ -52,7 +52,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 251 tests on macOS; 240 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 252 tests on macOS; 241 on Linux (six need CryptoKit, five AppKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```

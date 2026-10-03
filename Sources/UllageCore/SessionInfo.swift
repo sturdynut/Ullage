@@ -15,12 +15,16 @@ public struct StreamFigures: Equatable {
     public var sessionId: String?
     /// An agent's type and status, shown instead of the session id.
     public var agentLine: String?
+    /// The agent's status alone ("background", …), for the one-line summary;
+    /// nil when it completed normally.
+    public var agentStatus: String?
     /// Idle and the session's own (an agent is never called idle here).
     public var isIdle: Bool
 
     public init(
         status: MenuBarState.Status, contextTokens: Int?, windowLimit: Int?, occupancy: Double?,
-        contextDelta: Int?, lastActivity: Date?, sessionId: String?, agentLine: String? = nil, isIdle: Bool
+        contextDelta: Int?, lastActivity: Date?, sessionId: String?, agentLine: String? = nil,
+        agentStatus: String? = nil, isIdle: Bool
     ) {
         self.status = status
         self.contextTokens = contextTokens
@@ -30,6 +34,7 @@ public struct StreamFigures: Equatable {
         self.lastActivity = lastActivity
         self.sessionId = sessionId
         self.agentLine = agentLine
+        self.agentStatus = agentStatus
         self.isIdle = isIdle
     }
 
@@ -90,7 +95,7 @@ public enum SessionInfo {
                                 value: "\(history.rebuilds.count)× · " + CacheRebuilds.causeSummary(history.rebuilds)))
             }
         }
-        if let agentLine = figures.agentLine {
+        if let agentLine = figures.agentLine, !agentLine.isEmpty {
             rows.append(Row(label: "Agent", value: agentLine))
         } else if let session = figures.sessionId {
             rows.append(Row(label: "Session", value: String(session.prefix(8))))
@@ -113,7 +118,9 @@ public enum SessionInfo {
             let avoidable = history.rebuilds.filter(\.cause.isAvoidable)
             if !avoidable.isEmpty { parts.insert(Readout("re-cached", "\(avoidable.count)×", warning: true), at: 0) }
         }
-        if let status = figures.agentLine, figures.sessionId == nil { parts.append(Readout(status)) }
+        // Status alone, as before: the type is in the expanded table, and the
+        // line has a width to keep (ReadoutWidthTests).
+        if let status = figures.agentStatus, !status.isEmpty, figures.sessionId == nil { parts.append(Readout(status)) }
         if let last = figures.lastActivity, !parts.contains(where: \.isWarning) {
             parts.append(Readout(figures.isIdle ? "idle" : "at", last.formatted(date: .omitted, time: .shortened)))
         }

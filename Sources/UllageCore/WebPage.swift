@@ -636,11 +636,17 @@ public enum WebPage {
     if (message) el('stale').textContent = message;
   }
 
+  var fetchSeq = 0;
   function tick() {
+    // Each response is checked against the request that asked for it: a slow
+    // poll for the latest session must not land after you picked another one
+    // and quietly undo the pick.
+    var seq = ++fetchSeq, askedFor = chosen;
     var url = 'state.json' + (chosen ? '?session=' + encodeURIComponent(chosen) : '');
     fetch(url, { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
       .then(function (text) {
+        if (seq !== fetchSeq || askedFor !== chosen) return;
         lastGood = Date.now(); setStale(null);
         // Redrawn only when something changed, so an open section, a scroll
         // position or a finger on the chart is not reset every few seconds.
@@ -652,6 +658,7 @@ public enum WebPage {
         render(snap);
       })
       .catch(function () {
+        if (seq !== fetchSeq) return;
         var since = lastGood ? ago((Date.now() - lastGood) / 1000) : 'since loading';
         setStale('Not reachable — last update ' + since + '. Is the Mac awake?');
       });
