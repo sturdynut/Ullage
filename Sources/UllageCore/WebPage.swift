@@ -71,7 +71,7 @@ public enum WebPage {
   .exact { display: flex; justify-content: space-between; color: var(--dim); font-size: 13px; }
   .exact span:last-child { color: var(--faint); }
   .remote {
-    display: inline-block; margin-top: 12px; font-size: 14px; font-weight: 600; color: var(--accent);
+    display: inline-block; margin-bottom: 12px; font-size: 14px; font-weight: 600; color: var(--accent);
     text-decoration: none; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 9px;
   }
   .chart { margin-top: 12px; }
@@ -85,6 +85,10 @@ public enum WebPage {
   .rule .t { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); font-weight: 650; white-space: nowrap; }
   .rule .ln { flex: 1; height: 1px; background: var(--rule); }
   .rule .ln.shares { height: 3px; border-radius: 2px; display: flex; gap: 1px; overflow: hidden; background: none; }
+  /* Open, the section draws the bar large in its body; the title goes back
+     to a plain rule, as the popover's does. */
+  details[open] .rule .ln.shares { height: 1px; background: var(--rule); }
+  details[open] .rule .ln.shares i { display: none; }
   .rule .chev { color: var(--faint); font-size: 12px; transition: transform .15s; }
   details[open] .rule .chev { transform: rotate(90deg); }
   .readout { margin-top: 6px; font-size: 13px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -108,7 +112,7 @@ public enum WebPage {
   .row .bar i { display: block; height: 100%; background: var(--fill); }
   .row.w .bar i { background: var(--warn); }
   .warning { color: var(--warn); font-size: 13px; margin: 0 0 8px; }
-  .bigbar { display: flex; gap: 1px; height: 10px; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+  .bigbar { display: flex; gap: 2px; height: 22px; border-radius: 6px; overflow: hidden; margin-bottom: 12px; }
   .saver { padding: 10px 0; border-bottom: 1px solid var(--rule); }
   .saver:last-of-type { border-bottom: 0; }
   .saver .top1 { display: flex; align-items: center; gap: 10px; }
@@ -199,7 +203,6 @@ public enum WebPage {
       <svg id="chart" viewBox="0 0 320 96" preserveAspectRatio="none" aria-label="Context per turn"></svg>
       <div class="caption num" id="caption"></div>
     </div>
-    <a class="remote" id="remote" hidden target="_blank" rel="noopener">Open in Claude ↗</a>
     <div id="sections"></div>
   </section>
 
@@ -213,7 +216,10 @@ public enum WebPage {
   <h2>Sessions</h2>
   <ol id="sessions"></ol>
 
-  <footer id="foot"></footer>
+  <footer>
+    <a class="remote" id="remote" hidden target="_blank" rel="noopener">Open in Claude ↗</a>
+    <div id="foot"></div>
+  </footer>
 </main>
 
 <dialog id="confirm">
