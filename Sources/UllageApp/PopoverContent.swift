@@ -32,9 +32,7 @@ struct PopoverContent: View {
                 if let history = model.history {
                     ContextChart(history: history, showsIdleCaption: false, readoutOverlay: true)
                         .frame(height: 72)
-                        .overlay(alignment: .topLeading) {
-                            HelpButton(HelpText.chart).padding(2)
-                        }
+
                 }
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
@@ -76,7 +74,6 @@ struct PopoverContent: View {
                                            RuleShare(color: CompositionView.color(for: $0.name), weight: Double($0.tokens))
                                        }) {
                     if composition.estimatesOvershoot { overshootBadge }
-                    HelpButton(HelpText.composition)
                     Button { openExplorer() } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: 9, weight: .semibold))
@@ -90,9 +87,7 @@ struct PopoverContent: View {
             }
             if model.state.status != .empty {
                 CollapsibleSectionRule("Session information", scope: scopeName, isExpanded: $detailsExpanded,
-                                       help: ("Collapse to one line", "Show every detail")) {
-                    HelpButton(HelpText.session, HelpText.cache)
-                }
+                                       help: ("Collapse to one line", "Show every detail"))
                 if detailsExpanded { stats } else { statsSummary }
             }
             if let tree = model.agents, !tree.isEmpty {
@@ -122,7 +117,6 @@ struct PopoverContent: View {
             if !model.savers.isEmpty {
                 CollapsibleSectionRule("Token savers", isExpanded: $saversExpanded,
                                        help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from")) {
-                    HelpButton(HelpText.savers)
                     Button {
                         openWindow(id: SaversWindow.id)
                         NSApp.activate(ignoringOtherApps: true)
@@ -177,7 +171,6 @@ struct PopoverContent: View {
     @ViewBuilder
     private var agentsTrailing: some View {
         HStack(spacing: 6) {
-            HelpButton(HelpText.agents)
             if model.focusedAgent != nil {
                 Button { model.focus(on: .mainThread) } label: {
                     Text("back to main thread")
@@ -484,12 +477,10 @@ struct PopoverContent: View {
         let hasClaude = model.planLimits.contains { $0.vendor == Vendor.claudeCode }
         if !model.planLimits.isEmpty || !model.checksClaudeLimits || model.claudeLimitsError != nil {
             if model.planLimits.isEmpty {
-                SectionRule("Plan limits") { HelpButton(HelpText.limits) }
+                SectionRule("Plan limits")
             } else {
                 CollapsibleSectionRule("Plan limits", isExpanded: $planLimitsExpanded,
-                                       help: ("Collapse to what is left", "Show every limit, its reset and usage")) {
-                    HelpButton(HelpText.limits)
-                }
+                                       help: ("Collapse to what is left", "Show every limit, its reset and usage"))
                 PlanLimitsView(limits: model.planLimits, usage: model.planLimitUsage, expanded: planLimitsExpanded)
             }
             if let error = model.claudeLimitsError {
@@ -525,6 +516,8 @@ struct PopoverContent: View {
             }
             .buttonStyle(.borderedProminent)
             Spacer()
+            // One way in to every explanation, opposite the main action.
+            HelpButton()
         }
         .controlSize(.small)
     }

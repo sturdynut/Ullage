@@ -177,7 +177,7 @@ plausible and are wrong.
   message shared by the popover. A Terminal install reports back through a
   marker file its script writes its exit status to (`SaverInstaller.script`);
   the result stays on the row until it has been seen once.
-- **Help is one text, in Core.** `HelpText` holds what every "Explain" link says, for the
+- **Help is one text, in Core.** `HelpText.sections` is the one sheet the Explain button opens, for the
   popover's `HelpButton` and the phone page (written into the page when it is
   served). Each topic is one line of context, then the questions a reader
   would ask, collapsed until opened, each with what it is and why it matters;

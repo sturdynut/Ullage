@@ -12,7 +12,7 @@ import Foundation
 public enum WebPage {
     /// The page as served: `html` with the help text written in.
     public static var page: String {
-        html.replacingOccurrences(of: "/*HELP_JSON*/{}", with: HelpText.json)
+        html.replacingOccurrences(of: "/*HELP_JSON*/[]", with: HelpText.json)
     }
 
     public static let html = #"""
@@ -75,8 +75,14 @@ public enum WebPage {
   .tick.peak { background: var(--warn); opacity: .7; }
   .exact { display: flex; justify-content: space-between; color: var(--dim); font-size: 13px; }
   .exact span:last-child { color: var(--faint); }
+  .cardfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+  /* Explain is a link, not a second button: Open in Claude stays the action. */
+  .explain {
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--accent); background: none; border: 0;
+    min-height: 44px; padding: 0 2px 0 12px; margin-left: auto; cursor: pointer;
+  }
   .remote {
-    display: inline-block; margin-top: 14px; font-size: 14px; font-weight: 600; color: var(--accent);
+    display: inline-block; font-size: 14px; font-weight: 600; color: var(--accent);
     text-decoration: none; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 9px;
   }
   .chart { margin-top: 12px; }
@@ -182,28 +188,24 @@ public enum WebPage {
   dialog .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
   dialog .cancel { font: inherit; background: none; border: 1px solid var(--rule); color: var(--ink); border-radius: 8px; padding: 9px 14px; }
   dialog .go.danger { background: var(--warn); }
-  /* "Explain": a word in the accent colour reads as a link where a small
-     glyph did not. 44pt tall for a finger; the negative margin keeps the
-     section rule from growing to fit it. */
-  .info {
-    font: inherit; font-size: 13px; font-weight: 600; line-height: 1; color: var(--accent);
-    background: none; border: 0; min-height: 44px; margin: -14px 0; padding: 0 6px;
-    display: inline-flex; align-items: center; cursor: pointer; flex: none;
-  }
-  .caprow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
-  .caprow .caption { flex: 1; margin-top: 0; }
   #help h4 { margin: 14px 0 6px; font-size: 16px; }
   #help h4:first-child { margin-top: 0; }
   #help p { font-size: 14px; color: var(--dim); margin: 6px 0; line-height: 1.45; }
   #help ul { margin: 6px 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
   #help li { display: list-item; padding: 3px 0; border: 0; cursor: default; }
-  #help .intro { font-size: 14px; color: var(--dim); margin: 0 0 6px; }
+  #help .intro { font-size: 14px; color: var(--dim); margin: 2px 0 6px; }
+  #help > #help-body > details.topic { border-top: 1px solid var(--rule); }
+  #help details.topic > summary { font-size: 16px; font-weight: 650; min-height: 50px; }
+  #help details.topic > .inner { padding: 0 0 8px 12px; }
+  #help details.topic details:first-of-type { border-top: 0; }
   #help details { border-top: 1px solid var(--rule); padding: 0; }
   #help summary {
     display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; font-weight: 600;
   }
   #help summary::after { content: '›'; margin-left: auto; color: var(--faint); transition: transform .15s; }
-  #help details[open] summary::after { transform: rotate(90deg); }
+  /* Only the summary of the details that is itself open: a closed question
+     inside an open section keeps its closed chevron. */
+  #help details[open] > summary::after { transform: rotate(90deg); }
   #help summary svg { width: 34px; height: 20px; flex: none; }
   #help .ans { padding: 0 0 12px; font-size: 14px; line-height: 1.45; }
   #help .ans.indent { padding-left: 44px; }
@@ -233,11 +235,13 @@ public enum WebPage {
     <div class="exact num"><span id="exact"></span><span id="used"></span></div>
     <div class="chart" id="chartbox" hidden>
       <svg id="chart" viewBox="0 0 320 96" preserveAspectRatio="none" aria-label="Context per turn"></svg>
-      <div class="caprow"><div class="caption num" id="caption"></div>
-        <button class="info" data-help="chart" aria-label="Explain the chart">Explain</button></div>
+      <div class="caption num" id="caption"></div>
     </div>
     <div id="sections"></div>
-    <a class="remote" id="remote" hidden target="_blank" rel="noopener"></a>
+    <div class="cardfoot">
+      <a class="remote" id="remote" hidden target="_blank" rel="noopener"></a>
+      <button class="explain" id="explain" aria-haspopup="dialog">Explain</button>
+    </div>
   </section>
 
   <p id="stale" hidden></p>
@@ -273,8 +277,7 @@ public enum WebPage {
   var timer = null, lastGood = null, lastJSON = '', snapshot = null;
   // HelpText from Core, written in when the page is served: the same words
   // the popover's ⓘ shows.
-  var HELP = /*HELP_JSON*/{};
-  var HELP_FOR = { composition: 'composition', session: 'session,cache', agents: 'agents', savers: 'savers', limits: 'limits' };
+  var HELP = /*HELP_JSON*/[];
   var chosen = null;
   try { chosen = localStorage.getItem('ullage.session'); } catch (e) {}
 
@@ -413,7 +416,6 @@ public enum WebPage {
     (sec.legend || []).forEach(function (line) { body += '<p class="legend">' + esc(line) + '</p>'; });
     return '<details data-id="' + sec.id + '"' + (isOpen(sec.id) ? ' open' : '') + '>' +
       '<summary><div class="rule"><span class="t">' + esc(sec.title) + '</span>' + collapsedRule +
-      (HELP_FOR[sec.id] ? '<button class="info" data-help="' + HELP_FOR[sec.id] + '" aria-label="Explain ' + esc(sec.title) + '">Explain</button>' : '') +
       '<span class="chev">›</span></div>' +
       '<div class="readout num">' + readoutLine(sec.summary, sec.dots) + '</div></summary>' +
       '<div class="body">' + body + '</div></details>';
@@ -557,31 +559,24 @@ public enum WebPage {
     rebuildOther: '<svg viewBox="0 0 34 20"><path d="M13 14 L17 6 L21 14 Z" fill="var(--faint)"/></svg>'
   };
 
-  function showHelp(keys) {
-    // One line of context, then the questions, each closed until asked.
-    var html = keys.split(',').map(function (k) {
-      var t = HELP[k];
-      if (!t) return '';
-      return '<h4>' + esc(t.title) + '</h4><p class="intro">' + esc(t.intro) + '</p>' +
+  // One sheet: a section per part of the page, each closed until opened,
+  // and inside each the questions, closed too.
+  function showHelp() {
+    var html = '<h4>How to read Ullage</h4>' + HELP.map(function (t) {
+      return '<details class="topic"><summary><span>' + esc(t.title) + '</span></summary><div class="inner">' +
+        '<p class="intro">' + esc(t.intro) + '</p>' +
         t.entries.map(function (q) {
           return '<details><summary>' + (q.glyph ? GLYPH[q.glyph] : '') + '<span>' + esc(q.question) + '</span></summary>' +
             '<div class="ans' + (q.glyph ? ' indent' : '') + '"><p>' + esc(q.answer) + '</p>' +
             (q.why ? '<p class="why"><b>Why it matters:</b> ' + esc(q.why) + '</p>' : '') +
             (q.tip ? '<p class="why"><b>What you can do:</b> ' + esc(q.tip) + '</p>' : '') + '</div></details>';
-        }).join('');
+        }).join('') + '</div></details>';
     }).join('');
     el('help-body').innerHTML = html;
     el('help-close').onclick = function () { el('help').close(); };
     el('help').showModal();
   }
-
-  document.addEventListener('click', function (e) {
-    var b = e.target.closest && e.target.closest('button.info');
-    if (!b) return;
-    // Inside a section's title: explain it, don't open or close the section.
-    e.preventDefault(); e.stopPropagation();
-    showHelp(b.dataset.help);
-  }, true);
+  el('explain').addEventListener('click', showHelp);
 
   el('sections').addEventListener('click', function (e) {
     var b = e.target.closest('button');

@@ -50,11 +50,7 @@ public enum HelpText {
         entries: [
             HelpEntry("What's the blue line?", glyph: .line,
                       answer: "How much of the window each turn used. The space above it is what's left.",
-                      why: "Everything under the line is sent again on every turn, so the higher it gets, the more each turn costs and the sooner the conversation is compacted (see the next question)."),
-            HelpEntry("What's compaction?",
-                      answer: "The context window has a fixed size. When it's nearly full, Claude Code or Codex replaces the conversation so far with a short summary and carries on from that. You can also ask for it yourself with /compact.",
-                      why: "It's good because it frees room, so a long task can keep going, and every turn after it is smaller and cheaper. It's bad because the summary keeps the gist, not the details: exact code, error messages, file contents and instructions you gave early on can be lost, so the model may repeat work or need reminding.",
-                      tip: "Compact at a natural break, like after finishing a step, rather than letting it happen mid-task. In Claude Code, /compact accepts a note on what to keep, e.g. /compact keep the API design decisions. For a new task, a fresh session is cleaner than a compacted one."),
+                      why: "Everything under the line is sent again on every turn, so the higher it gets, the more each turn costs and the sooner the conversation is compacted (the last question explains compaction)."),
             HelpEntry("What's the dashed orange line?", glyph: .warningRule,
                       answer: "Ullage's early warning at 85% of the window. It isn't the compaction point itself.",
                       why: "Claude Code and Codex both compact on their own when the window is nearly full, usually somewhere between 80% and 95%. Past this line, one is likely soon.",
@@ -68,23 +64,14 @@ public enum HelpText {
             HelpEntry("What's a grey triangle?", glyph: .rebuildOther,
                       answer: "The same kind of rebuild, but not caused by you: usually the cache expired during a break of over an hour.",
                       why: "It costs the same one turn, but it's expected after a break and there's nothing to change."),
+            HelpEntry("What's the cache?",
+                      answer: "Between turns, the conversation is kept in a cache. A normal turn reads it, which is fast and much cheaper, and pays full price only for what's new. The triangles mark turns that couldn't use it."),
             HelpEntry("How do I avoid cache rebuilds?",
                       answer: "Pick the model and effort at the start of a session instead of switching partway. If you need a different model, starting a new session costs less than switching a long one."),
-        ]
-    )
-
-    public static let cache = HelpTopic(
-        title: "Cache rebuilds",
-        intro: "Turns that had to store the whole conversation again instead of reusing it.",
-        entries: [
-            HelpEntry("What's the cache?",
-                      answer: "Between turns, the conversation is kept in a cache. A normal turn reads it, which is fast and much cheaper, and pays full price only for what's new."),
-            HelpEntry("What does \"re-cached 2×\" mean?", glyph: .rebuildCaused,
-                      answer: "Two turns in this session couldn't use the cache because of something the session did, like switching model.",
-                      why: "Each one paid full price for the whole conversation at once. They're the orange triangles on the chart."),
-            HelpEntry("Why aren't all rebuilds counted?", glyph: .rebuildOther,
-                      answer: "Rebuilds after a break of over an hour, or with no visible cause, are shown in grey and left out of the count.",
-                      why: "They're expected, not something to fix."),
+            HelpEntry("What's compaction?",
+                      answer: "The context window has a fixed size. When it's nearly full, Claude Code or Codex replaces the conversation so far with a short summary and carries on from that. You can also ask for it yourself with /compact.",
+                      why: "It's good because it frees room, so a long task can keep going, and every turn after it is smaller and cheaper. It's bad because the summary keeps the gist, not the details: exact code, error messages, file contents and instructions you gave early on can be lost, so the model may repeat work or need reminding.",
+                      tip: "Compact at a natural break, like after finishing a step, rather than letting it happen mid-task. In Claude Code, /compact accepts a note on what to keep, e.g. /compact keep the API design decisions. For a new task, a fresh session is cleaner than a compacted one."),
         ]
     )
 
@@ -170,17 +157,16 @@ public enum HelpText {
         ]
     )
 
-    /// Keyed by the section id the page uses, plus the chart and the cache.
-    public static let all: [String: HelpTopic] = [
-        "chart": chart, "cache": cache, "composition": composition, "session": session,
-        "agents": agents, "savers": savers, "limits": limits,
-    ]
+    /// The help sheet, in the order the page shows them: the chart first,
+    /// then each section top to bottom. Each is a collapsible section of the
+    /// one sheet the Explain button opens.
+    public static let sections: [HelpTopic] = [chart, composition, session, agents, savers, limits]
 
     /// For the page, which reads the same text.
     public static var json: String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        guard let data = try? encoder.encode(all) else { return "{}" }
+        guard let data = try? encoder.encode(sections) else { return "[]" }
         // Safe inside a <script>: no "</" can close the tag early.
         return String(decoding: data, as: UTF8.self).replacingOccurrences(of: "</", with: "<\\/")
     }

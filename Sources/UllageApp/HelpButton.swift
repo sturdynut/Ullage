@@ -7,44 +7,60 @@ import UllageCore
 /// reads as clickable where a small grey glyph did not.
 /// The text is `HelpText`, the same the phone page shows.
 struct HelpButton: View {
-    let topics: [HelpTopic]
     @State private var showing = false
-
-    init(_ topics: HelpTopic...) { self.topics = topics }
 
     var body: some View {
         Button { showing.toggle() } label: {
             Text("Explain")
-                .font(.caption2.weight(.semibold))
+                .font(.callout.weight(.semibold))
                 .foregroundStyle(Color.accentColor)
                 .padding(.vertical, 3)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
-        .help("What this shows, and what to do about it")
-        .accessibilityLabel("Help: " + topics.map(\.title).joined(separator: ", "))
-        .popover(isPresented: $showing, arrowEdge: .bottom) {
+        .help("What everything here shows, and what to do about it")
+        .popover(isPresented: $showing, arrowEdge: .top) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(topics, id: \.title) { topic in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(topic.title).font(.headline)
-                            Text(topic.intro).foregroundStyle(.secondary)
-                            // Each question collapsed until asked: the answer
-                            // to one thing at a time, not everything at once.
-                            ForEach(topic.entries, id: \.question) { entry in
-                                HelpQuestion(entry: entry)
-                            }
-                        }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("How to read Ullage").font(.headline).padding(.bottom, 6)
+                    // A section per part of the popover, each closed until
+                    // opened, and inside it the questions, each closed too.
+                    ForEach(HelpText.sections, id: \.title) { topic in
+                        HelpSection(topic: topic)
+                        Divider()
                     }
                 }
                 .font(.callout)
                 .padding(14)
             }
-            .frame(width: 340)
-            .frame(maxHeight: 520)
+            .frame(width: 360)
+            .frame(maxHeight: 560)
         }
+    }
+}
+
+private struct HelpSection: View {
+    let topic: HelpTopic
+    @State private var open = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $open) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(topic.intro).foregroundStyle(.secondary)
+                ForEach(topic.entries, id: \.question) { entry in
+                    HelpQuestion(entry: entry)
+                }
+            }
+            .padding(.top, 4)
+        } label: {
+            Text(topic.title)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation(.easeInOut(duration: 0.15)) { open.toggle() } }
+        }
+        .padding(.vertical, 4)
     }
 }
 

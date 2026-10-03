@@ -162,7 +162,12 @@ final class MobileParityTests: XCTestCase {
         XCTAssertTrue(page.contains("Cache rebuilds"))
         XCTAssertTrue(page.contains("What's an orange triangle?"))
         XCTAssertTrue(page.contains("rebuildCaused"), "marks carry their glyph so the page draws them as the chart does")
-        XCTAssertEqual(Set(HelpText.all.keys), ["chart", "cache", "composition", "session", "agents", "savers", "limits"])
+        XCTAssertEqual(HelpText.sections.map(\.title),
+                       ["The chart", "Context composition", "Session information", "Agents", "Token savers", "Plan limits"],
+                       "one sheet, a section per part of the page, in page order")
+        XCTAssertEqual(HelpText.chart.entries.last?.question, "What's compaction?", "compaction closes the chart's list")
+        XCTAssertTrue(page.contains("id=\"explain\""), "one Explain button")
+        XCTAssertFalse(page.contains("class=\"info\""), "no per-section links left")
         XCTAssertFalse(HelpText.json.contains("</"), "cannot close the script tag it sits in")
     }
 }
