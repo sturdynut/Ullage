@@ -318,6 +318,10 @@ struct PopoverContent: View {
                     Text(MenuBarFormatter.percentage(occupancy) + " used")
                         .foregroundStyle(.tertiary)
                 }
+                if let remote = model.remoteURL, agent == nil {
+                    Link("Open in Claude ↗", destination: remote)
+                        .help("This session is on Remote Control: continue it on claude.ai or the Claude app, where /clear, /compact and skills work")
+                }
             }
             .font(.caption)
             .monospacedDigit()
@@ -333,17 +337,9 @@ struct PopoverContent: View {
 
     /// The room left — the thing the app is named for, and the one number the
     /// menu bar has no space to show.
-    private func headroom(contextTokens: Int?, windowLimit: Int?) -> String {
-        guard let windowLimit, let contextTokens else { return "—" }
-        return CompositionView.compact(max(0, windowLimit - contextTokens))
-    }
+    private func headroom(contextTokens: Int?, windowLimit: Int?) -> String { figures.headroom }
 
-    private func exactLine(state: MenuBarState, contextTokens: Int?, windowLimit: Int?) -> String {
-        guard state.status != .empty else { return "nothing ingested yet" }
-        guard let contextTokens else { return "no turns recorded" }
-        guard let windowLimit else { return "\(contextTokens.formatted()) tokens · no window reported" }
-        return "\(contextTokens.formatted()) / \(windowLimit.formatted())"
-    }
+    private func exactLine(state: MenuBarState, contextTokens: Int?, windowLimit: Int?) -> String { figures.exactLine }
 
     /// Drawn as a mark on the same track, not as a second gauge: it is the same
     /// ratio against the same window, and on a growing session it is simply the
@@ -429,87 +425,38 @@ struct PopoverContent: View {
 
     @ViewBuilder
     private var stats: some View {
-        let state = model.state
-        // Every figure describes the stream the popover is looking at, so a
-        // selected agent's turns are never shown next to the session's tokens.
-        let agent = model.focusedAgent
-        let contextTokens = agent?.lastContextTokens ?? state.contextTokens
-        let windowLimit = agent?.windowLimit ?? state.windowLimit
-        let delta = agent == nil ? state.contextDelta : model.history?.points.last?.contextDelta
-        let lastActivity = agent.flatMap { $0.lastTs.flatMap(Timestamps.date(from:)) } ?? state.lastActivity
-        if state.status != .empty {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
-                // Values right-aligned against the popover edge so they scan as
-                // a column instead of a ragged left edge wherever the longest
-                // label happened to push them.
-                // Context is the headline's own arithmetic and lives up there;
-                // repeating it here put the explanation 300pt from the number.
-                if let contextTokens, windowLimit == nil {
-                    row("Context", contextTokens.formatted() + "  (no window reported)")
-                }
-                if let delta {
-                    row("Last turn", (delta >= 0 ? "+" : "") + delta.formatted())
-                }
-                if let history = model.history {
-                    row("Turns", history.points.count.formatted()
-                        + (history.compactionTurns.isEmpty ? "" : " · \(history.compactionTurns.count) compaction\(history.compactionTurns.count == 1 ? "" : "s")"))
-                    // Peak is a tick on the ring: same ratio, same window, and
-                    // on a growing session it is the current value anyway.
-                    if let resend = history.resend {
-                        row("Re-sent per turn", resend.lastTokens.formatted()
-                            + (resend.multiple.map { " · \(ContextHistory.multiple($0)) turn 1" } ?? "")
-                            + " · " + MenuBarFormatter.percentage(resend.cachedShare) + " cached")
-                    }
-                    if !history.rebuilds.isEmpty {
-                        row("Cache rebuilt", "\(history.rebuilds.count)× · " + CacheRebuilds.causeSummary(history.rebuilds))
-                    }
-                }
-                // Under an agent, the session id and the session's agent count
-                // describe something other than every number around them, which
-                // made both rows read as false.
-                if let agent {
-                    row("Agent", [agent.agentType, agent.statusLabel].compactMap { $0 }.joined(separator: " · "))
-                } else if let session = state.sessionId {
-                    row("Session", String(session.prefix(8)))
-                }
-                if let lastActivity {
-                    row(state.isIdle && agent == nil ? "Idle since" : "Last turn at",
-                        lastActivity.formatted(date: .omitted, time: .standard))
-                }
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+            ForEach(SessionInfo.rows(figures, history: model.history), id: \.label) { item in
+                row(item.label, item.value)
             }
-            .font(.callout)
         }
+        .font(.callout)
+    }
+
+    /// What the stream the popover is looking at says about itself: the
+    /// session's own figures, or a selected agent's. Every figure describes
+    /// that one stream, so an agent's turns are never shown next to the
+    /// session's tokens.
+    private var figures: StreamFigures {
+        let state = model.state
+        guard let agent = model.focusedAgent else { return StreamFigures(state: state) }
+        return StreamFigures(
+            status: state.status,
+            contextTokens: agent.lastContextTokens,
+            windowLimit: agent.windowLimit,
+            occupancy: agent.occupancy,
+            contextDelta: model.history?.points.last?.contextDelta,
+            lastActivity: agent.lastTs.flatMap(Timestamps.date(from:)) ?? state.lastActivity,
+            sessionId: nil,
+            agentLine: [agent.agentType, agent.statusLabel].compactMap { $0 }.joined(separator: " · "),
+            isIdle: false
+        )
     }
 
     /// The collapsed Details: the same figures as `stats`, on one line.
     private var statsSummary: some View { ReadoutLine(statsReadouts) }
 
-    private var statsReadouts: [Readout] {
-        let state = model.state
-        let agent = model.focusedAgent
-        let delta = agent == nil ? state.contextDelta : model.history?.points.last?.contextDelta
-        let lastActivity = agent.flatMap { $0.lastTs.flatMap(Timestamps.date(from:)) } ?? state.lastActivity
-        var parts: [Readout] = []
-        if let delta { parts.append(Readout("last turn", (delta >= 0 ? "+" : "") + delta.formatted())) }
-        if let history = model.history {
-            parts.append(Readout("turns", history.points.count.formatted()))
-            if !history.compactionTurns.isEmpty { parts.append(Readout("compacted", "\(history.compactionTurns.count)×")) }
-            // Only rebuilds the session caused earn a place on one line, and
-            // first, like every problem; an expired cache after a break is in
-            // the expanded table.
-            let avoidable = history.rebuilds.filter(\.cause.isAvoidable)
-            if !avoidable.isEmpty { parts.insert(Readout("re-cached", "\(avoidable.count)×", warning: true), at: 0) }
-        }
-        // The session id is in the expanded table; one line has no room for it.
-        if let status = agent?.statusLabel { parts.append(Readout(status)) }
-        // The time is the first thing to give way: it is in the expanded
-        // table, and the line has to fit (ReadoutWidthTests).
-        if let lastActivity, !parts.contains(where: \.isWarning) {
-            parts.append(Readout(state.isIdle && agent == nil ? "idle" : "at",
-                                 lastActivity.formatted(date: .omitted, time: .shortened)))
-        }
-        return parts
-    }
+    private var statsReadouts: [Readout] { SessionInfo.summary(figures, history: model.history) }
 
     private func row(_ name: String, _ value: String) -> some View {
         GridRow {

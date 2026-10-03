@@ -73,6 +73,9 @@ final class MenuBarModel: ObservableObject {
     @Published private(set) var focusedAgent: AgentSummary?
     @Published private(set) var history: ContextHistory?
     @Published private(set) var composition: ContextComposition?
+    /// Where Remote Control last attached the shown session on claude.ai:
+    /// the place to `/clear`, `/compact` or run a skill in it.
+    @Published private(set) var remoteURL: URL?
     /// True when a pinned session vanished and the display fell back.
     @Published private(set) var pinFellBack = false
 
@@ -391,6 +394,7 @@ final class MenuBarModel: ObservableObject {
 
             history = try shown.map { try readStore.contextHistory(sessionId: $0.sessionId, scope: focus) }
             composition = try shown.flatMap { try readStore.composition(sessionId: $0.sessionId, scope: focus) }
+            remoteURL = try shown.flatMap { try readStore.remoteURL(sessionId: $0.sessionId) }.flatMap(URL.init(string:))
             try refreshSavers(store: readStore, sessionId: shown?.sessionId)
 
             let limits = PlanLimitFormatter.displays(for: try readStore.planLimits())

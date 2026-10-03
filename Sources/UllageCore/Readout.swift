@@ -6,7 +6,7 @@ import Foundation
 /// Every collapsed row in the popover is a list of these, drawn the same way:
 /// the same separator, digits monospaced, and a warning colours the item that
 /// needs attention, never the whole line.
-public struct Readout: Equatable, Identifiable {
+public struct Readout: Equatable, Identifiable, Codable {
     public var label: String
     public var value: String?
     public var isWarning: Bool

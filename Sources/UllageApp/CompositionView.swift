@@ -47,18 +47,7 @@ struct CompositionView: View {
         ContextComposition.isEstimate(segment: segment)
     }
 
-    static func note(for segment: String) -> String {
-        switch segment {
-        case ContextComposition.baselineName:
-            return "Rides every turn: system prompt, tool schemas, skills, CLAUDE.md, and the opening prompt — or the summary, after a compaction."
-        case ContextComposition.toolResultsName:
-            return "Estimated from the length of what each tool returned (~4 bytes per token), never a counted figure."
-        case ContextComposition.assistantOutputName:
-            return "Output tokens as reported. They are a mid-stream snapshot and undercount."
-        default:
-            return "Prompts, thinking, tool inputs, and the error in the two estimates above."
-        }
-    }
+    static func note(for segment: String) -> String { ContextComposition.note(for: segment) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -94,12 +83,8 @@ struct CompositionView: View {
     // MARK: - Collapsed row
 
     private var summaryRow: some View {
-        ReadoutLine(items: composition.segments.map { segment in
-            ReadoutLine.Item(
-                readout: Readout(segment.name == ContextComposition.toolResultsName ? "Tools" : segment.name,
-                                 (Self.isEstimated(segment.name) ? "≈" : "") + Self.compact(segment.tokens)),
-                dot: Self.color(for: segment.name)
-            )
+        ReadoutLine(items: zip(composition.summary, composition.segments).map { readout, segment in
+            ReadoutLine.Item(readout: readout, dot: Self.color(for: segment.name))
         })
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())

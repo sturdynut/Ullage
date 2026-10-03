@@ -742,9 +742,9 @@ do {
             }
         }
         pushTimer.resume()
-        let router = ServeRouter(store: readStore, push: pushService)
+        let router = ServeRouter(store: readStore, push: pushService, savers: SaverControl())
         #else
-        let router = ServeRouter(store: readStore)
+        let router = ServeRouter(store: readStore, savers: SaverControl())
         #endif
         let server = HTTPServer(port: options.port) { router.respond(to: $0) }
 

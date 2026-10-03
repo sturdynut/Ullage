@@ -51,11 +51,16 @@ public struct ServeSnapshot: Codable, Equatable {
     public var idleThresholdSeconds: Double
     public var live: Live
     public var sessions: [Session]
+    /// The popover's view of one session: the requested one, else the one the
+    /// menu bar follows. Nil before anything is ingested.
+    public var detail: ServeDetail?
 }
 
 extension ServeSnapshot {
     public static func build(
         store: Store,
+        sessionId requested: String? = nil,
+        savers: SaverControl? = nil,
         sessionLimit: Int = 20,
         now: Date = Date()
     ) throws -> ServeSnapshot {
@@ -77,12 +82,19 @@ extension ServeSnapshot {
                 ageSeconds: age(of: summary.lastTs, now: now)
             )
         }
+        // A requested session that has no turns falls back to the followed
+        // one, as a pinned session does in the menu bar.
+        let shown = try requested.flatMap { try store.latestCall(sessionId: $0) != nil ? $0 : nil } ?? state.sessionId
+        let detail = try shown.flatMap {
+            try ServeDetail.build(store: store, sessionId: $0, isLatest: $0 == state.sessionId, savers: savers, now: now)
+        }
         return ServeSnapshot(
             generatedAt: Timestamps.string(from: now),
             warningThreshold: MenuBarFormatter.warningThreshold,
             idleThresholdSeconds: MenuBarFormatter.idleThreshold,
             live: Live(state: state, now: now),
-            sessions: sessions
+            sessions: sessions,
+            detail: detail
         )
     }
 

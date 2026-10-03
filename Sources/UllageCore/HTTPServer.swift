@@ -52,6 +52,10 @@ public final class HTTPServer: @unchecked Sendable {
         public var path: String
         public var host: String?
         public var body: Data = Data()
+        /// Decoded `?a=b&c=d`.
+        public var query: [String: String] = [:]
+        /// Header names lowercased.
+        public var headers: [String: String] = [:]
     }
 
     public typealias Handler = (Request) -> Response
@@ -274,11 +278,24 @@ public final class HTTPServer: @unchecked Sendable {
         let parts = requestLine.split(separator: " ")
         guard parts.count >= 2 else { return nil }
         let target = String(parts[1])
-        let path = target.split(separator: "?", maxSplits: 1).first.map(String.init) ?? "/"
-        let host = lines.dropFirst()
-            .first { $0.lowercased().hasPrefix("host:") }
-            .map { String($0.dropFirst("host:".count)).trimmingCharacters(in: .whitespaces) }
-        return Request(method: String(parts[0]).uppercased(), path: path, host: host)
+        let pieces = target.split(separator: "?", maxSplits: 1)
+        let path = pieces.first.map(String.init) ?? "/"
+        var query: [String: String] = [:]
+        if pieces.count > 1 {
+            for pair in pieces[1].split(separator: "&") {
+                let kv = pair.split(separator: "=", maxSplits: 1).map {
+                    String($0).replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? String($0)
+                }
+                if let key = kv.first, !key.isEmpty { query[key] = kv.count > 1 ? kv[1] : "" }
+            }
+        }
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            headers[line[..<colon].lowercased()] = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+        }
+        return Request(method: String(parts[0]).uppercased(), path: path, host: headers["host"],
+                       query: query, headers: headers)
     }
 
     /// A loopback HTTP server with no host check is readable by any web page
@@ -306,6 +323,7 @@ public final class HTTPServer: @unchecked Sendable {
         case 200: return "OK"
         case 400: return "Bad Request"
         case 403: return "Forbidden"
+        case 409: return "Conflict"
         case 404: return "Not Found"
         case 405: return "Method Not Allowed"
         case 500: return "Internal Server Error"
