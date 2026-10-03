@@ -10,6 +10,11 @@ import Foundation
 /// render on a phone over a tailnet with the Mac asleep behind it, and partly
 /// because a page that loads nothing is a page that can leak nothing.
 public enum WebPage {
+    /// The page as served: `html` with the help text written in.
+    public static var page: String {
+        html.replacingOccurrences(of: "/*HELP_JSON*/{}", with: HelpText.json)
+    }
+
     public static let html = #"""
 <!doctype html>
 <html lang="en">
@@ -177,6 +182,17 @@ public enum WebPage {
   dialog .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
   dialog .cancel { font: inherit; background: none; border: 1px solid var(--rule); color: var(--ink); border-radius: 8px; padding: 9px 14px; }
   dialog .go.danger { background: var(--warn); }
+  .info {
+    font: inherit; font-size: 14px; line-height: 1; color: var(--faint); background: none; border: 0;
+    padding: 6px; margin: -6px 0; cursor: pointer;
+  }
+  .caprow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .caprow .caption { flex: 1; margin-top: 0; }
+  #help h4 { margin: 14px 0 6px; font-size: 16px; }
+  #help h4:first-child { margin-top: 0; }
+  #help p { font-size: 14px; color: var(--dim); margin: 6px 0; line-height: 1.45; }
+  #help ul { margin: 6px 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
+  #help li { display: list-item; padding: 3px 0; border: 0; cursor: default; }
   footer { margin-top: 26px; color: var(--quiet); font-size: 12px; }
   [hidden] { display: none !important; }
 </style>
@@ -201,7 +217,8 @@ public enum WebPage {
     <div class="exact num"><span id="exact"></span><span id="used"></span></div>
     <div class="chart" id="chartbox" hidden>
       <svg id="chart" viewBox="0 0 320 96" preserveAspectRatio="none" aria-label="Context per turn"></svg>
-      <div class="caption num" id="caption"></div>
+      <div class="caprow"><div class="caption num" id="caption"></div>
+        <button class="info" data-help="chart,cache" aria-label="What does the chart show?">ⓘ</button></div>
     </div>
     <div id="sections"></div>
     <a class="remote" id="remote" hidden target="_blank" rel="noopener"></a>
@@ -220,6 +237,11 @@ public enum WebPage {
   <footer id="foot"></footer>
 </main>
 
+<dialog id="help">
+  <div id="help-body"></div>
+  <div class="acts"><button class="cancel" id="help-close">Done</button></div>
+</dialog>
+
 <dialog id="confirm">
   <h4 id="cf-title"></h4>
   <div id="cf-body"></div>
@@ -233,6 +255,10 @@ public enum WebPage {
 (function () {
   var el = function (id) { return document.getElementById(id); };
   var timer = null, lastGood = null, lastJSON = '', snapshot = null;
+  // HelpText from Core, written in when the page is served: the same words
+  // the popover's ⓘ shows.
+  var HELP = /*HELP_JSON*/{};
+  var HELP_FOR = { composition: 'composition', session: 'session,cache', agents: 'agents', savers: 'savers', limits: 'limits' };
   var chosen = null;
   try { chosen = localStorage.getItem('ullage.session'); } catch (e) {}
 
@@ -370,7 +396,9 @@ public enum WebPage {
     }
     (sec.legend || []).forEach(function (line) { body += '<p class="legend">' + esc(line) + '</p>'; });
     return '<details data-id="' + sec.id + '"' + (isOpen(sec.id) ? ' open' : '') + '>' +
-      '<summary><div class="rule"><span class="t">' + esc(sec.title) + '</span>' + collapsedRule + '<span class="chev">›</span></div>' +
+      '<summary><div class="rule"><span class="t">' + esc(sec.title) + '</span>' + collapsedRule +
+      (HELP_FOR[sec.id] ? '<button class="info" data-help="' + HELP_FOR[sec.id] + '" aria-label="What is ' + esc(sec.title) + '?">ⓘ</button>' : '') +
+      '<span class="chev">›</span></div>' +
       '<div class="readout num">' + readoutLine(sec.summary, sec.dots) + '</div></summary>' +
       '<div class="body">' + body + '</div></details>';
   }
@@ -502,6 +530,32 @@ public enum WebPage {
       })
       .catch(function (e) { alert(e.message || 'Could not load the plan.'); });
   }
+
+  function showHelp(keys) {
+    var html = keys.split(',').map(function (k) {
+      var t = HELP[k];
+      if (!t) return '';
+      var out = '<h4>' + esc(t.title) + '</h4>', list = [];
+      function flush() { if (list.length) { out += '<ul>' + list.join('') + '</ul>'; list = []; } }
+      t.lines.forEach(function (line) {
+        if (line.indexOf('• ') === 0) { list.push('<li>' + esc(line.slice(2)) + '</li>'); }
+        else { flush(); out += '<p>' + esc(line) + '</p>'; }
+      });
+      flush();
+      return out;
+    }).join('');
+    el('help-body').innerHTML = html;
+    el('help-close').onclick = function () { el('help').close(); };
+    el('help').showModal();
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('button.info');
+    if (!b) return;
+    // Inside a section's title: explain it, don't open or close the section.
+    e.preventDefault(); e.stopPropagation();
+    showHelp(b.dataset.help);
+  }, true);
 
   el('sections').addEventListener('click', function (e) {
     var b = e.target.closest('button');

@@ -154,4 +154,14 @@ final class MobileParityTests: XCTestCase {
                        SessionLink(label: "Open in Codex", url: "codex://threads/01a0511c-c924-79e2-972b-d4011e4de7ac"))
         XCTAssertNil(try store.sessionLink(sessionId: "claude-no-remote"), "no Remote Control, no link")
     }
+
+    func testPageCarriesTheSameHelpAsThePopover() throws {
+        let router = ServeRouter(store: try Store.inMemory())
+        let page = String(decoding: router.respond(to: HTTPServer.Request(method: "GET", path: "/", host: "localhost")).body, as: UTF8.self)
+        XCTAssertFalse(page.contains("/*HELP_JSON*/"), "the placeholder is filled")
+        XCTAssertTrue(page.contains("Cache rebuilds"))
+        XCTAssertTrue(page.contains("Orange triangle"))
+        XCTAssertEqual(Set(HelpText.all.keys), ["chart", "cache", "composition", "session", "agents", "savers", "limits"])
+        XCTAssertFalse(HelpText.json.contains("</"), "cannot close the script tag it sits in")
+    }
 }

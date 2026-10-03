@@ -31,7 +31,7 @@ public struct ServeRouter {
     public func respond(to request: HTTPServer.Request) -> HTTPServer.Response {
         switch (request.method, request.path) {
         case ("GET", "/"), ("GET", "/index.html"):
-            return .html(WebPage.html)
+            return .html(WebPage.page)
 
         case ("GET", "/state.json"):
             // A read that throws is a database problem, not a reason to drop

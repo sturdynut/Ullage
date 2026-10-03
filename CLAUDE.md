@@ -52,7 +52,7 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 249 tests on macOS; 238 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 251 tests on macOS; 240 on Linux (six need CryptoKit, five AppKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -177,6 +177,9 @@ plausible and are wrong.
   message shared by the popover. A Terminal install reports back through a
   marker file its script writes its exit status to (`SaverInstaller.script`);
   the result stays on the row until it has been seen once.
+- **Help is one text, in Core.** `HelpText` holds what every ⓘ says, for the
+  popover's `HelpButton` and the phone page (written into the page when it is
+  served). A new section or chart mark gets its line there, in plain words.
 - **Fixed order for anything colour-coded.** Composition segments and history
   projects keep a stable order so a colour follows an entity, never its rank.
   The composition treemap is *ordered*, not squarified, for the same reason —
