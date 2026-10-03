@@ -565,7 +565,8 @@ public enum WebPage {
         t.entries.map(function (q) {
           return '<details><summary>' + (q.glyph ? GLYPH[q.glyph] : '') + '<span>' + esc(q.question) + '</span></summary>' +
             '<div class="ans' + (q.glyph ? ' indent' : '') + '"><p>' + esc(q.answer) + '</p>' +
-            (q.why ? '<p class="why"><b>Why it matters:</b> ' + esc(q.why) + '</p>' : '') + '</div></details>';
+            (q.why ? '<p class="why"><b>Why it matters:</b> ' + esc(q.why) + '</p>' : '') +
+            (q.tip ? '<p class="why"><b>What you can do:</b> ' + esc(q.tip) + '</p>' : '') + '</div></details>';
         }).join('');
     }).join('');
     el('help-body').innerHTML = html;

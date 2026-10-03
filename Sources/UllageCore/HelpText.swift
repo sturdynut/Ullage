@@ -31,12 +31,15 @@ public struct HelpEntry: Codable, Equatable {
     public var answer: String
     /// Why it matters, when there is a consequence worth saying.
     public var why: String?
+    /// What you can do about it, when there is something.
+    public var tip: String?
 
-    public init(_ question: String, glyph: Glyph? = nil, answer: String, why: String? = nil) {
+    public init(_ question: String, glyph: Glyph? = nil, answer: String, why: String? = nil, tip: String? = nil) {
         self.question = question
         self.glyph = glyph
         self.answer = answer
         self.why = why
+        self.tip = tip
     }
 }
 
@@ -47,12 +50,17 @@ public enum HelpText {
         entries: [
             HelpEntry("What's the blue line?", glyph: .line,
                       answer: "How much of the window each turn used. The space above it is what's left.",
-                      why: "Everything under the line is sent again on every turn, so the higher it gets, the more each turn costs and the sooner the conversation is compacted."),
+                      why: "Everything under the line is sent again on every turn, so the higher it gets, the more each turn costs and the sooner the conversation is compacted (see the next question)."),
+            HelpEntry("What's compaction?",
+                      answer: "The context window has a fixed size. When it's nearly full, Claude Code or Codex replaces the conversation so far with a short summary and carries on from that. You can also ask for it yourself with /compact.",
+                      why: "It's good because it frees room, so a long task can keep going, and every turn after it is smaller and cheaper. It's bad because the summary keeps the gist, not the details: exact code, error messages, file contents and instructions you gave early on can be lost, so the model may repeat work or need reminding.",
+                      tip: "Compact at a natural break, like after finishing a step, rather than letting it happen mid-task. In Claude Code, /compact accepts a note on what to keep, e.g. /compact keep the API design decisions. For a new task, a fresh session is cleaner than a compacted one."),
             HelpEntry("What's the dashed orange line?", glyph: .warningRule,
                       answer: "Ullage's early warning at 85% of the window. It isn't the compaction point itself.",
-                      why: "Claude Code and Codex both compact on their own when the window is nearly full, usually somewhere between 80% and 95%. Past this line, one is likely soon."),
+                      why: "Claude Code and Codex both compact on their own when the window is nearly full, usually somewhere between 80% and 95%. Past this line, one is likely soon.",
+                      tip: "If you're mid-task, it's a good moment to finish the current step and /compact yourself, so you choose what the summary keeps."),
             HelpEntry("Why does the line suddenly drop?", glyph: .compaction,
-                      answer: "A compaction: the conversation was summarised to make room. The dotted line marks where.",
+                      answer: "A compaction happened there: the conversation was summarised to make room. The dotted line marks where.",
                       why: "Turns after it are smaller and cheaper, but the model only has the summary of what came before."),
             HelpEntry("What's an orange triangle?", glyph: .rebuildCaused,
                       answer: "A cache rebuild you caused. The model or effort changed, or a command like /model ran, so that turn couldn't reuse the cached conversation and stored it all again.",
@@ -89,7 +97,7 @@ public enum HelpText {
                       why: "It's re-sent on every turn, so trimming CLAUDE.md or unused MCP servers saves on every turn of every session."),
             HelpEntry("What are tool results?",
                       answer: "What tools returned: files read, command output, search results.",
-                      why: "Everything read stays in the window until it's compacted, so large outputs keep costing on every later turn."),
+                      why: "Everything read stays in the window until it's compacted (the chart's help explains compaction), so large outputs keep costing on every later turn."),
             HelpEntry("What are output and other?",
                       answer: "Output is what the model wrote. Other is your messages, the model's thinking, and the margin of the estimates."),
             HelpEntry("What does ≈ mean?",

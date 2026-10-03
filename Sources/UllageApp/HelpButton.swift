@@ -58,6 +58,10 @@ private struct HelpQuestion: View {
                     (Text("Why it matters: ").fontWeight(.medium) + Text(why))
                         .foregroundStyle(.secondary)
                 }
+                if let tip = entry.tip {
+                    (Text("What you can do: ").fontWeight(.medium) + Text(tip))
+                        .foregroundStyle(.secondary)
+                }
             }
             .fixedSize(horizontal: false, vertical: true)
             .padding(.top, 4)
