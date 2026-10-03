@@ -38,7 +38,7 @@ commands, in Terminal, after showing them to you.
 
 <div align="center">
 
-<img src="docs/screenshots/popover.png" alt="The Ullage popover: the session's project, path and model; 781k left in a 1M window over a marked occupancy bar with the context-per-turn chart directly beneath it; a context-composition bar of baseline, tool results, output and other with its legend; a one-line session summary; and plan limits as one row per harness showing what is left in each limit" width="380">
+<img src="docs/screenshots/popover.png" alt="The Ullage popover: the Ullage session with its path and claude-opus-5-5 · medium, 227k left in a 1M window over a bar at 77% used with Open in Claude beside it; the context-per-turn chart with grey and orange cache-rebuild triangles; then Context composition (Baseline 52k, Tools ≈122k, Output 467k, Other ≈129k), Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits, each collapsed to one line; History and Explain at the bottom" width="360">
 
 </div>
 
