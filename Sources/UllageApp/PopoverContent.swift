@@ -318,9 +318,9 @@ struct PopoverContent: View {
                     Text(MenuBarFormatter.percentage(occupancy) + " used")
                         .foregroundStyle(.tertiary)
                 }
-                if let remote = model.remoteURL, agent == nil {
-                    Link("Open in Claude ↗", destination: remote)
-                        .help("This session is on Remote Control: continue it on claude.ai or the Claude app, where /clear, /compact and skills work")
+                if let link = model.sessionLink, agent == nil, let url = URL(string: link.url) {
+                    Link(link.label + " ↗", destination: url)
+                        .help("Continue this session where you can type into it: /clear, /compact and skills work there")
                 }
             }
             .font(.caption)

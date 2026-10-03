@@ -354,9 +354,11 @@ popover on a web page: the room left, the context chart with its compaction and
 cache-rebuild markers, every section (composition, session information, agents,
 token savers, plan limits) collapsed to one row and expanding to the full view,
 and every recent session with its path, any of which you can pick to look at instead of the
-latest. When a session is on Remote Control, **Open in Claude** takes you to it
-on claude.ai or the Claude app — the place to `/clear`, `/compact` or run a
-skill in it.
+latest. Below Plan limits, **Open in Claude** (for a session on Remote
+Control) takes you to it on claude.ai or the Claude app, and **Open in Codex**
+opens a Codex session's thread in the Codex app — the places to `/clear`,
+`/compact` or run a skill in it. The Codex link is the app's own
+`codex://threads/<id>`, so it works wherever the Codex app is installed.
 
 The token savers section works here too: switches with Undo, and install or
 uninstall, after the page shows the tool's exact commands. Installs run in a

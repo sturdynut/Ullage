@@ -1416,3 +1416,29 @@ extension Store {
         ) { $0.optionalText(0) }.first ?? nil
     }
 }
+
+/// Where to go to type into a session: Claude Code's Remote Control page, or
+/// the Codex app's thread. That is where `/clear`, `/compact` and skills run;
+/// Ullage only links there.
+public struct SessionLink: Codable, Equatable {
+    public var label: String
+    public var url: String
+}
+
+extension Store {
+    public func sessionLink(sessionId: String) throws -> SessionLink? {
+        guard let vendor = try latestCall(sessionId: sessionId, scope: .all)?.vendor else { return nil }
+        switch vendor {
+        case Vendor.claudeCode:
+            // Only once Remote Control has attached it: there is no URL before.
+            return try remoteURL(sessionId: sessionId).map { SessionLink(label: "Open in Claude", url: $0) }
+        case Vendor.codex:
+            // The Codex app opens a thread by its id, which is the session id
+            // (`codex://threads/<id>`, as the app writes its own links).
+            guard let id = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+            return SessionLink(label: "Open in Codex", url: "codex://threads/" + id)
+        default:
+            return nil
+        }
+    }
+}

@@ -114,7 +114,7 @@ final class MobileParityTests: XCTestCase {
         let detail = try XCTUnwrap(picked.detail)
         XCTAssertEqual(detail.sessionId, "a")
         XCTAssertFalse(detail.isLatest)
-        XCTAssertEqual(detail.remoteURL, "https://claude.ai/code/session_01abc")
+        XCTAssertEqual(detail.link, SessionLink(label: "Open in Claude", url: "https://claude.ai/code/session_01abc"))
         XCTAssertEqual(detail.headroom, "988k")
         XCTAssertEqual(detail.chart?.points, [[0, 10_000], [1, 12_000]])
         XCTAssertEqual(detail.sections.map(\.id), ["composition", "session"])
@@ -143,5 +143,15 @@ final class MobileParityTests: XCTestCase {
         let report = SaverSessionReport(sessionId: "s", cwd: nil, bashCalls: 0, usages: [idle], doubleHookedCalls: 0)
         let panel = SaverPanel.build(report: report, states: [.headroom: .off], comparison: nil, installed: [.headroom])
         XCTAssertEqual(panel.rows.first?.pending, SaverPanel.offNextSession)
+    }
+
+    func testCodexSessionsOpenInTheCodexApp() throws {
+        let store = try Store.inMemory()
+        try store.upsert(call: CallRow(dedupeKey: "c", ts: Timestamps.now(), vendor: Vendor.codex,
+                                       sessionId: "01a0511c-c924-79e2-972b-d4011e4de7ac", contextTokens: 1, sourceFile: "t"))
+        try store.upsert(call: CallRow(dedupeKey: "k", ts: Timestamps.now(), sessionId: "claude-no-remote", contextTokens: 1, sourceFile: "t"))
+        XCTAssertEqual(try store.sessionLink(sessionId: "01a0511c-c924-79e2-972b-d4011e4de7ac"),
+                       SessionLink(label: "Open in Codex", url: "codex://threads/01a0511c-c924-79e2-972b-d4011e4de7ac"))
+        XCTAssertNil(try store.sessionLink(sessionId: "claude-no-remote"), "no Remote Control, no link")
     }
 }

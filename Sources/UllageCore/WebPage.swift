@@ -71,7 +71,7 @@ public enum WebPage {
   .exact { display: flex; justify-content: space-between; color: var(--dim); font-size: 13px; }
   .exact span:last-child { color: var(--faint); }
   .remote {
-    display: inline-block; margin-bottom: 12px; font-size: 14px; font-weight: 600; color: var(--accent);
+    display: inline-block; margin-top: 14px; font-size: 14px; font-weight: 600; color: var(--accent);
     text-decoration: none; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 9px;
   }
   .chart { margin-top: 12px; }
@@ -204,6 +204,7 @@ public enum WebPage {
       <div class="caption num" id="caption"></div>
     </div>
     <div id="sections"></div>
+    <a class="remote" id="remote" hidden target="_blank" rel="noopener"></a>
   </section>
 
   <p id="stale" hidden></p>
@@ -216,10 +217,7 @@ public enum WebPage {
   <h2>Sessions</h2>
   <ol id="sessions"></ol>
 
-  <footer>
-    <a class="remote" id="remote" hidden target="_blank" rel="noopener">Open in Claude ↗</a>
-    <div id="foot"></div>
-  </footer>
+  <footer id="foot"></footer>
 </main>
 
 <dialog id="confirm">
@@ -418,8 +416,13 @@ public enum WebPage {
       el('exact').textContent = d.exactLine;
       el('used').textContent = d.usedLine || '';
       var remote = el('remote');
-      remote.hidden = !d.remoteURL;
-      if (d.remoteURL) remote.href = d.remoteURL;
+      remote.hidden = !d.link;
+      if (d.link) {
+        remote.href = d.link.url;
+        remote.textContent = d.link.label + ' ↗';
+        // A web page opens in a tab; an app link (codex://) is handed to the app.
+        if (/^https?:/.test(d.link.url)) remote.target = '_blank'; else remote.removeAttribute('target');
+      }
       drawChart(d.chart, warn);
       el('sections').innerHTML = d.sections.map(sectionHTML).join('');
       el('sections').querySelectorAll('details').forEach(function (det) {

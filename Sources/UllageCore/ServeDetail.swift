@@ -92,7 +92,8 @@ public struct ServeDetail: Codable, Equatable {
     public var path: String?
     public var modelLine: String?
     public var modelWindowIsAssumed: Bool
-    public var remoteURL: String?
+    /// Open in Claude (Remote Control) or Open in Codex (the app's thread).
+    public var link: SessionLink?
     public var headroom: String
     public var exactLine: String
     public var usedLine: String?
@@ -133,7 +134,7 @@ extension ServeDetail {
             path: MenuBarFormatter.displayPath(state.cwd),
             modelLine: state.modelLine,
             modelWindowIsAssumed: state.modelWindowIsAssumed,
-            remoteURL: try store.remoteURL(sessionId: sessionId),
+            link: try store.sessionLink(sessionId: sessionId),
             headroom: figures.headroom,
             exactLine: figures.exactLine,
             usedLine: figures.usedLine,
