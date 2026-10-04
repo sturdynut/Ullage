@@ -9,9 +9,7 @@ import UllageCore
 /// saving comes second, marked `≈` and named as its own. caveman's
 /// comparison is shown as two measured medians, never as a difference
 /// labelled "saved". Every figure is decided in `SaverDetail`.
-struct SaversWindow: View {
-    static let id = "token-savers"
-
+struct SaversPage: View {
     @ObservedObject var model: MenuBarModel
     @State private var selection: TokenSaver? = .rtk
     @State private var detail: SaverDetail?
@@ -20,44 +18,54 @@ struct SaversWindow: View {
     private var range: SaverRange { SaverRange(rawValue: rangeName) ?? .session }
 
     var body: some View {
-        NavigationSplitView {
-            List(TokenSaver.allCases, id: \.self, selection: $selection) { saver in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(saver.displayName).font(.body.weight(.semibold))
-                    Text(sidebarStatus(saver))
-                        .font(.caption)
-                        .foregroundStyle(sidebarWarning(saver) ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Token savers").font(.title2.weight(.bold))
+                    Text("Switches change Claude Code's settings for new sessions").foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 2)
+                Spacer()
+                Picker("Range", selection: $rangeName) {
+                    ForEach(SaverRange.allCases) { Text($0.rawValue).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("This session is the one shown; 7 and 30 days add up every session with a turn in them")
             }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190)
-        } detail: {
-            ScrollView {
-                if let detail {
-                    DetailPage(detail: detail, row: model.savers.rows.first { $0.saver == detail.saver },
-                               switchState: model.saverSwitchState(detail.saver),
-                               installed: model.saverIsInstalled(detail.saver),
-                               onSwitch: { model.setSaver(detail.saver, on: $0) },
-                               onUndo: { model.undoSaver(detail.saver) },
-                               onPlan: { action in
-                                   let plan = model.installPlan(detail.saver, action)
-                                   if InstallConfirmation.confirm(plan) { model.run(plan) }
-                               })
-                        .padding(20)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Text("Pick a token saver.").foregroundStyle(.secondary).padding(40)
+            .padding(24)
+            Divider()
+            HStack(spacing: 0) {
+                List(TokenSaver.allCases, id: \.self, selection: $selection) { saver in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(saver.displayName).font(.body.weight(.semibold))
+                        Text(sidebarStatus(saver))
+                            .font(.caption)
+                            .foregroundStyle(sidebarWarning(saver) ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
+                    }
+                    .padding(.vertical, 2)
+                }
+                .frame(width: 190)
+                Divider()
+                ScrollView {
+                    if let detail {
+                        DetailPage(detail: detail, row: model.savers.rows.first { $0.saver == detail.saver },
+                                   switchState: model.saverSwitchState(detail.saver),
+                                   installed: model.saverIsInstalled(detail.saver),
+                                   onSwitch: { model.setSaver(detail.saver, on: $0) },
+                                   onUndo: { model.undoSaver(detail.saver) },
+                                   onPlan: { action in
+                                       let plan = model.installPlan(detail.saver, action)
+                                       if InstallConfirmation.confirm(plan) { model.run(plan) }
+                                   })
+                            .padding(20)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Text("Pick a token saver.").foregroundStyle(.secondary).padding(40)
+                    }
                 }
             }
         }
-        .toolbar {
-            Picker("Range", selection: $rangeName) {
-                ForEach(SaverRange.allCases) { Text($0.rawValue).tag($0.rawValue) }
-            }
-            .pickerStyle(.segmented)
-            .help("This session is the one the popover shows; 7 and 30 days add up every session with a turn in them")
-        }
-        .frame(minWidth: 760, minHeight: 480)
         .task(id: "\(selection?.rawValue ?? "")|\(rangeName)|\(model.state.sessionId ?? "")|\(model.savers.rows.map(\.switchState.rawValue))") {
             guard let selection else { detail = nil; return }
             detail = model.saverDetail(selection, range: range)

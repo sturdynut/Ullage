@@ -145,7 +145,9 @@ public enum WebPage {
   .switch[aria-checked="true"] { background: #34c759; }
   .switch[aria-checked="true"]::after { transform: translateX(18px); }
   .linkbtn { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; padding: 6px 4px; cursor: pointer; }
-  .more { width: 44px; flex: none; }
+  /* "Set up" / "Install" where a switch would be: one line, at least a
+     switch's width so the names below still line up. */
+  .more { min-width: 44px; flex: none; white-space: nowrap; padding-left: 0; text-align: left; }
   .legend { font-size: 12px; color: var(--dim); margin-top: 8px; }
   h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); font-weight: 600; margin: 24px 0 8px; }
   ol { list-style: none; margin: 0; padding: 0; }
@@ -204,6 +206,21 @@ public enum WebPage {
     padding: max(10px, env(safe-area-inset-top)) 16px 6px; background: var(--bg);
   }
   .sheethead h3 { flex: 1; margin: 0; font-size: 17px; }
+  .sheethead .back {
+    font: inherit; font-size: 16px; color: var(--accent); background: none; border: 0;
+    min-height: 44px; padding: 0 8px 0 0; cursor: pointer; flex: none;
+  }
+  #page-body > div { padding-top: 12px; }
+  /* Overview: one row per section, opening its page. */
+  .navrow {
+    display: block; width: 100%; text-align: left; font: inherit; color: var(--ink);
+    background: none; border: 0; border-top: 1px solid var(--rule); padding: 11px 0; cursor: pointer;
+  }
+  .navrow:first-child { border-top: 0; }
+  .navrow .nt { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .navrow .nt .ln { flex: 1; }
+  .navrow .chev { color: var(--faint); font-size: 18px; line-height: 1; }
+  .navrow .readout { margin-top: 4px; }
   .sheethead .done {
     font: inherit; font-size: 16px; font-weight: 600; color: var(--accent); background: none; border: 0;
     min-height: 44px; padding: 0 0 0 12px; cursor: pointer;
@@ -236,7 +253,7 @@ public enum WebPage {
   #help .ans.indent { padding-left: 44px; }
   #help .ans p { margin: 0 0 6px; color: var(--ink); }
   #help .ans .why { color: var(--dim); }
-  footer { margin-top: 26px; color: var(--quiet); font-size: 12px; }
+  footer { margin-top: 26px; color: var(--quiet); font-size: 12px; text-align: center; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -276,11 +293,17 @@ public enum WebPage {
     <button id="alerts-button" hidden></button>
   </div>
 
-  <h2>Sessions</h2>
-  <ol id="sessions"></ol>
 
   <footer id="foot"></footer>
 </main>
+
+<section id="page" class="sheet" role="dialog" aria-modal="true" aria-labelledby="page-title" aria-hidden="true">
+  <header class="sheethead">
+    <button class="back" id="page-back" aria-label="Back to Overview">‹ Overview</button>
+    <h3 id="page-title"></h3>
+  </header>
+  <div class="sheetbody" id="page-body"></div>
+</section>
 
 <section id="help" class="sheet" role="dialog" aria-modal="true" aria-labelledby="help-title" aria-hidden="true">
   <header class="sheethead">
@@ -387,8 +410,6 @@ public enum WebPage {
   }
 
   // ---- Sections ----------------------------------------------------------
-  function isOpen(id) { try { return localStorage.getItem('ullage.open.' + id) === '1'; } catch (e) { return false; } }
-  function remember(id, open) { try { localStorage.setItem('ullage.open.' + id, open ? '1' : '0'); } catch (e) {} }
 
   function rows(list) {
     return list.map(function (r) {
@@ -426,9 +447,16 @@ public enum WebPage {
       '</div>';
   }
 
-  function sectionHTML(sec) {
-    var collapsedRule = sec.shares ? sharesBar(sec.shares, 'ln shares') : '<span class="ln"></span>';
-    var body = '';
+  // A section on the Overview: its name, its one line, a chevron. Tapping
+  // it slides that section's page in, as the window's sidebar opens a page.
+  function navRow(id, title, readout, shares) {
+    return '<button class="navrow" data-page="' + id + '"><span class="nt"><span>' + esc(title) + '</span>' +
+      (shares ? sharesBar(shares, 'ln shares') : '<span class="ln"></span>') + '<span class="chev">›</span></span>' +
+      '<div class="readout num">' + readout + '</div></button>';
+  }
+
+  function pageHTML(sec) {
+    var body = '<div>';
     if (sec.warning) body += '<p class="warning">' + esc(sec.warning) + '</p>';
     if (sec.shares) body += sharesBar(sec.shares, 'bigbar');
     if (sec.savers) body += sec.savers.map(saverBlock).join('');
@@ -442,11 +470,65 @@ public enum WebPage {
       }).join('') + '</div>';
     }
     (sec.legend || []).forEach(function (line) { body += '<p class="legend">' + esc(line) + '</p>'; });
-    return '<details data-id="' + sec.id + '"' + (isOpen(sec.id) ? ' open' : '') + '>' +
-      '<summary><div class="rule"><span class="t">' + esc(sec.title) + '</span>' + collapsedRule +
-      '<span class="chev">›</span></div>' +
-      '<div class="readout num">' + readoutLine(sec.summary, sec.dots) + '</div></summary>' +
-      '<div class="body">' + body + '</div></details>';
+    return body + '</div>';
+  }
+
+  function sessionsHTML(snap) {
+    var warn = snap.warningThreshold || 0.85, current = snap.detail && snap.detail.sessionId;
+    return '<div><ol>' + snap.sessions.map(function (s) {
+      var p2 = share(s.occupancy);
+      return '<li data-session="' + esc(s.sessionId) + '"' + (s.sessionId === current ? ' class="on"' : '') + '>' +
+        '<span class="name">' + esc(s.project || '—') + '</span>' +
+        '<span class="share' + (p2 == null ? ' none' : (s.occupancy >= warn ? ' warn' : '')) + '">' + (p2 == null ? '—' : p2 + '%') + '</span>' +
+        (s.path ? '<span class="path">\u200E' + esc(s.path) + '\u200E</span>' : '') +
+        '<span class="sub2">' + esc(s.sessionId.slice(0, 8)) + ' · ' + s.calls + ' turns' +
+          (s.agents ? ' · ' + s.agents + ' agents' : '') + ' · ' + ago(s.ageSeconds) + '</span></li>';
+    }).join('') + '</ol></div>';
+  }
+
+  // The open page, if any: redrawn on every update so it stays live.
+  var openPageId = null;
+  function fillPage() {
+    if (!openPageId || !snapshot) return;
+    if (openPageId === 'sessions') {
+      el('page-title').textContent = 'Sessions';
+      el('page-body').innerHTML = sessionsHTML(snapshot);
+      return;
+    }
+    var sec = snapshot.detail && snapshot.detail.sections.filter(function (x) { return x.id === openPageId; })[0];
+    if (!sec) { hidePage(); return; }
+    el('page-title').textContent = sec.title;
+    el('page-body').innerHTML = pageHTML(sec);
+  }
+  // Each page has its own address (#page=savers) pushed onto the history,
+  // so the phone's back gesture and the browser's Back close it, and a page
+  // can be opened or bookmarked by link.
+  function showPage(id, fromHistory) {
+    if (!fromHistory && openPageId !== id) {
+      try { history.pushState({ page: id }, '', '#page=' + id); } catch (e) {}
+    }
+    openPageId = id;
+    fillPage();
+    el('page-body').scrollTop = 0;
+    var sheet = el('page');
+    sheet.classList.add('open');
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('sheet-open');
+    el('page-back').focus();
+  }
+  function hidePage(fromHistory) {
+    if (!fromHistory && openPageId && history.state && history.state.page) {
+      history.back();   // popstate below finishes the close
+      return;
+    }
+    if (!fromHistory && openPageId) {
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    }
+    openPageId = null;
+    var sheet = el('page');
+    sheet.classList.remove('open');
+    sheet.setAttribute('aria-hidden', 'true');
+    if (!el('help').classList.contains('open')) document.body.classList.remove('sheet-open');
   }
 
   function render(snap) {
@@ -498,27 +580,13 @@ public enum WebPage {
         if (/^https?:/.test(d.link.url)) remote.target = '_blank'; else remote.removeAttribute('target');
       }
       drawChart(d.chart, warn);
-      el('sections').innerHTML = d.sections.map(sectionHTML).join('');
-      el('sections').querySelectorAll('details').forEach(function (det) {
-        det.addEventListener('toggle', function () { remember(det.dataset.id, det.open); });
-      });
+      el('sections').innerHTML = d.sections.map(function (sec) {
+        return navRow(sec.id, sec.title, readoutLine(sec.summary, sec.dots), sec.shares);
+      }).join('') + navRow('sessions', 'Sessions',
+        esc(snap.sessions.length + ' recent · tap one to look at it'), null);
     }
 
-    var list = el('sessions');
-    list.innerHTML = '';
-    snap.sessions.forEach(function (s) {
-      var p2 = share(s.occupancy);
-      var li = document.createElement('li');
-      if (d && s.sessionId === d.sessionId) li.className = 'on';
-      li.innerHTML =
-        '<span class="name">' + esc(s.project || '—') + '</span>' +
-        '<span class="share' + (p2 == null ? ' none' : (s.occupancy >= warn ? ' warn' : '')) + '">' + (p2 == null ? '—' : p2 + '%') + '</span>' +
-        (s.path ? '<span class="path">\u200E' + esc(s.path) + '\u200E</span>' : '') +
-        '<span class="sub2">' + esc(s.sessionId.slice(0, 8)) + ' · ' + s.calls + ' turns' +
-          (s.agents ? ' · ' + s.agents + ' agents' : '') + ' · ' + ago(s.ageSeconds) + '</span>';
-      li.onclick = function () { choose(s.sessionId); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-      list.appendChild(li);
-    });
+    fillPage();
     el('foot').textContent = 'updated ' + new Date().toLocaleTimeString();
   }
 
@@ -612,16 +680,29 @@ public enum WebPage {
     var sheet = el('help');
     sheet.classList.remove('open');
     sheet.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('sheet-open');
+    if (!openPageId) document.body.classList.remove('sheet-open');
     el('explain').focus();
   }
   el('explain').addEventListener('click', showHelp);
   el('help-close').addEventListener('click', hideHelp);
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && el('help').classList.contains('open')) hideHelp();
+    if (e.key !== 'Escape') return;
+    if (el('help').classList.contains('open')) hideHelp(); else if (openPageId) hidePage();
   });
 
   el('sections').addEventListener('click', function (e) {
+    var row = e.target.closest('.navrow');
+    if (row) showPage(row.dataset.page);
+  });
+  el('page-back').addEventListener('click', function () { hidePage(); });
+  window.addEventListener('popstate', function (e) {
+    var id = e.state && e.state.page;
+    if (id) showPage(id, true); else if (openPageId) hidePage(true);
+  });
+  var deepLink = (location.hash.match(/^#page=([a-z]+)$/) || [])[1];
+  el('page-body').addEventListener('click', function (e) {
+    var li = e.target.closest('li[data-session]');
+    if (li) { choose(li.dataset.session); hidePage(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     var b = e.target.closest('button');
     if (!b) return;
     e.preventDefault(); e.stopPropagation();
@@ -656,6 +737,7 @@ public enum WebPage {
         var snap = JSON.parse(text);
         if (chosen && snap.detail && snap.detail.sessionId !== chosen) { chosen = null; }
         render(snap);
+        if (deepLink) { var id = deepLink; deepLink = null; showPage(id, true); }
       })
       .catch(function () {
         if (seq !== fetchSeq) return;

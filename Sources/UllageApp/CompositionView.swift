@@ -20,6 +20,9 @@ struct CompositionView: View {
     /// The popover names the block in its section rule; the history window has
     /// no such rule, so it keeps the name in the caption.
     var showsTitle = true
+    /// The main window's Composition page draws the drill-down treemap above
+    /// this, so it asks for the tables alone.
+    var showsTreemap = true
     /// When set, clicking the treemap or the bar opens the explorer window.
     var onOpen: (() -> Void)?
 
@@ -59,8 +62,10 @@ struct CompositionView: View {
                 // The full view: the treemap, and the table view of it — every
                 // figure a tile was too small to label is here, so nothing is
                 // reachable only by hovering.
-                treemapAndKey
+                if showsTreemap {
+                    treemapAndKey
                     .onTapGesture { onOpen?() }
+                }
                 VStack(alignment: .leading, spacing: 10) {
                     totals
                     baseline

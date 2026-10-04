@@ -19,6 +19,9 @@ final class MenuBarModel: ObservableObject {
     /// the pinned one). It keeps following even while the popover is frozen.
     @Published private(set) var menuBarState: MenuBarState = MenuBarFormatter.state(for: nil)
     @Published private(set) var errorMessage: String?
+    /// The main window's page. The popover's rows set it before opening the
+    /// window, so a row lands on its own page.
+    @Published var windowPage: MainPage = .overview
     @Published private(set) var isWatching = false
     @Published private(set) var databasePath: String = ClaudePaths.defaultDatabaseURL().path
 

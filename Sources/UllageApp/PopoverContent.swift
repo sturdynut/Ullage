@@ -13,11 +13,6 @@ struct PopoverContent: View {
     @State private var sectionsHeight: CGFloat = 0
     @State private var headerHeight: CGFloat = 0
     @State private var contentHeight: CGFloat = 0
-    @AppStorage("compositionExpanded") private var compositionExpanded = false
-    @AppStorage("detailsExpanded") private var detailsExpanded = false
-    @AppStorage("planLimitsExpanded") private var planLimitsExpanded = false
-    @AppStorage("saversExpanded") private var saversExpanded = false
-    @AppStorage("agentsExpanded") private var agentsExpanded = false
 
     var body: some View {
         // A MenuBarExtra window taller than the screen is clipped at the top,
@@ -60,81 +55,33 @@ struct PopoverContent: View {
         return max(200, screen - headerHeight - 14 * 2 - 8 - 24)
     }
 
+    /// Each section is one row: its name, its one line of figures, and a
+    /// chevron. The row opens that section's page in the main window; the
+    /// popover itself stays a glance.
     @ViewBuilder
     private var sections: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // First under the headline: what the used part of the window is
-            // made of, then the figures that explain the headline.
+        VStack(alignment: .leading, spacing: 10) {
             if let composition = model.composition {
-                // Collapsed is the overview bar and legend, expanded the
-                // treemap and every table under it.
-                CollapsibleSectionRule("Context composition", scope: scopeName, isExpanded: $compositionExpanded,
-                                       help: ("Collapse to the overview", "Expand to the treemap, baseline and every tool"),
-                                       shares: composition.segments.map {
-                                           RuleShare(color: CompositionView.color(for: $0.name), weight: Double($0.tokens))
-                                       }) {
-                    if composition.estimatesOvershoot { overshootBadge }
-                    Button { openExplorer() } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: 9, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tertiary)
-                    .help("Open a large treemap you can drill into")
+                SectionLink("Context composition", scope: scopeName,
+                            shares: composition.segments.map {
+                                RuleShare(color: CompositionView.color(for: $0.name), weight: Double($0.tokens))
+                            },
+                            open: { open(.composition) }) {
+                    ReadoutLine(items: zip(composition.summary, composition.segments).map {
+                        ReadoutLine.Item(readout: $0, dot: CompositionView.color(for: $1.name))
+                    })
                 }
-                CompositionView(composition: composition, expanded: compositionExpanded, showsTitle: false,
-                                onOpen: openExplorer)
             }
             if model.state.status != .empty {
-                CollapsibleSectionRule("Session information", scope: scopeName, isExpanded: $detailsExpanded,
-                                       help: ("Collapse to one line", "Show every detail"))
-                if detailsExpanded { stats } else { statsSummary }
+                SectionLink("Session information", scope: scopeName, open: { open(.session) }) { statsSummary }
             }
             if let tree = model.agents, !tree.isEmpty {
-                // A selected agent keeps the tree open — collapsing it would hide
-                // the only control that says which window you are in — so while
-                // one is selected the rule is not a toggle at all.
-                if model.focusedAgent != nil {
-                    SectionRule("Agents") { agentsTrailing }
-                } else {
-                    CollapsibleSectionRule("Agents", isExpanded: $agentsExpanded,
-                                           help: ("Collapse to one line", "Show every agent and its window")) { agentsTrailing }
-                }
-                if agentsExpanded || model.focusedAgent != nil {
-                    AgentTreeView(
-                        tree: tree,
-                        mainThreadDetail: mainThreadDetail,
-                        mainThreadOccupancy: model.state.occupancy,
-                        focus: model.focus,
-                        onSelect: { model.focus(on: $0) }
-                    )
-                } else {
+                SectionLink("Agents", open: { open(.agents) }, trailing: { agentsTrailing }) {
                     ReadoutLine(tree.summary)
                 }
             }
-            // After the session's own story (composition, details, agents):
-            // half of it is configuration, like the plan limits below it.
             if !model.savers.isEmpty {
-                CollapsibleSectionRule("Token savers", isExpanded: $saversExpanded,
-                                       help: ("Collapse to one line", "Show each saver, its switch and where its numbers come from")) {
-                    Button {
-                        openWindow(id: SaversWindow.id)
-                        NSApp.activate(ignoringOtherApps: true)
-                    } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: 9, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tertiary)
-                    .help("Open each saver over this session, 7 or 30 days")
-                }
-                SaversView(panel: model.savers, expanded: saversExpanded,
-                           onSwitch: { model.setSaver($0, on: $1) },
-                           onUndo: { model.undoSaver($0) },
-                           onPlan: { saver, action in
-                               let plan = model.installPlan(saver, action)
-                               if InstallConfirmation.confirm(plan) { model.run(plan) }
-                           })
+                SectionLink("Token savers", open: { open(.savers) }) { ReadoutLine(model.savers.summary) }
             }
             // Last: the account's allowance, not this session's window — the
             // sections above all describe the session.
@@ -150,8 +97,10 @@ struct PopoverContent: View {
         }
     }
 
-    private func openExplorer() {
-        openWindow(id: CompositionExplorer.id)
+    /// The main window, on one page.
+    private func open(_ page: MainPage) {
+        model.windowPage = page
+        openWindow(id: MainWindow.id)
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -190,12 +139,6 @@ struct PopoverContent: View {
         .fixedSize()
     }
 
-    private var overshootBadge: some View {
-        Image(systemName: "exclamationmark.triangle.fill")
-            .font(.system(size: 9))
-            .foregroundStyle(Color.orange)
-            .help("The estimated parts add up to more than the window holds, so the shares below are approximate and Other is clamped at zero.")
-    }
 
     /// The main-thread row's second line, in the same shape as an agent's:
     /// what is answering, then how much it has done.
@@ -424,15 +367,6 @@ struct PopoverContent: View {
 
     // MARK: Stats
 
-    @ViewBuilder
-    private var stats: some View {
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
-            ForEach(SessionInfo.rows(figures, history: model.history), id: \.label) { item in
-                row(item.label, item.value)
-            }
-        }
-        .font(.callout)
-    }
 
     /// What the stream the popover is looking at says about itself: the
     /// session's own figures, or a selected agent's. Every figure describes
@@ -460,17 +394,6 @@ struct PopoverContent: View {
 
     private var statsReadouts: [Readout] { SessionInfo.summary(figures, history: model.history) }
 
-    private func row(_ name: String, _ value: String) -> some View {
-        GridRow {
-            Text(name).foregroundStyle(.secondary)
-            Text(value)
-                .monospacedDigit()
-                .textSelection(.enabled)
-                .gridColumnAlignment(.trailing)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-    }
-
     // MARK: Plan limits
 
     @ViewBuilder
@@ -480,9 +403,9 @@ struct PopoverContent: View {
             if model.planLimits.isEmpty {
                 SectionRule("Plan limits")
             } else {
-                CollapsibleSectionRule("Plan limits", isExpanded: $planLimitsExpanded,
-                                       help: ("Collapse to what is left", "Show every limit, its reset and usage"))
-                PlanLimitsView(limits: model.planLimits, usage: model.planLimitUsage, expanded: planLimitsExpanded)
+                SectionLink("Plan limits", open: { open(.limits) }) {
+                    ReadoutLine(PlanLimitFormatter.summary(model.planLimits))
+                }
             }
             if let error = model.claudeLimitsError {
                 Text("Claude: " + error)
@@ -511,11 +434,9 @@ struct PopoverContent: View {
     /// as the task.
     private var actions: some View {
         HStack(spacing: 8) {
-            Button("History…") {
-                openWindow(id: HistoryWindow.id)
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            .buttonStyle(.borderedProminent)
+            Button("Open Ullage") { open(.overview) }
+                .buttonStyle(.borderedProminent)
+                .help("Everything here at full size: composition, session, agents, token savers, history and limits")
             Spacer()
             // One way in to every explanation, opposite the main action.
             HelpButton()
