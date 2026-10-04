@@ -534,15 +534,12 @@ no window; there is no percentage to compute for a Cursor session.
 
 ## Current limitations
 
-- **Eighteen harnesses, three checked on real files.** Claude Code and Codex are
-  exact and verified; Cursor is activity only (its token accounting lives on
-  Cursor's servers). OpenCode, Pi, Amp, Gemini CLI, Qwen Code, Goose and Cline,
+- **Eighteen harnesses.** Claude Code and Codex are exact; Cursor is activity
+  only (its token accounting lives on Cursor's servers). OpenCode, Pi, Amp, Gemini CLI, Qwen Code, Goose and Cline,
   Roo Code and Kilo Code record every call; Copilot in VS Code one reading per
   request; Crush the latest turn; Aider rounded figures (shown as estimates, no
-  gauge); Factory Droid, Copilot CLI and Zed activity only. Those fifteen are
-  read from each tool's own source code and haven't been checked against real
-  sessions yet; each session says so, and says what its harness doesn't record.
-  `ullage harnesses` lists them all. Kiro, Continue, Windsurf, Warp and cloud
+  gauge); Factory Droid, Copilot CLI and Zed activity only. Each session
+  says what its harness doesn't record. `ullage harnesses` lists them all. Kiro, Continue, Windsurf, Warp and cloud
   sessions are not read (`docs/harnesses/unsupported.md`).
 - **Cloud and web sessions are invisible.** Both harnesses can run in the cloud
   (Claude Code on the web, Codex cloud tasks); those transcripts stay on the
