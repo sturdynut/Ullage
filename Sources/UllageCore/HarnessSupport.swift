@@ -79,12 +79,6 @@ public struct HarnessSupport: Equatable {
         capabilities.hasGauge ? nil : gap(.gauge).map { $0 + ". Showing activity only." }
     }
 
-    /// The format came from the harness's source code, not real files.
-    public var unverifiedNote: String? {
-        capabilities.verifiedOnDisk ? nil
-            : "Ullage reads \(harnessName)'s files from its source code; it hasn't been checked against real sessions yet."
-    }
-
     /// One line for the Session page's header: "Gemini CLI · no cache writes".
     public var title: String { "What \(harnessName) records" }
 }

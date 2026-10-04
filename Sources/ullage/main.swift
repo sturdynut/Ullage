@@ -902,7 +902,7 @@ do {
 
     case "harnesses":
         print("HARNESSES  (what each records on disk; — = not recorded)")
-        print("  " + pad("", 20) + pad("gauge", 11) + pad("readings", 12) + pad("cache", 7) + pad("model", 7) + pad("agents", 8) + "checked on disk")
+        print("  " + pad("", 20) + pad("gauge", 11) + pad("readings", 12) + pad("cache", 7) + pad("model", 7) + pad("agents", 8))
         for harness in Harness.all {
             let c = harness.capabilities
             let readings: String = {
@@ -919,7 +919,7 @@ do {
             let present = roots.contains { FileManager.default.fileExists(atPath: $0.path) }
             print("  " + pad(harness.name, 20) + pad(gauge, 11) + pad(readings, 12) + pad(c.cacheSplit ? "yes" : "—", 7)
                   + pad(c.model ? "yes" : "—", 7) + pad(c.subagents ? "yes" : "—", 8)
-                  + (c.verifiedOnDisk ? "yes" : "from source") + (present ? "  · found on this Mac" : ""))
+                  + (present ? "found on this Mac" : ""))
         }
     case "tools":
         let registry = ToolRegistry.shared
