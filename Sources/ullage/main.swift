@@ -29,7 +29,8 @@ USAGE
   ullage rebuilds --days N   Rebuilds across every session in the last N days, by cause
   ullage savers --days N     Each context tool across every session in the last N days
   ullage savers [session]    Context tools (rtk, caveman, Serena, claude-mem…): switched on, and what they did
-  ullage harnesses           Every coding agent Ullage reads, and what each records
+  ullage harnesses [--csv]   Every coding agent Ullage reads, and what each records;
+                             --csv prints one test per agent and feature, with the expected state
   ullage tools               Every context tool Ullage knows, built in or from ~/.config/ullage/tools
   ullage savers enable|disable <name> [--dry-run]
                              Switch one in Claude Code's user config (applies to new sessions)
@@ -78,6 +79,7 @@ struct Options {
     var everything = false
     var fetch = false
     var yes = false
+    var csv = false
     /// `--days` was given explicitly, so it wins over the export cursor.
     var daysWasSet = false
 }
@@ -107,6 +109,8 @@ func parseArguments(_ arguments: [String]) -> Options {
             options.watch = false
         case "--test":
             options.test = true
+        case "--csv":
+            options.csv = true
         case "--dry-run":
             options.dryRun = true
         case "--metrics-only":
@@ -900,6 +904,8 @@ do {
             try printRebuilds(store, sessionPrefix: options.paths.first)
         }
 
+    case "harnesses" where options.csv:
+        print(harnessTestPlanCSV(), terminator: "")
     case "harnesses":
         print("HARNESSES  (what each records on disk; — = not recorded)")
         print("  " + pad("", 20) + pad("gauge", 11) + pad("readings", 12) + pad("cache", 7) + pad("model", 7) + pad("agents", 8))
@@ -987,4 +993,50 @@ do {
 } catch {
     FileHandle.standardError.write(Data("error: \(error)\n".utf8))
     exit(1)
+}
+
+
+/// One test per harness and feature, with the state the app should show,
+/// from the same capabilities the app uses: `docs/TESTING.csv` is built
+/// from this by `scripts/test-plan.py`.
+func harnessTestPlanCSV() -> String {
+    let how: [HarnessSupport.Feature: String] = [
+        .gauge: "Open one of its sessions in the popover",
+        .everyCall: "Session page: compare chart points with model calls",
+        .cacheSplit: "Session page: cache rows, and cache rebuild triangles after a model switch",
+        .model: "Look at the line under the session title",
+        .context: "Open the Context page for the session",
+        .agents: "Run a task that starts a subagent; open Agents",
+        .compaction: "Compact the session; look for the drop marked on the chart",
+        .effort: "Change reasoning effort; look at the model line",
+        .planLimits: "Open Plan limits",
+        .contextTools: "Use a context tool in the session; open Context tools",
+    ]
+    let shown: [HarnessSupport.Feature: String] = [
+        .gauge: "Room left, bar and percentage",
+        .everyCall: "A point for every model call",
+        .cacheSplit: "Cache reads and writes shown separately",
+        .model: "Model name shown",
+        .context: "Breakdown of what fills the window",
+        .agents: "Each subagent listed with its own window",
+        .compaction: "Compaction marked on the chart",
+        .effort: "Effort shown beside the model",
+        .planLimits: "This agent's limits as % left",
+        .contextTools: "Tool rows show what ran",
+    ]
+    func field(_ text: String) -> String {
+        text.contains(",") || text.contains("\"") ? "\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : text
+    }
+    var lines = ["Area,Item,How to test,Expected state,Expect,Status,Tested on,Notes"]
+    for harness in Harness.all.sorted(by: { ($0.id == Vendor.claudeCode ? 0 : 1, $0.name) < ($1.id == Vendor.claudeCode ? 0 : 1, $1.name) }) {
+        let support = HarnessSupport(harness: harness)
+        lines.append([harness.name, "Session appears", "Run one short session, then open the popover's session picker",
+                      "Supported", "Listed with its folder and time", "", "", ""].map(field).joined(separator: ","))
+        for row in support.rows {
+            let state = row.available ? "Supported" : (row.detail?.hasPrefix("One reading") == true || row.detail?.hasPrefix("Only the latest") == true ? "Partial" : "Not recorded")
+            let expect = row.available ? (shown[row.feature] ?? "") : "Listed under What \(harness.name) records: \(row.detail ?? "")"
+            lines.append([harness.name, row.label, how[row.feature] ?? "", state, expect, "", "", ""].map(field).joined(separator: ","))
+        }
+    }
+    return lines.joined(separator: "\n") + "\n"
 }
