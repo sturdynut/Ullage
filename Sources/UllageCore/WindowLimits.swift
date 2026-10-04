@@ -45,6 +45,13 @@ public enum WindowLimits {
         return longestPrefixMatch(normalized) != nil
     }
 
+    /// The window when the model is in the table, else nil. Harnesses that
+    /// run arbitrary providers use this: a fallback window for a model Ullage
+    /// doesn't know would be a guessed percentage (rule 3).
+    public static func knownLimit(for model: String?) -> Int? {
+        isKnown(model) || model.flatMap(bracketSuffix).flatMap({ suffixLimits[$0] }) != nil ? limit(for: model) : nil
+    }
+
     public static func limit(for model: String?) -> Int {
         guard let raw = model, !raw.isEmpty else { return fallback }
         if let suffix = bracketSuffix(raw), let limit = suffixLimits[suffix] { return limit }

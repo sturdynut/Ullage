@@ -157,7 +157,7 @@ public final class PollingWatcher: DirectoryWatching {
                 includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
                 options: [.skipsHiddenFiles]
             ) else { continue }
-            for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+            for case let url as URL in enumerator where Harness.owning(url.path) != nil {
                 if let fingerprint = fingerprint(of: url.path) { result[url.path] = fingerprint }
             }
         }

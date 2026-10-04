@@ -97,8 +97,8 @@ public final class Ingestor {
 
     // MARK: - Directory
 
-    /// Recursively ingests every `.jsonl` under `url`, oldest file first so that
-    /// turn indexes come out in wall-clock order.
+    /// Recursively ingests every transcript under `url` that some harness
+    /// owns, oldest file first so that turn indexes come out in wall-clock order.
     @discardableResult
     public func ingestDirectory(at url: URL) throws -> IngestStats {
         let manager = FileManager.default
@@ -112,7 +112,7 @@ public final class Ingestor {
 
         var files: [(URL, Date)] = []
         for case let fileURL as URL in enumerator {
-            guard fileURL.pathExtension == "jsonl" else { continue }
+            guard Harness.owning(fileURL.path) != nil, Harness.databasePath(fileURL.path) == fileURL.path else { continue }
             let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey])
             guard values?.isRegularFile == true else { continue }
             files.append((fileURL, values?.contentModificationDate ?? .distantPast))
@@ -141,8 +141,12 @@ public final class Ingestor {
         var stats = IngestStats()
         stats.filesScanned = 1
 
-        let path = url.path
-        let format = TranscriptFormat.detect(path: path)
+        let path = Harness.databasePath(url.path)
+        let url = URL(fileURLWithPath: path)
+        let format = Harness.detect(path: path)
+        if case .document(let makeReader) = format.reading {
+            return try ingestDocument(at: url, reader: makeReader(), stats: stats)
+        }
         let attributes = try FileManager.default.attributesOfItem(atPath: path)
         let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
         let size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
@@ -249,6 +253,40 @@ public final class Ingestor {
                     mtime: mtime
                 )
             )
+        }
+        return stats
+    }
+
+    // MARK: - Document
+
+    /// A whole-store format: read it all when it, or its WAL, changed since
+    /// last time. The cursor records the combined size and newest mtime as a
+    /// signature rather than a byte offset.
+    private func ingestDocument(at url: URL, reader: TranscriptDocumentReader, stats: IngestStats) throws -> IngestStats {
+        var stats = stats
+        let path = url.path
+        let manager = FileManager.default
+        let attributes = try manager.attributesOfItem(atPath: path)
+        let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+        var size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+        var mtime = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        if let wal = try? manager.attributesOfItem(atPath: path + "-wal") {
+            size += (wal[.size] as? NSNumber)?.uint64Value ?? 0
+            mtime = max(mtime, (wal[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)
+        }
+        if let stored = try store.cursor(forPath: path),
+           stored.inode == inode, stored.size == size, stored.mtime == mtime { return stats }
+
+        let context = LineContext(
+            sourceFile: path,
+            fallbackSessionId: url.deletingPathExtension().lastPathComponent,
+            fileModified: Timestamps.string(from: Date(timeIntervalSince1970: mtime))
+        )
+        let work = reader.read(file: url, context: context)
+        stats.linesParsed += work.count
+        try store.database.transaction {
+            for parsed in work { try apply(parsed, to: &stats) }
+            try store.upsert(cursor: FileCursor(path: path, inode: inode, byteOffset: size, size: size, mtime: mtime))
         }
         return stats
     }

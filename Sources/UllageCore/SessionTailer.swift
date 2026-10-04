@@ -66,8 +66,8 @@ public final class SessionTailer: @unchecked Sendable {
     /// produce several writes, and re-ingesting on each one is wasted work.
     private func enqueue(paths: [String]) {
         queue.async {
-            for path in paths where path.hasSuffix(".jsonl") {
-                self.pendingPaths.insert(path)
+            for path in paths where Harness.owning(path) != nil {
+                self.pendingPaths.insert(Harness.databasePath(path))
             }
             guard !self.pendingPaths.isEmpty else { return }
             self.flushWorkItem?.cancel()

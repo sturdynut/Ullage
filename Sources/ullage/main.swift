@@ -175,9 +175,10 @@ func padLeft(_ text: String, _ width: Int) -> String {
 func transcriptPaths(under url: URL) -> [String] {
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return [] }
-    guard isDirectory.boolValue else { return url.pathExtension == "jsonl" ? [url.path] : [] }
+    guard isDirectory.boolValue else { return Harness.owning(url.path) != nil ? [url.path] : [] }
     guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil) else { return [] }
-    return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }.map(\.path)
+    return enumerator.compactMap { $0 as? URL }
+        .filter { Harness.owning($0.path) != nil && Harness.databasePath($0.path) == $0.path }.map(\.path)
 }
 
 func report(_ stats: IngestStats) {
