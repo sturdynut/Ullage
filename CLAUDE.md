@@ -52,12 +52,13 @@ server-side and keep only conversation content locally.
 
 ```bash
 swift build
-swift test                 # 252 tests on macOS; 241 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 267 tests on macOS; 256 on Linux (six need CryptoKit, five AppKit)
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
 
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
+`dashboard [--days N] [--vendor V] [--counter C] [--gap MIN]`,
 `composition <session>`, `agents <session>`, `env <session>`, `serve`,
 `push [--test]`, `otlp`, `limits [--fetch]`, `savers [session]`,
 `rebuilds [session]`, `rebuilds --days N`, `savers --days N`, `savers enable|disable <name> [--dry-run]`,
@@ -199,6 +200,13 @@ plausible and are wrong.
   causes the session produced (`isAvoidable`) reach the collapsed line; expired
   and unknown are shown but not put on the user. The turn after a compaction
   boundary or a `/clear` command is skipped, not approximated by a ratio.
+- **A dashboard rate is per active hour.** `UsageDashboard` divides by the
+  gaps between a session's calls that are no longer than the idle gap, never
+  first-to-last time (a resumed session would otherwise be credited with the
+  days between). Sessions under 10 active minutes are left out of rates and
+  rankings. The typical session is the median; peak fill is per row, so a model
+  switch cannot divide one model's context by another's window. The app's
+  Dashboard window and `ullage dashboard` both draw `keyTiles`/`moreTiles`.
 - **Compaction is a first-class event.** Context falls off a cliff at a
   compaction boundary: `context_delta` is NULL across it, charts mark it, and
   composition restarts the window at the post-compaction summary.

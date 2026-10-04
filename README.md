@@ -115,6 +115,20 @@ commands, in Terminal, after showing them to you.
   and cache reads; a table of every session in range with its path and agent
   count; and
   the selected session's agent tree, chart and full composition.
+- **Dashboard window** — the Dashboard button opens averages and rates over 7,
+  30 or 90 days or all time, for one harness and one counter at a time (output,
+  cache write, cache read or input; never a sum). Four key figures up front:
+  that counter per *active* hour, the typical (median) session, the median peak
+  window fill with how many sessions reached 85%, and active time. "Show all
+  metrics" adds sessions, the average and total, cache hit ratio, compactions
+  and subagent share. Each key figure is compared with the period before it.
+  Tabs below: weekly totals and rates, the highest and lowest sessions (by total
+  or per active hour) with a size distribution, context health, projects and
+  models, and tools by the estimated size of what they returned. Active time
+  counts the gaps between calls no longer than the idle gap (15, 30 or 60
+  minutes), so a session resumed days later is not credited with the days
+  between; rates leave out sessions with under 10 active minutes. Cursor gets
+  sessions and active time only.
 
 ### Composition explorer
 
@@ -197,6 +211,8 @@ ullage sessions              # per-session totals, grouped by project
 ullage agents <session>      # the subagent tree, each agent's own window
 ullage latest                # the single row driving the menu bar
 ullage history [--days N]    # activity per day and project (default 30)
+ullage dashboard [--days N] [--vendor codex] [--counter cache_write] [--gap 60]
+                             # the Dashboard window's figures, ranked sessions, projects
 ullage composition <session> # what a session's window is made of
 ullage serve [--port N]      # serve the gauge to a browser on 127.0.0.1
 ullage push [--test]         # devices subscribed to alerts; --test buzzes them
