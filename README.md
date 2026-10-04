@@ -21,9 +21,6 @@ claude-mem.
   agent) aren't included.
 - **Some agents don't write token counts Ullage can read.** Cursor, Copilot CLI,
   Factory Droid and Zed show activity but no gauge.
-- **Most agents aren't verified yet.** Claude Code, Codex and Cursor are checked
-  against real sessions; the other fifteen are read from their source code.
-  See [Current limitations](#current-limitations).
 - **macOS** for the menu bar app; the `ullage` command line also runs on Linux.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
