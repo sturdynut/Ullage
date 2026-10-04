@@ -253,7 +253,7 @@ public enum WebPage {
   #help .ans.indent { padding-left: 44px; }
   #help .ans p { margin: 0 0 6px; color: var(--ink); }
   #help .ans .why { color: var(--dim); }
-  footer { margin-top: 26px; color: var(--quiet); font-size: 12px; }
+  footer { margin-top: 26px; color: var(--quiet); font-size: 12px; text-align: center; }
   [hidden] { display: none !important; }
 </style>
 </head>
