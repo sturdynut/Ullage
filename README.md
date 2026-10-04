@@ -424,7 +424,7 @@ transcripts changes nothing.
 
 <div align="center">
 
-<img src="docs/screenshots/phone.png" alt="The phone page: the Ullage session with 258k left of a 1M window, a bar at 74% used, the context chart with grey and orange cache-rebuild triangles, then Context, Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits each collapsed to one line, and Open in Claude and Explain at the bottom" width="300">
+<img src="docs/screenshots/phone.png" alt="The phone page: the Ullage session with 602k left of a 1M window, 39% used, the context chart with grey and orange cache-rebuild triangles and a compaction, then Context, Session information (re-cached 2×), Agents, Context tools (Headroom idle), Plan limits and Sessions each collapsed to one line, Open in Claude and Explain, and Alerts on for this device" width="300">
 &nbsp;&nbsp;
 <img src="docs/screenshots/phone-help.png" alt="The phone page's help: How to read Ullage, with The chart open and its questions listed, each beside the mark it explains; What's an orange triangle? is open, saying it is a cache rebuild you caused and why it costs full price or more" width="300">
 
