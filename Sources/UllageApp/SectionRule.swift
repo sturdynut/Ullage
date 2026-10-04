@@ -86,54 +86,51 @@ extension SectionRule {
     }
 }
 
-/// A `SectionRule` that is also the section's toggle: the whole rule is the
-/// target and a chevron at its end says which way it is. Collapsed sections
-/// show a one-glance summary; expanded, everything.
-struct CollapsibleSectionRule<Trailing: View>: View {
+/// A popover section as one row: the rule (its name, a chevron) over its one
+/// line of figures. The whole row opens the section's page in the main window.
+struct SectionLink<Summary: View, Trailing: View>: View {
     let title: String
     var scope: String?
-    @Binding var isExpanded: Bool
-    var help: (collapse: String, expand: String) = ("Collapse", "Expand")
-    /// Drawn in place of the hairline while collapsed; see `SectionRule.shares`.
-    var shares: [RuleShare]? = nil
+    var shares: [RuleShare]?
+    let open: () -> Void
     @ViewBuilder var trailing: () -> Trailing
+    @ViewBuilder var summary: () -> Summary
+
+    init(_ title: String, scope: String? = nil, shares: [RuleShare]? = nil, open: @escaping () -> Void,
+         @ViewBuilder trailing: @escaping () -> Trailing, @ViewBuilder summary: @escaping () -> Summary) {
+        self.title = title
+        self.scope = scope
+        self.shares = shares
+        self.open = open
+        self.trailing = trailing
+        self.summary = summary
+    }
 
     var body: some View {
-        HStack(spacing: 6) {
-            // Only the caption, hairline and chevron toggle; trailing items
-            // sit outside so a button among them gets its own clicks.
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() }
-            } label: {
-                SectionRule(title: title, scope: scope, shares: isExpanded ? nil : shares) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+        HStack(alignment: .top, spacing: 6) {
+            Button(action: open) {
+                VStack(alignment: .leading, spacing: 6) {
+                    SectionRule(title: title, scope: scope, shares: shares) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    summary()
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(isExpanded ? help.collapse : help.expand)
-            trailing()
-                .fixedSize()
+            .help("Open \(title) in the Ullage window")
+            // Outside the row's button, so a control here gets its own clicks.
+            trailing().fixedSize()
         }
     }
 }
 
-extension CollapsibleSectionRule {
-    init(_ title: String, scope: String? = nil, isExpanded: Binding<Bool>,
-         help: (collapse: String, expand: String) = ("Collapse", "Expand"),
-         shares: [RuleShare]? = nil,
-         @ViewBuilder trailing: @escaping () -> Trailing) {
-        self.init(title: title, scope: scope, isExpanded: isExpanded, help: help, shares: shares, trailing: trailing)
-    }
-}
-
-extension CollapsibleSectionRule where Trailing == EmptyView {
-    init(_ title: String, scope: String? = nil, isExpanded: Binding<Bool>,
-         help: (collapse: String, expand: String) = ("Collapse", "Expand")) {
-        self.init(title: title, scope: scope, isExpanded: isExpanded, help: help) { EmptyView() }
+extension SectionLink where Trailing == EmptyView {
+    init(_ title: String, scope: String? = nil, shares: [RuleShare]? = nil, open: @escaping () -> Void,
+         @ViewBuilder summary: @escaping () -> Summary) {
+        self.init(title, scope: scope, shares: shares, open: open, trailing: { EmptyView() }, summary: summary)
     }
 }
 
