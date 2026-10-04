@@ -300,6 +300,23 @@ branch is `claude/two-slices-link-empty-repo-51t02z`, but `main` is kept current
 — update both when they diverge. Reinstall with `scripts/install-app.sh` after
 any app change so what is running matches what is committed.
 
+## Releasing
+
+Homebrew installs from `sturdynut/homebrew-tap` (`Formula/ullage.rb`), which
+builds a tagged release from source. To release:
+
+1. Merge to `main`, then `git tag -a vX.Y.Z -m "Ullage X.Y.Z"`, push the tag,
+   and `gh release create vX.Y.Z`.
+2. `curl -sL https://github.com/sturdynut/Ullage/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256`.
+3. In the tap, set the formula's `url` and `sha256`, then
+   `brew audit --strict --online sturdynut/tap/ullage` and
+   `brew reinstall --build-from-source sturdynut/tap/ullage && brew test sturdynut/tap/ullage`.
+
+The formula builds with `--disable-sandbox` (SwiftPM's sandbox can't start
+inside Homebrew's) and bundles the app with `scripts/bundle-app.sh`, the same
+script `install-app.sh` uses. Its `license` is `:cannot_represent`: PolyForm
+Shield isn't in Homebrew's SPDX list.
+
 ## Layout
 
 - `Sources/UllageCore` — parsers, ingestor, SQLite store, all analysis/display logic.
