@@ -27,9 +27,9 @@ own sign-in to api.anthropic.com and nothing else. None of these happens until
 you set it up.
 
 Ullage only reads Claude Code's config, with one exception: when you flip a
-[token saver](#token-savers) switch, it edits Claude Code's user settings to
+[context tool](#context-tools) switch, it edits Claude Code's user settings to
 switch that one tool on or off. It backs the file up first and never throws
-anything away. Installing or uninstalling a token saver runs that tool's own
+anything away. Installing or uninstalling a context tool runs that tool's own
 commands, in Terminal, after showing them to you.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
@@ -79,7 +79,7 @@ commands, in Terminal, after showing them to you.
     session did made it cache its context again.
   - **Agents**: how many there are, how many haven't finished, and whose window
     is fullest.
-  - **Token savers**: problems first, then how many are on and off
+  - **Context tools**: problems first, then how many are on and off
     (`rtk not running · Headroom idle · 1 on`).
   - **Plan limits**: each harness's tightest limit (`Claude 5h 88% left · Codex
     week 100% left`).
@@ -105,8 +105,8 @@ commands, in Terminal, after showing them to you.
     the description the agent above it wrote and each with **its own window and
     occupancy**. Click one and the chart, composition and session figures switch
     to its context, here and in the popover.
-  - **Token savers**: each tool's switch, install and uninstall, and its
-    figures over this session, 7 or 30 days. See [Token savers](#token-savers).
+  - **Context tools**: each tool's switch, install and uninstall, and its
+    figures over this session, 7 or 30 days. See [Context tools](#context-tools).
   - **History**: activity per day stacked by project, model or effort over 7,
     30, 90 or 365 days, switchable between turns, output tokens and cache
     reads; every session in range with its path and agent count; and the
@@ -202,7 +202,7 @@ ullage push [--test]         # devices subscribed to alerts; --test buzzes them
 ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
 ullage limits [--fetch]      # plan limits left; --fetch asks Anthropic for Claude's
-ullage savers [session]      # token savers: switched on, and what each did
+ullage savers [session]      # context tools: switched on, and what each did
 ullage savers --days 30      # each saver across every session in the range
 ullage rebuilds [session]    # turns that re-cached most of their context, and why
 ullage rebuilds --days 30    # the same across sessions, by cause
@@ -245,12 +245,20 @@ machines).
   public API and may change; if it does, the limits disappear rather than show
   a wrong number.
 
-### Token savers
+### Context tools
 
 [rtk](https://github.com/rtk-ai/rtk), [Tokenade](https://github.com/pi-infected/tokenade-npm),
 [caveman](https://github.com/juliusbrussee/caveman) and
-[Headroom](https://github.com/headroomlabs-ai/headroom) all exist to spend fewer
-tokens. Ullage shows what each one actually did and lets you switch it on or off.
+[Headroom](https://github.com/headroomlabs-ai/headroom) shrink what goes into
+the window; [Serena](https://github.com/oraios/serena),
+[codegraph](https://github.com/colbymchenry/codegraph) and
+[claude-context](https://github.com/zilliztech/claude-context) let the model look
+code up instead of reading whole files; and
+[claude-mem](https://github.com/thedotmack/claude-mem) carries notes between
+sessions. Ullage shows what each one actually did and lets you switch it on or off.
+Each tool is a description, not code: add your own as a JSON file in
+`~/.config/ullage/tools/` ([docs/CONTEXT-TOOLS.md](docs/CONTEXT-TOOLS.md)), and
+`ullage tools` lists what loaded.
 It never adds up a single "tokens saved" number, because nothing on disk records
 what a session would have cost without the tool.
 
@@ -275,7 +283,7 @@ what a session would have cost without the tool.
   whether it was ever called; a loaded server that is never called still puts
   its tool definitions in every prompt.
 
-The main window's **Token savers** page shows each tool over this session, 7
+The main window's **Context tools** page shows each tool over this session, 7
 days or 30 days:
 - what the transcripts prove: sessions it ran in, hook runs, rewrites, failures
   with the last error message, and MCP calls;
@@ -368,7 +376,7 @@ transcripts changes nothing.
 A menu bar is only useful in front of the Mac. `ullage serve` puts Ullage on a
 web page laid out like the main window, one page at a time: an Overview with
 the room left and the context chart, then a row per section (composition,
-session information, agents, token savers, plan limits, and Sessions) that
+session information, agents, context tools, plan limits, and Sessions) that
 slides its page in. A page closes with "‹ Overview" or the phone's back
 gesture, and has its own address (`#page=savers`) you can bookmark. Sessions
 lists every recent session with its path; pick one to look at it instead of
@@ -378,7 +386,7 @@ opens a Codex session's thread in the Codex app — the places to `/clear`,
 `/compact` or run a skill in it. The Codex link is the app's own
 `codex://threads/<id>`, so it works wherever the Codex app is installed.
 
-The token savers section works here too: switches with Undo, and install or
+The context tools section works here too: switches with Undo, and install or
 uninstall, after the page shows the tool's exact commands. Installs run in a
 Terminal window on the Mac, and the page reports how they went; a plan that
 needs someone at the Mac (Tokenade's browser sign-in) says so instead of

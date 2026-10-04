@@ -101,7 +101,7 @@ public struct ServeRouter {
         case ("GET", "/savers/plan"):
             // Read-only: the exact commands, so the page can show them before
             // asking. Nothing runs here.
-            guard let savers else { return .text(501, "token savers are not served by this process") }
+            guard let savers else { return .text(501, "context tools are not served by this process") }
             guard let saver = request.query["saver"].flatMap(TokenSaver.init(rawValue:)),
                   let action = request.query["action"].flatMap(SaverAction.init(rawValue:)) else {
                 return .text(400, "saver and action (install|uninstall) required")
@@ -115,9 +115,9 @@ public struct ServeRouter {
             // check alone does not stop that, so the request must also come
             // from this page: its own Origin, and a header a cross-site form
             // cannot send without a CORS preflight this server never answers.
-            guard let savers else { return .text(501, "token savers are not served by this process") }
+            guard let savers else { return .text(501, "context tools are not served by this process") }
             guard ServeRouter.isSameOrigin(request) else {
-                return .text(403, "only this page can change token savers")
+                return .text(403, "only this page can change context tools")
             }
             guard let body = try? JSONDecoder().decode(SaverRequest.self, from: request.body),
                   let saver = TokenSaver(rawValue: body.saver) else {

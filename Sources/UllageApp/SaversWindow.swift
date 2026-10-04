@@ -21,7 +21,7 @@ struct SaversPage: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Token savers").font(.title2.weight(.bold))
+                    Text("Context tools").font(.title2.weight(.bold))
                     Text("Switches change Claude Code's settings for new sessions").foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -61,7 +61,7 @@ struct SaversPage: View {
                             .padding(20)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        Text("Pick a token saver.").foregroundStyle(.secondary).padding(40)
+                        Text("Pick a tool.").foregroundStyle(.secondary).padding(40)
                     }
                 }
             }

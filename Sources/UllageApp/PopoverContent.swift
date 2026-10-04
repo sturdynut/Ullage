@@ -81,7 +81,7 @@ struct PopoverContent: View {
                 }
             }
             if !model.savers.isEmpty {
-                SectionLink("Token savers", open: { open(.savers) }) { ReadoutLine(model.savers.summary) }
+                SectionLink("Context tools", open: { open(.savers) }) { ReadoutLine(model.savers.summary) }
             }
             // Last: the account's allowance, not this session's window — the
             // sections above all describe the session.
@@ -439,7 +439,7 @@ struct PopoverContent: View {
         HStack(spacing: 8) {
             Button("Open Ullage") { open(.overview) }
                 .buttonStyle(.borderedProminent)
-                .help("Everything here at full size: composition, session, agents, token savers, history and limits")
+                .help("Everything here at full size: composition, session, agents, context tools, history and limits")
             Spacer()
             // One way in to every explanation, opposite the main action.
             HelpButton()

@@ -255,7 +255,7 @@ extension ServeDetail {
 
     static func saversSection(_ panel: SaverPanel) -> Section {
         Section(
-            id: "savers", title: "Token savers", summary: panel.summary,
+            id: "savers", title: "Context tools", summary: panel.summary,
             warning: panel.warning,
             groups: panel.pendingInstalls.isEmpty ? [] : [Group(heading: nil, rows: panel.pendingInstalls.map { Row(label: $0) })],
             savers: panel.rows.map {

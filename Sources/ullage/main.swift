@@ -27,7 +27,7 @@ USAGE
   ullage limits [--fetch]    Plan limits left: Codex from disk; --fetch asks Anthropic for Claude's
   ullage rebuilds [session]  Turns that re-cached most of their context, and why
   ullage rebuilds --days N   Rebuilds across every session in the last N days, by cause
-  ullage savers --days N     Each token saver across every session in the last N days
+  ullage savers --days N     Each context tool across every session in the last N days
   ullage savers [session]    Context tools (rtk, caveman, Serena, claude-mem…): switched on, and what they did
   ullage harnesses           Every coding agent Ullage reads, and what each records
   ullage tools               Every context tool Ullage knows, built in or from ~/.config/ullage/tools
@@ -518,7 +518,7 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     print("")
     print("SESSION \(sessionId.prefix(8))  \(report.cwd ?? "")  ·  \(report.bashCalls) Bash calls")
     if report.visible.isEmpty {
-        print("  no token saver left a trace in this session")
+        print("  no context tool left a trace in this session")
     }
     for usage in report.visible {
         var facts: [String] = []

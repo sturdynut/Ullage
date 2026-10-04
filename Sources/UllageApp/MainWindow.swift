@@ -16,7 +16,7 @@ enum MainPage: String, CaseIterable, Identifiable, Hashable {
         case .composition: return "Context"
         case .session: return "Session"
         case .agents: return "Agents"
-        case .savers: return "Token savers"
+        case .savers: return "Context tools"
         case .history: return "History"
         case .limits: return "Plan limits"
         }
@@ -52,7 +52,7 @@ struct MainWindow: View {
                             if page == .savers, model.savers.rows.contains(where: \.statusIsWarning) {
                                 Spacer()
                                 Circle().fill(Color.orange).frame(width: 7, height: 7)
-                                    .help("A token saver needs a look")
+                                    .help("A context tool needs a look")
                             }
                         }
                     } icon: {
@@ -181,7 +181,7 @@ private struct OverviewPage: View {
                         SummaryCard(title: "Agents", page: .agents, model: model) { ReadoutLine(tree.summary) }
                     }
                     if !model.savers.isEmpty {
-                        SummaryCard(title: "Token savers", page: .savers, model: model) { ReadoutLine(model.savers.summary) }
+                        SummaryCard(title: "Context tools", page: .savers, model: model) { ReadoutLine(model.savers.summary) }
                     }
                     if !model.planLimits.isEmpty {
                         SummaryCard(title: "Plan limits", page: .limits, model: model) {
