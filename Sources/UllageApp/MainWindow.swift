@@ -233,6 +233,38 @@ private struct Headline: View {
                          peak: model.history.flatMap { history in
                              figures.windowLimit.map { Double(history.peakContextTokens) / Double($0) }
                          })
+            if let notice = figures.gaugeNotice {
+                Text(notice).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// What the session's harness doesn't record, so a missing section reads as
+/// "Gemini CLI doesn't record this" rather than as nothing happening.
+private struct HarnessCard: View {
+    let support: HarnessSupport
+
+    var body: some View {
+        if !support.gaps.isEmpty {
+            PageCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(support.title).font(.headline)
+                    Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+                        ForEach(support.gaps, id: \.feature) { gap in
+                            GridRow {
+                                Text(gap.label).foregroundStyle(gap.available ? .primary : .secondary)
+                                Text(gap.detail ?? "").foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .font(.callout)
+                    if let note = support.unverifiedNote {
+                        Text(note).font(.caption).foregroundStyle(.tertiary)
+                    }
+                }
+            }
         }
     }
 }
@@ -389,6 +421,7 @@ private struct SessionPage: View {
                         }
                     }
                 }
+                HarnessCard(support: HarnessSupport(vendor: model.state.vendor))
                 if let rebuilds = model.history?.rebuilds, !rebuilds.isEmpty {
                     PageCard {
                         VStack(alignment: .leading, spacing: 8) {

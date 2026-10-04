@@ -270,6 +270,9 @@ struct PopoverContent: View {
             .font(.caption)
             .monospacedDigit()
             .lineLimit(1)
+            if agent == nil, let notice = figures.gaugeNotice {
+                Text(notice).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
