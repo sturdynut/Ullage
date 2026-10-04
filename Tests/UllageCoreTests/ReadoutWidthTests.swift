@@ -30,7 +30,7 @@ final class ReadoutWidthTests: XCTestCase {
         let report = SaverSessionReport(sessionId: "s", cwd: nil, bashCalls: 0,
                                         usages: [broken, brokenToo, SaverUsage(saver: .caveman), idle], doubleHookedCalls: 0)
         let states: [TokenSaver: SaverSwitchState] = [.rtk: .on, .tokenade: .on, .caveman: .off, .headroom: .on]
-        let panel = SaverPanel.build(report: report, states: states, comparison: nil)
+        let panel = SaverPanel.build(report: report, states: states)
         XCTAssertEqual(Readout.line(panel.summary).hasPrefix("rtk, Tokenade not running · Headroom idle"), true)
         XCTAssertLessThanOrEqual(width(panel.summary), Self.available)
         let overlap = [Readout("rtk + Tokenade overlap", warning: true), Readout("Headroom", "idle", warning: true),

@@ -27,8 +27,10 @@ USAGE
   ullage limits [--fetch]    Plan limits left: Codex from disk; --fetch asks Anthropic for Claude's
   ullage rebuilds [session]  Turns that re-cached most of their context, and why
   ullage rebuilds --days N   Rebuilds across every session in the last N days, by cause
-  ullage savers --days N     Each token saver across every session in the last N days
-  ullage savers [session]    Token savers (rtk, Tokenade, caveman, Headroom): switched on, and what they did
+  ullage savers --days N     Each context tool across every session in the last N days
+  ullage savers [session]    Context tools (rtk, caveman, Serena, claude-mem…): switched on, and what they did
+  ullage harnesses           Every coding agent Ullage reads, and what each records
+  ullage tools               Every context tool Ullage knows, built in or from ~/.config/ullage/tools
   ullage savers enable|disable <name> [--dry-run]
                              Switch one in Claude Code's user config (applies to new sessions)
   ullage savers install|uninstall <name> [--dry-run] [--yes]
@@ -174,9 +176,10 @@ func padLeft(_ text: String, _ width: Int) -> String {
 func transcriptPaths(under url: URL) -> [String] {
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return [] }
-    guard isDirectory.boolValue else { return url.pathExtension == "jsonl" ? [url.path] : [] }
+    guard isDirectory.boolValue else { return Harness.owning(url.path) != nil ? [url.path] : [] }
     guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil) else { return [] }
-    return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }.map(\.path)
+    return enumerator.compactMap { $0 as? URL }
+        .filter { Harness.owning($0.path) != nil && Harness.databasePath($0.path) == $0.path }.map(\.path)
 }
 
 func report(_ stats: IngestStats) {
@@ -474,7 +477,7 @@ func printSaverRange(_ store: Store, days: Int) throws {
         if detail.failedRuns > 0 { facts.append("\(detail.failedRuns) runs failed") }
         if detail.mcpCalls > 0 { facts.append("\(detail.mcpCalls) MCP calls") }
         if detail.sessionsIdle > 0 { facts.append("loaded but unused in \(detail.sessionsIdle)") }
-        print("  " + pad(saver.displayName, 10) + facts.joined(separator: " · "))
+        print("  " + pad(saver.displayName, 16) + facts.joined(separator: " · "))
         if let ledger = detail.ledger {
             print("  " + pad("", 10) + "≈\(thousands(ledger.savedTokens)) saved by its own count over \(ledger.entries) commands")
         }
@@ -500,7 +503,7 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     let states = switchboard.states()
     print("SWITCHED ON IN CLAUDE CODE (user config)")
     for saver in TokenSaver.allCases {
-        print("  " + pad(saver.displayName, 10) + pad(states[saver]?.rawValue ?? "—", 15) + "shrinks " + saver.shrinks)
+        print("  " + pad(saver.displayName, 16) + pad(states[saver]?.rawValue ?? "—", 15) + "shrinks " + saver.shrinks)
     }
 
     let sessionId: String?
@@ -515,7 +518,7 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     print("")
     print("SESSION \(sessionId.prefix(8))  \(report.cwd ?? "")  ·  \(report.bashCalls) Bash calls")
     if report.visible.isEmpty {
-        print("  no token saver left a trace in this session")
+        print("  no context tool left a trace in this session")
     }
     for usage in report.visible {
         var facts: [String] = []
@@ -525,7 +528,7 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
         if usage.mcpCalls > 0 { facts.append("\(usage.mcpCalls) MCP calls") }
         if usage.idle { facts.append("configured, never called") }
         if usage.invocations > 0 { facts.append("invoked \(usage.invocations)×") }
-        print("  " + pad(usage.saver.displayName, 10) + facts.joined(separator: " · "))
+        print("  " + pad(usage.saver.displayName, 16) + facts.joined(separator: " · "))
         if usage.broken, let message = usage.failureMessage {
             print("  " + pad("", 10) + "says: " + message.replacingOccurrences(of: "\n", with: " "))
         }
@@ -540,15 +543,16 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     }
     if report.doubleHookedCalls > 0 {
         print("")
-        print("  ! \(report.doubleHookedCalls) Bash calls went through both rtk and Tokenade; their savings overlap and cannot be added")
+        let names = report.overlapping.map(\.displayName).joined(separator: " and ")
+        print("  ! \(report.doubleHookedCalls) Bash calls went through both \(names); their savings overlap and cannot be added")
     }
-    if let cwd = report.cwd,
-       let since = Calendar.current.date(byAdding: .day, value: -30, to: Date()),
-       let comparison = try store.outputComparison(cwd: cwd, since: Timestamps.string(from: since)) {
+    if let cwd = report.cwd, let since = Calendar.current.date(byAdding: .day, value: -30, to: Date()) {
+      for (tool, comparison) in try store.outputComparisons(cwd: cwd, since: Timestamps.string(from: since)).sorted(by: { $0.key.id < $1.key.id }) {
         print("")
-        print("CAVEMAN, this directory, 30 days (measured output per main-thread turn; a comparison, not a saving)")
+        print("\(tool.displayName.uppercased()), this directory, 30 days (measured output per main-thread turn; a comparison, not a saving)")
         print("  with     median \(thousands(comparison.withMedian))  over \(comparison.withTurns) turns in \(comparison.withSessions) sessions")
         print("  without  median \(thousands(comparison.withoutMedian))  over \(comparison.withoutTurns) turns in \(comparison.withoutSessions) sessions")
+      }
     }
 }
 
@@ -896,6 +900,36 @@ do {
             try printRebuilds(store, sessionPrefix: options.paths.first)
         }
 
+    case "harnesses":
+        print("HARNESSES  (what each records on disk; — = not recorded)")
+        print("  " + pad("", 20) + pad("gauge", 11) + pad("readings", 12) + pad("cache", 7) + pad("model", 7) + pad("agents", 8) + "checked on disk")
+        for harness in Harness.all {
+            let c = harness.capabilities
+            let readings: String = {
+                switch c.occupancy {
+                case .everyCall: return "every call"
+                case .perRequest: return "per request"
+                case .latestOnly: return "latest only"
+                case .approximate: return "rounded"
+                case .none: return "—"
+                }
+            }()
+            let gauge = c.hasGauge ? (c.window == .reported ? "reported" : "by model") : "—"
+            let roots = harness.roots(ProcessInfo.processInfo.environment)
+            let present = roots.contains { FileManager.default.fileExists(atPath: $0.path) }
+            print("  " + pad(harness.name, 20) + pad(gauge, 11) + pad(readings, 12) + pad(c.cacheSplit ? "yes" : "—", 7)
+                  + pad(c.model ? "yes" : "—", 7) + pad(c.subagents ? "yes" : "—", 8)
+                  + (c.verifiedOnDisk ? "yes" : "from source") + (present ? "  · found on this Mac" : ""))
+        }
+    case "tools":
+        let registry = ToolRegistry.shared
+        let builtin = Set(BuiltinTools.all.map(\.id))
+        print("CONTEXT TOOLS  (add your own: one JSON file each in \(ToolRegistry.toolsDirectory().path))")
+        for tool in registry.tools {
+            let origin = builtin.contains(tool.id) && BuiltinTools.all.contains(tool.descriptor) ? "built in" : "your file"
+            print("  " + pad(tool.id, 16) + pad(tool.kind.rawValue, 14) + pad(origin, 11) + tool.descriptor.about)
+        }
+        for problem in registry.problems { print("  ! skipped " + problem) }
     case "savers":
         let switchboard = SaverSwitchboard()
         if let verb = options.paths.first, let action = SaverAction(rawValue: verb) {

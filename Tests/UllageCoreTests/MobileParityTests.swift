@@ -141,7 +141,7 @@ final class MobileParityTests: XCTestCase {
         var idle = SaverUsage(saver: .headroom)
         idle.mcpConfigured = true
         let report = SaverSessionReport(sessionId: "s", cwd: nil, bashCalls: 0, usages: [idle], doubleHookedCalls: 0)
-        let panel = SaverPanel.build(report: report, states: [.headroom: .off], comparison: nil, installed: [.headroom])
+        let panel = SaverPanel.build(report: report, states: [.headroom: .off], installed: [.headroom])
         XCTAssertEqual(panel.rows.first?.pending, SaverPanel.offNextSession)
     }
 
@@ -164,7 +164,7 @@ final class MobileParityTests: XCTestCase {
         XCTAssertTrue(page.contains("What's an orange triangle?"))
         XCTAssertTrue(page.contains("rebuildCaused"), "marks carry their glyph so the page draws them as the chart does")
         XCTAssertEqual(HelpText.sections.map(\.title),
-                       ["The chart", "Context", "Session information", "Agents", "Token savers", "Plan limits"],
+                       ["The chart", "Context", "Session information", "Agents", "Context tools", "Plan limits"],
                        "one sheet, a section per part of the page, in page order")
         XCTAssertEqual(HelpText.chart.entries.last?.question, "What's compaction?", "compaction closes the chart's list")
         XCTAssertTrue(page.contains("id=\"explain\""), "one Explain button")

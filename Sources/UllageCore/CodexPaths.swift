@@ -31,12 +31,3 @@ public enum CodexPaths {
 
 /// Every transcript root Ullage watches: Claude Code projects plus Codex
 /// sessions. One place so the tailer, the CLI and `info` agree.
-public enum TranscriptSources {
-    public static func roots(
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> [URL] {
-        ClaudePaths.projectsDirectories(environment: environment)
-            + CodexPaths.sessionsDirectories(environment: environment)
-            + CursorPaths.projectsDirectories(environment: environment)
-    }
-}

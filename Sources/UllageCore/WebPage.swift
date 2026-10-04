@@ -74,6 +74,7 @@ public enum WebPage {
   .tick { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--bg); opacity: .9; }
   .tick.peak { background: var(--warn); opacity: .7; }
   .exact { display: flex; justify-content: space-between; color: var(--dim); font-size: 13px; }
+  .notice { margin: 6px 0 0; color: var(--dim); font-size: 13px; line-height: 1.4; }
   .exact span:last-child { color: var(--faint); }
   .cardfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
   /* Explain is a link, not a second button: Open in Claude stays the action. */
@@ -275,6 +276,7 @@ public enum WebPage {
     </div>
     <div class="track" id="track"><span class="fill" id="fill"></span></div>
     <div class="exact num"><span id="exact"></span><span id="used"></span></div>
+    <p id="notice" class="notice" hidden></p>
     <div class="chart" id="chartbox" hidden>
       <svg id="chart" viewBox="0 0 320 96" preserveAspectRatio="none" aria-label="Context per turn"></svg>
       <div class="caption num" id="caption"></div>
@@ -571,6 +573,8 @@ public enum WebPage {
       }
       el('exact').textContent = d.exactLine;
       el('used').textContent = d.usedLine || '';
+      el('notice').hidden = !d.notice;
+      el('notice').textContent = d.notice || '';
       var remote = el('remote');
       remote.hidden = !d.link;
       if (d.link) {

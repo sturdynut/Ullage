@@ -43,11 +43,18 @@ public struct SaverDetail: Equatable {
     public var failedRuns: Int
     public var failureMessage: String?
     public var mcpCalls: Int
+    /// Length estimate of what its MCP tools or Bash command returned.
+    public var resultTokens: Int = 0
+    public var bashRuns: Int = 0
+    /// Bytes its hooks injected into the context, summed over sessions.
+    public var injectedBytes: Int = 0
+    /// Sessions it injected into, for an average per session.
+    public var sessionsInjected: Int = 0
     public var invocations: Int
     public var bashCalls: Int
     public var doubleHookedCalls: Int
     public var ledger: LedgerMatch?
-    /// caveman: measured output with and without, in `comparisonFolder`.
+    /// Reply-style tools: measured output with and without, in `comparisonFolder`.
     public var comparison: OutputComparison?
     public var comparisonFolder: String?
     /// caveman: the shown session's main-thread replies, in order.
@@ -74,6 +81,10 @@ public struct SaverDetail: Equatable {
             failedRuns: usages.reduce(0) { $0 + $1.failedRuns },
             failureMessage: usages.last(where: { $0.failureMessage != nil })?.failureMessage,
             mcpCalls: usages.reduce(0) { $0 + $1.mcpCalls },
+            resultTokens: usages.reduce(0) { $0 + $1.mcpResultTokens },
+            bashRuns: usages.reduce(0) { $0 + $1.bashRuns },
+            injectedBytes: usages.reduce(0) { $0 + $1.injectedBytes },
+            sessionsInjected: usages.filter { $0.injectedBytes > 0 }.count,
             invocations: usages.reduce(0) { $0 + $1.invocations },
             bashCalls: reports.reduce(0) { $0 + $1.bashCalls },
             doubleHookedCalls: reports.reduce(0) { $0 + $1.doubleHookedCalls },
@@ -140,16 +151,16 @@ extension Store {
         var comparison: OutputComparison?
         var folder: String?
         var turns: [SaverDetail.TurnOutput] = []
-        if saver == .caveman, let sessionId {
+        if saver.kind == .replyStyle, let sessionId {
             let calls = try calls(sessionId: sessionId, scope: .mainThread)
             folder = calls.first(where: { $0.cwd != nil })?.cwd
             if let folder {
                 let days = Double(range.days ?? 30)
-                comparison = try outputComparison(cwd: folder, since: Timestamps.string(from: now.addingTimeInterval(-days * 86_400)))
+                comparison = try outputComparison(cwd: folder, since: Timestamps.string(from: now.addingTimeInterval(-days * 86_400)), tool: saver)
             }
             let events = try self.events(sessionId: sessionId, kind: EventKind.hook.rawValue)
                 + self.events(sessionId: sessionId, kind: EventKind.command.rawValue)
-            let signals = OutputComparison.signals(events: events, toolCalls: try toolCalls(sessionId: sessionId))
+            let signals = OutputComparison.signals(for: saver, events: events, toolCalls: try toolCalls(sessionId: sessionId))
             turns = SaverDetail.turns(calls: calls, signals: signals)
         }
         return SaverDetail.build(saver: saver, range: range, reports: reports,

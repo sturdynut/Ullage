@@ -72,7 +72,6 @@ public struct SaverInstallation: Equatable {
 }
 
 public struct SaverInstaller {
-    public static let cavemanPlugin = "caveman@caveman"
 
     /// Directories searched for binaries. A menu bar app launched from Finder
     /// gets a bare PATH, so the usual install locations are searched by name.
@@ -126,162 +125,120 @@ public struct SaverInstaller {
     // MARK: - What is installed
 
     public func installation(of saver: TokenSaver) -> SaverInstallation {
-        let wired = switchboard.state(of: saver) != .notInstalled
-        switch saver {
-        case .caveman:
-            return SaverInstallation(binary: nil, manager: nil, wired: wired || cavemanPluginInstalled())
-        case .rtk, .tokenade, .headroom:
-            guard let path = which(binaryName(saver)) else {
-                return SaverInstallation(binary: nil, manager: nil, wired: wired)
-            }
-            let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-            return SaverInstallation(binary: path, manager: .owning(resolvedPath: resolved), wired: wired)
+        let wired = switchboard.state(of: saver) != .notInstalled || pluginInstalled(saver)
+        guard let name = saver.descriptor.install?.binary, let path = which(name) else {
+            return SaverInstallation(binary: nil, manager: nil, wired: wired)
         }
+        let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        return SaverInstallation(binary: path, manager: .owning(resolvedPath: resolved), wired: wired)
     }
 
-    func binaryName(_ saver: TokenSaver) -> String {
-        switch saver {
-        case .rtk: return "rtk"
-        case .tokenade: return "tokenade"
-        case .headroom: return "headroom"
-        case .caveman: return "caveman"
-        }
-    }
-
-    func cavemanPluginInstalled() -> Bool {
-        guard let data = fileManager.contents(atPath: installedPluginsURL.path),
+    /// A Claude Code plugin counts as wired once installed, switched on or not.
+    func pluginInstalled(_ saver: TokenSaver) -> Bool {
+        guard !saver.descriptor.detect.plugin.isEmpty,
+              let data = fileManager.contents(atPath: installedPluginsURL.path),
               let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
         let plugins = root["plugins"] as? [String: Any] ?? root
-        return plugins.keys.contains(where: TokenSaver.caveman.matches(pluginKey:))
+        return plugins.keys.contains(where: saver.matches(pluginKey:))
     }
 
     // MARK: - Plans
 
     public func plan(_ saver: TokenSaver, _ action: SaverAction) -> InstallPlan {
         let current = installation(of: saver)
-        let tools = ["brew", "npm", "uv", "pipx", "claude", "cargo", "curl"]
-        let available = Set(tools.filter { which($0) != nil })
+        let recipe = saver.descriptor.install
+        let wanted = Set(["brew", "npm", "npx", "uv", "pipx", "claude", "cargo", "curl"]
+            + (recipe?.packages.map { $0.needs ?? $0.manager } ?? [])
+            + ((recipe?.setup ?? []) + (recipe?.teardown ?? [])).compactMap(\.needs))
+        let available = Set(wanted.filter { which($0) != nil })
         return action == .install
             ? Self.installPlan(saver, current: current, available: available)
             : Self.uninstallPlan(saver, current: current, available: available)
     }
 
-    /// Pure: the steps from what is present and which tools exist.
+    /// Pure: the tool's recipe, minus what is already there, checked against
+    /// which commands this Mac has.
     static func installPlan(_ saver: TokenSaver, current: SaverInstallation, available: Set<String>) -> InstallPlan {
+        guard let recipe = saver.descriptor.install else {
+            return InstallPlan(saver: saver, action: .install, steps: [], missing: [],
+                               notes: ["Ullage doesn't know how to install \(saver.displayName); install it yourself and it will show up here."])
+        }
         var steps: [InstallStep] = []
         var missing: [String] = []
-        var notes: [String] = []
-        switch saver {
-        case .rtk:
-            if current.binary == nil {
-                if available.contains("brew") {
-                    steps.append(InstallStep("brew install rtk", "Install rtk"))
-                } else if available.contains("curl") {
-                    steps.append(InstallStep(
-                        "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh",
-                        "Install rtk with its install script"))
-                } else {
-                    missing.append("Homebrew or curl")
-                }
-            }
-            if !current.wired {
-                steps.append(InstallStep("rtk init -g", "Add rtk's hook to Claude Code"))
-            }
-        case .tokenade:
-            if current.binary == nil {
-                if available.contains("npm") {
-                    steps.append(InstallStep("npm install -g @tokenade/cli", "Install Tokenade"))
-                } else {
-                    missing.append("npm (Node.js)")
-                }
-            }
-            if !current.wired {
-                steps.append(InstallStep("tokenade install", "Add Tokenade's hooks and MCP server"))
-                steps.append(InstallStep("tokenade login", "Sign in to a free Tokenade account (opens a browser)", interactive: true))
-                notes.append("Tokenade needs an account and sends usage totals to its dashboard.")
-            }
-        case .caveman:
-            if !current.wired {
-                if available.contains("claude") {
-                    steps.append(InstallStep("claude plugin marketplace add JuliusBrussee/caveman", "Add caveman's marketplace"))
-                    steps.append(InstallStep("claude plugin install \(cavemanPlugin)", "Install the caveman plugin"))
-                } else {
-                    missing.append("the claude CLI")
-                }
-            }
-        case .headroom:
-            if current.binary == nil {
-                if available.contains("uv") {
-                    steps.append(InstallStep("uv tool install --python 3.13 \"headroom-ai[mcp]\"", "Install Headroom"))
-                } else if available.contains("pipx") {
-                    steps.append(InstallStep("pipx install \"headroom-ai[mcp]\"", "Install Headroom"))
-                } else {
-                    missing.append("uv or pipx")
-                }
-            }
-            if !current.wired {
-                if available.contains("claude") {
-                    steps.append(InstallStep("claude mcp add --scope user headroom -- headroom mcp serve",
-                                             "Register Headroom's MCP server with Claude Code"))
-                } else {
-                    missing.append("the claude CLI")
-                }
+        if let binary = recipe.binary, current.binary == nil {
+            if let package = recipe.packages.first(where: { available.contains($0.needs ?? $0.manager) }) {
+                steps.append(InstallStep(package.command, "Install \(saver.displayName)"))
+            } else {
+                let options = recipe.packages.map { readable($0.needs ?? $0.manager) }
+                missing.append(options.isEmpty ? "a way to install \(binary)" : options.joined(separator: " or "))
             }
         }
+        if !current.wired {
+            for step in recipe.setup {
+                // The tool's own binary is the package step's job, not a prerequisite.
+                if let needs = step.needs, !available.contains(needs), needs != recipe.binary {
+                    missing.append(readable(needs))
+                }
+                steps.append(InstallStep(step.command, step.purpose, interactive: step.interactive ?? false))
+            }
+        }
+        var notes: [String] = []
         if steps.isEmpty, missing.isEmpty { notes.append("\(saver.displayName) is already installed.") }
+        if !steps.isEmpty { notes += recipe.notes }
         notes.append("Applies to Claude Code sessions started afterwards.")
-        return InstallPlan(saver: saver, action: .install, steps: steps, missing: missing, notes: notes)
+        return InstallPlan(saver: saver, action: .install, steps: steps, missing: unique(missing), notes: notes)
     }
 
     static func uninstallPlan(_ saver: TokenSaver, current: SaverInstallation, available: Set<String>) -> InstallPlan {
+        let recipe = saver.descriptor.install
         var steps: [InstallStep] = []
+        var missing: [String] = []
         var notes: [String] = []
-        switch saver {
-        case .rtk:
-            if current.binary != nil {
-                steps.append(InstallStep("rtk init -g --uninstall", "Remove rtk's hook and RTK.md from Claude Code"))
-            } else if current.wired {
-                notes.append("rtk's hook is still in settings.json but rtk itself is gone; switch it off to park the hook.")
+        for step in recipe?.teardown ?? [] {
+            let runs = step.when == "binary" ? current.binary != nil : current.wired
+            guard runs else { continue }
+            if let needs = step.needs, !available.contains(needs), needs != recipe?.binary {
+                missing.append(needs)
             }
-        case .tokenade:
-            if current.binary != nil {
-                steps.append(InstallStep("tokenade uninstall", "Remove Tokenade's hooks, MCP server and shell aliases"))
-            }
-        case .caveman:
-            if current.wired {
-                steps.append(InstallStep("claude plugin uninstall \(cavemanPlugin)", "Uninstall the caveman plugin"))
-                steps.append(InstallStep("claude plugin marketplace remove caveman", "Remove caveman's marketplace"))
-            }
-        case .headroom:
-            if current.wired {
-                steps.append(InstallStep("claude mcp remove --scope user headroom",
-                                         "Unregister Headroom's MCP server from Claude Code"))
-            }
+            steps.append(InstallStep(step.command, step.purpose, interactive: step.interactive ?? false))
+        }
+        if current.wired, current.binary == nil, recipe?.binary != nil,
+           (recipe?.teardown ?? []).allSatisfy({ $0.when == "binary" }) {
+            notes.append("\(saver.displayName)'s hook is still in Claude Code's settings but \(saver.displayName) itself is gone; switch it off to park it.")
         }
         if let binary = current.binary, let manager = current.manager {
-            let package: String
-            switch saver {
-            case .rtk: package = "rtk"
-            case .tokenade: package = "@tokenade/cli"
-            case .headroom: package = "headroom-ai"
-            case .caveman: package = ""
-            }
+            let package = recipe?.package ?? recipe?.binary ?? saver.id
+            let removal: (String, String)
             switch manager {
-            case .homebrew: steps.append(InstallStep("brew uninstall \(package)", "Remove the \(saver.displayName) binary"))
-            case .cargo: steps.append(InstallStep("cargo uninstall \(package)", "Remove the \(saver.displayName) binary"))
-            case .npm: steps.append(InstallStep("npm uninstall -g \(package)", "Remove \(saver.displayName)"))
-            case .pipx: steps.append(InstallStep("pipx uninstall \(package)", "Remove \(saver.displayName)"))
-            case .uv: steps.append(InstallStep("uv tool uninstall \(package)", "Remove \(saver.displayName)"))
-            case .script: steps.append(InstallStep("rm \(shellQuote(binary))", "Remove the \(saver.displayName) binary an install script put there"))
+            case .homebrew: removal = ("brew uninstall \(package)", "brew")
+            case .cargo: removal = ("cargo uninstall \(package)", "cargo")
+            case .npm: removal = ("npm uninstall -g \(package)", "npm")
+            case .pipx: removal = ("pipx uninstall \(package)", "pipx")
+            case .uv: removal = ("uv tool uninstall \(package)", "uv")
+            case .script: removal = ("rm \(shellQuote(binary))", "")
             }
+            if !removal.1.isEmpty, !available.contains(removal.1) { missing.append(removal.1) }
+            steps.append(InstallStep(removal.0, manager == .script
+                ? "Remove the \(saver.displayName) binary an install script put there"
+                : "Remove \(saver.displayName)"))
         }
         if steps.isEmpty { notes.append("\(saver.displayName) is not installed.") }
-        let missing = steps.compactMap { step -> String? in
-            let tool = String(step.command.split(separator: " ").first ?? "")
-            let needed = ["brew", "npm", "uv", "pipx", "claude", "cargo"]
-            return needed.contains(tool) && !available.contains(tool) ? tool : nil
+        return InstallPlan(saver: saver, action: .uninstall, steps: steps, missing: unique(missing).sorted(), notes: notes)
+    }
+
+    /// How a missing command is named to a person.
+    static func readable(_ tool: String) -> String {
+        switch tool {
+        case "brew": return "Homebrew"
+        case "npm", "npx": return "npm (Node.js)"
+        case "claude": return "the claude CLI"
+        default: return tool
         }
-        return InstallPlan(saver: saver, action: .uninstall, steps: steps, missing: Array(Set(missing)).sorted(), notes: notes)
+    }
+
+    private static func unique(_ items: [String]) -> [String] {
+        var seen = Set<String>()
+        return items.filter { seen.insert($0).inserted }
     }
 
     // MARK: - Running

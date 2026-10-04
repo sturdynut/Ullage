@@ -172,7 +172,7 @@ final class MenuBarModel: ObservableObject {
     // the 15-second refresh, and at once after a switch.
     private var saverStates: (at: Date, states: [TokenSaver: SaverSwitchState])?
     private var saverLedger: (at: Date, entries: [LedgerEntry])?
-    private var saverComparison: (at: Date, cwd: String, value: OutputComparison?)?
+    private var saverComparison: (at: Date, cwd: String, value: [TokenSaver: OutputComparison])?
     static let saverCacheInterval: TimeInterval = 60
 
     /// Writes Claude Code's user config. Only ever from the user's own click.
@@ -286,17 +286,17 @@ final class MenuBarModel: ObservableObject {
             saverLedger = (now, SaverLedgers.load(since: now.addingTimeInterval(-31 * 86_400)))
         }
         let report = try sessionId.map { try store.saverReport(sessionId: $0, ledger: saverLedger?.entries ?? []) }
-        var comparison: OutputComparison?
+        var comparison: [TokenSaver: OutputComparison] = [:]
         if let cwd = report?.cwd {
             if let cached = saverComparison, cached.cwd == cwd, now.timeIntervalSince(cached.at) < Self.saverCacheInterval * 5 {
                 comparison = cached.value
             } else {
                 let since = Timestamps.string(from: now.addingTimeInterval(-30 * 86_400))
-                comparison = try store.outputComparison(cwd: cwd, since: since)
+                comparison = try store.outputComparisons(cwd: cwd, since: since)
                 saverComparison = (now, cwd, comparison)
             }
         }
-        savers = SaverPanel.build(report: report, states: saverStates?.states ?? [:], comparison: comparison,
+        savers = SaverPanel.build(report: report, states: saverStates?.states ?? [:], comparisons: comparison,
                                   installed: Set(saverInstalls.filter { $0.value.isInstalled }.keys),
                                   pending: saverPending.merging(saverResults) { _, result in result },
                                   undoable: Set(saverUndo.keys))

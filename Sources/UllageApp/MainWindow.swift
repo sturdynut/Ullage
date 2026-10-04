@@ -16,7 +16,7 @@ enum MainPage: String, CaseIterable, Identifiable, Hashable {
         case .composition: return "Context"
         case .session: return "Session"
         case .agents: return "Agents"
-        case .savers: return "Token savers"
+        case .savers: return "Context tools"
         case .history: return "History"
         case .limits: return "Plan limits"
         }
@@ -52,7 +52,7 @@ struct MainWindow: View {
                             if page == .savers, model.savers.rows.contains(where: \.statusIsWarning) {
                                 Spacer()
                                 Circle().fill(Color.orange).frame(width: 7, height: 7)
-                                    .help("A token saver needs a look")
+                                    .help("A context tool needs a look")
                             }
                         }
                     } icon: {
@@ -181,7 +181,7 @@ private struct OverviewPage: View {
                         SummaryCard(title: "Agents", page: .agents, model: model) { ReadoutLine(tree.summary) }
                     }
                     if !model.savers.isEmpty {
-                        SummaryCard(title: "Token savers", page: .savers, model: model) { ReadoutLine(model.savers.summary) }
+                        SummaryCard(title: "Context tools", page: .savers, model: model) { ReadoutLine(model.savers.summary) }
                     }
                     if !model.planLimits.isEmpty {
                         SummaryCard(title: "Plan limits", page: .limits, model: model) {
@@ -233,6 +233,38 @@ private struct Headline: View {
                          peak: model.history.flatMap { history in
                              figures.windowLimit.map { Double(history.peakContextTokens) / Double($0) }
                          })
+            if let notice = figures.gaugeNotice {
+                Text(notice).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// What the session's harness doesn't record, so a missing section reads as
+/// "Gemini CLI doesn't record this" rather than as nothing happening.
+private struct HarnessCard: View {
+    let support: HarnessSupport
+
+    var body: some View {
+        if !support.gaps.isEmpty {
+            PageCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(support.title).font(.headline)
+                    Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+                        ForEach(support.gaps, id: \.feature) { gap in
+                            GridRow {
+                                Text(gap.label).foregroundStyle(gap.available ? .primary : .secondary)
+                                Text(gap.detail ?? "").foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .font(.callout)
+                    if let note = support.unverifiedNote {
+                        Text(note).font(.caption).foregroundStyle(.tertiary)
+                    }
+                }
+            }
         }
     }
 }
@@ -389,6 +421,7 @@ private struct SessionPage: View {
                         }
                     }
                 }
+                HarnessCard(support: HarnessSupport(vendor: model.state.vendor))
                 if let rebuilds = model.history?.rebuilds, !rebuilds.isEmpty {
                     PageCard {
                         VStack(alignment: .leading, spacing: 8) {

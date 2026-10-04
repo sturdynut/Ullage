@@ -126,11 +126,19 @@ public enum HelpText {
     )
 
     public static let savers = HelpTopic(
-        title: "Token savers",
-        intro: "Tools that try to reduce token use.",
+        title: "Context tools",
+        intro: "Tools that keep the context window smaller.",
         entries: [
             HelpEntry("What do these tools do?",
-                      answer: "rtk and Tokenade shrink command output before the model reads it. caveman makes the model's replies shorter. Headroom compresses content when the model asks it to."),
+                      answer: "rtk and Tokenade shrink command output before the model reads it. caveman makes the model's replies shorter. Headroom compresses content when the model asks. Serena, codegraph and claude-context let the model look up code instead of reading whole files. claude-mem carries notes from past sessions into new ones."),
+            HelpEntry("What do \"lookups\" mean?",
+                      answer: "How many times the model used a code search tool, and roughly how much those lookups returned.",
+                      why: "A lookup that returns a few hundred tokens can replace reading a file of several thousand."),
+            HelpEntry("What does \"injected\" mean?",
+                      answer: "Roughly how much a memory tool added to the context when the session started. It's estimated from the text's length.",
+                      why: "It's sent with every turn after that, so it costs space for the whole session."),
+            HelpEntry("Can I add a tool that isn't listed?",
+                      answer: "Yes. Describe it in a JSON file in ~/.config/ullage/tools, and Ullage detects it, measures it and can switch it. Run ullage tools to check it loaded."),
             HelpEntry("What does a switch do?",
                       answer: "It turns the tool on or off in Claude Code's settings. The change applies to new sessions. Undo reverses it."),
             HelpEntry("Can I trust \"≈ saved\"?",

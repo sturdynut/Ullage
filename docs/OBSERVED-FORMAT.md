@@ -329,6 +329,16 @@ written as its own line, `type: "attachment"`:
   "not in PATH" on stderr as a failure.
 - Stored as `event` rows of kind `hook`; the detail keeps the command, ids, exit
   code, rewrite and the first 300 bytes of stderr, never stdout.
+- **Parser v8:** what a hook *added to the context* is kept as a size,
+  `injected` (bytes): `hookSpecificOutput.additionalContext` when stdout is
+  JSON, or the whole stdout of a `SessionStart` / `UserPromptSubmit` hook, which
+  Claude Code adds to the context as is. Other events' plain stdout is not
+  context. This is how a memory tool (claude-mem's SessionStart `context` hook)
+  is measured. The text itself is never stored.
+- MCP servers a plugin ships are named `plugin_<plugin>_<server>`, so tools
+  appear as `mcp__plugin_claude-mem_mcp-search__search`. Inferred from Claude
+  Code's naming, not yet seen on this machine; descriptors match unanchored for
+  that reason.
 
 A slash command is a `type: "user"` line whose content *starts* with the tags:
 

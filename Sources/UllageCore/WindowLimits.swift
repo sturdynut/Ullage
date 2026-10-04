@@ -45,6 +45,13 @@ public enum WindowLimits {
         return longestPrefixMatch(normalized) != nil
     }
 
+    /// The window when the model is in the table, else nil. Harnesses that
+    /// run arbitrary providers use this: a fallback window for a model Ullage
+    /// doesn't know would be a guessed percentage (rule 3).
+    public static func knownLimit(for model: String?) -> Int? {
+        isKnown(model) || model.flatMap(bracketSuffix).flatMap({ suffixLimits[$0] }) != nil ? limit(for: model) : nil
+    }
+
     public static func limit(for model: String?) -> Int {
         guard let raw = model, !raw.isEmpty else { return fallback }
         if let suffix = bracketSuffix(raw), let limit = suffixLimits[suffix] { return limit }
@@ -52,7 +59,18 @@ public enum WindowLimits {
         return longestPrefixMatch(normalized) ?? fallback
     }
 
+    /// Claude by family prefix (observed sessions), then everything else from
+    /// models.dev by exact id or a dated snapshot of one.
     private static func longestPrefixMatch(_ normalized: String) -> Int? {
+        claudePrefixMatch(normalized) ?? ModelWindows.table[normalized] ?? ModelWindows.table[undated(normalized)]
+    }
+
+    /// `gpt-4o-2024-08-06` → `gpt-4o`; `o3-20250416` → `o3`.
+    static func undated(_ id: String) -> String {
+        id.replacingOccurrences(of: #"-(\d{4}-\d{2}-\d{2}|\d{8})$"#, with: "", options: .regularExpression)
+    }
+
+    private static func claudePrefixMatch(_ normalized: String) -> Int? {
         var best: (key: String, limit: Int)?
         for (key, limit) in table where normalized.hasPrefix(key) {
             if best == nil || key.count > best!.key.count {
@@ -83,6 +101,8 @@ public enum WindowLimits {
         if let colon = s.firstIndex(of: ":") { s = String(s[s.startIndex..<colon]) }
         if s.hasSuffix("-v1") { s = String(s.dropLast(3)) }
         if s.hasSuffix("@") { s = String(s.dropLast()) }
+        // Gateways write versions with dots (`claude-sonnet-4.5`, `gemini-2.5-pro`).
+        s = s.replacingOccurrences(of: ".", with: "-")
         return s.isEmpty ? nil : s
     }
 }

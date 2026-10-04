@@ -97,10 +97,26 @@ public struct ServeDetail: Codable, Equatable {
     public var headroom: String
     public var exactLine: String
     public var usedLine: String?
+    /// Why there's no gauge, for a harness that can't have one.
+    public var notice: String?
     public var occupancy: Double?
     public var peakOccupancy: Double?
     public var chart: Chart?
     public var sections: [Section]
+}
+
+extension ServeDetail {
+    /// What this session's harness doesn't record, one row each.
+    static func harnessSection(_ support: HarnessSupport) -> Section {
+        let missing = support.gaps.filter { !$0.available }.count
+        var section = Section(
+            id: "harness", title: support.title,
+            summary: [missing > 0 ? Readout("not recorded", "\(missing)") : Readout("partly recorded", "\(support.gaps.count)")],
+            groups: [Group(heading: nil, rows: support.gaps.map { Row(label: $0.label, value: $0.detail ?? "") })]
+        )
+        section.legend = support.unverifiedNote.map { [$0] }
+        return section
+    }
 }
 
 extension ServeDetail {
@@ -122,6 +138,8 @@ extension ServeDetail {
                                     .map { Row(label: $0.label, value: $0.value) })]))
         if !tree.isEmpty { sections.append(agentsSection(tree, state: state, history: history)) }
         if let savers { sections.append(saversSection(try savers.panel(store: store, sessionId: sessionId, now: now))) }
+        let support = HarnessSupport(vendor: call.vendor)
+        if !support.gaps.isEmpty { sections.append(harnessSection(support)) }
         let limits = PlanLimitFormatter.displays(for: try store.planLimits(), now: now)
         if !limits.isEmpty { sections.append(try limitsSection(limits, store: store, now: now)) }
 
@@ -138,6 +156,7 @@ extension ServeDetail {
             headroom: figures.headroom,
             exactLine: figures.exactLine,
             usedLine: figures.usedLine,
+            notice: figures.gaugeNotice,
             occupancy: state.occupancy,
             peakOccupancy: peak,
             chart: Chart(
@@ -236,7 +255,7 @@ extension ServeDetail {
 
     static func saversSection(_ panel: SaverPanel) -> Section {
         Section(
-            id: "savers", title: "Token savers", summary: panel.summary,
+            id: "savers", title: "Context tools", summary: panel.summary,
             warning: panel.warning,
             groups: panel.pendingInstalls.isEmpty ? [] : [Group(heading: nil, rows: panel.pendingInstalls.map { Row(label: $0) })],
             savers: panel.rows.map {
