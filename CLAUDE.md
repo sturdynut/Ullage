@@ -158,6 +158,12 @@ plausible and are wrong.
 - **Window-less rows never drive the gauge.** `latestCall()` filters
   `window_limit IS NOT NULL` so a Cursor session cannot hijack the menu bar
   percentage, while still appearing in `sessions` and history.
+- **The popover is a glance; the main window is everything.** The popover is
+  the headline, bar, chart and one row per section; a row opens that section's
+  page in `MainWindow` (Overview, Context composition, Session, Agents, Token
+  savers, History, Plan limits). Nothing expands inline in the popover. The
+  phone page has the same structure: an Overview of rows, each sliding its page
+  in, with `#page=<id>` in the address so Back closes it.
 - **Logic in Core, not in views.** A rule that decides what to show is written
   and tested in `UllageCore`; SwiftUI only renders it. Hence `MenuBarState`,
   `SessionHistory`, `Composition` as plain structs — and `CompositionTreemap`,

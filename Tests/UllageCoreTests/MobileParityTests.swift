@@ -169,6 +169,8 @@ final class MobileParityTests: XCTestCase {
         XCTAssertEqual(HelpText.chart.entries.last?.question, "What's compaction?", "compaction closes the chart's list")
         XCTAssertTrue(page.contains("id=\"explain\""), "one Explain button")
         XCTAssertFalse(page.contains("class=\"info\""), "no per-section links left")
+        XCTAssertTrue(page.contains("id=\"page\""), "sections open as pages, as in the window")
+        XCTAssertFalse(page.contains("<details data-id"), "no collapsible sections on the overview")
         XCTAssertFalse(HelpText.json.contains("</"), "cannot close the script tag it sits in")
     }
 }
