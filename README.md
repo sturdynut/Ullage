@@ -39,7 +39,13 @@ commands, in Terminal, after showing them to you.
 
 <div align="center">
 
-<img src="docs/screenshots/popover.png" alt="The Ullage popover: the Ullage session with its path and claude-opus-5-5 · medium, 227k left in a 1M window over a bar at 77% used with Open in Claude beside it; the context-per-turn chart with grey and orange cache-rebuild triangles; then Context (Baseline 52k, Tools ≈122k, Output 467k, Other ≈129k), Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits, each collapsed to one line; History and Explain at the bottom" width="360">
+<img src="docs/screenshots/popover.png" alt="The Ullage popover: a session with 360k left of a 1M window, 63% used, Open in Claude, the context-per-turn chart with a compaction and cache-rebuild triangles, then one line each for Context, Session information, Agents, Context tools and Plan limits, with Open Ullage and Explain at the bottom" width="360">
+
+</div>
+
+<div align="center">
+
+<img src="docs/screenshots/main-window.png" alt="The main window: a sidebar of Overview, Context, Session, Agents, Context tools, History and Plan limits; the Overview shows the session headline and bar, a large context-per-turn chart, and cards for each section" width="760">
 
 </div>
 
