@@ -198,7 +198,7 @@ final class HarnessOpenCodeTests: XCTestCase {
         XCTAssertEqual(child.first?.agentId, "ses_child")
         XCTAssertEqual(child.first?.agent, "explore")
         XCTAssertEqual(child.first?.contextTokens, 5)
-        XCTAssertNil(child.first?.windowLimit, "unknown model gets no window, never the fallback")
+        XCTAssertEqual(child.first?.windowLimit, WindowLimits.knownLimit(for: child.first?.model), "window only from a known model, never the fallback")
         XCTAssertTrue(try store.calls(sessionId: "ses_child", scope: .all).isEmpty)
 
         let agents = try store.agents(sessionId: "ses_root")

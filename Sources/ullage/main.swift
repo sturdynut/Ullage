@@ -29,6 +29,7 @@ USAGE
   ullage rebuilds --days N   Rebuilds across every session in the last N days, by cause
   ullage savers --days N     Each token saver across every session in the last N days
   ullage savers [session]    Context tools (rtk, caveman, Serena, claude-mem…): switched on, and what they did
+  ullage harnesses           Every coding agent Ullage reads, and what each records
   ullage tools               Every context tool Ullage knows, built in or from ~/.config/ullage/tools
   ullage savers enable|disable <name> [--dry-run]
                              Switch one in Claude Code's user config (applies to new sessions)
@@ -899,6 +900,27 @@ do {
             try printRebuilds(store, sessionPrefix: options.paths.first)
         }
 
+    case "harnesses":
+        print("HARNESSES  (what each records on disk; — = not recorded)")
+        print("  " + pad("", 20) + pad("gauge", 11) + pad("readings", 12) + pad("cache", 7) + pad("model", 7) + pad("agents", 8) + "checked on disk")
+        for harness in Harness.all {
+            let c = harness.capabilities
+            let readings: String = {
+                switch c.occupancy {
+                case .everyCall: return "every call"
+                case .perRequest: return "per request"
+                case .latestOnly: return "latest only"
+                case .approximate: return "rounded"
+                case .none: return "—"
+                }
+            }()
+            let gauge = c.hasGauge ? (c.window == .reported ? "reported" : "by model") : "—"
+            let roots = harness.roots(ProcessInfo.processInfo.environment)
+            let present = roots.contains { FileManager.default.fileExists(atPath: $0.path) }
+            print("  " + pad(harness.name, 20) + pad(gauge, 11) + pad(readings, 12) + pad(c.cacheSplit ? "yes" : "—", 7)
+                  + pad(c.model ? "yes" : "—", 7) + pad(c.subagents ? "yes" : "—", 8)
+                  + (c.verifiedOnDisk ? "yes" : "from source") + (present ? "  · found on this Mac" : ""))
+        }
     case "tools":
         let registry = ToolRegistry.shared
         let builtin = Set(BuiltinTools.all.map(\.id))

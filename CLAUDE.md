@@ -36,17 +36,35 @@ reimplements an installer.
 
 ### Harness support
 
-| Harness | Reads | Occupancy | Notes |
-|---|---|---|---|
-| Claude Code | `~/.claude/projects/**/*.jsonl` | exact | Window from `WindowLimits` lookup; subagents included, each its own window |
-| OpenAI Codex CLI | `~/.codex/sessions/**/*.jsonl` | exact | Window reported per turn, no lookup |
-| Cursor | `~/.cursor/**/agent-transcripts/**/*.jsonl` | **none** | Activity only; stores no tokens/window/model/timestamps |
+Eighteen harnesses, each a `Harness` adapter (`Harness.swift`, one file per
+harness in `Sources/UllageCore/Harnesses/`, a write-up in `docs/harnesses/`).
+`ullage harnesses` prints what each records. The exact ones, verified on disk:
 
-Not supported: GitHub Copilot, Zed, Aider, Gemini, and every cloud/web session
-of any harness. **The rule that predicts supportability:** local-first CLI
-agents write the API usage block and context window into their transcripts
-because they need them offline; subscription-metered IDEs compute usage
-server-side and keep only conversation content locally.
+| Harness | Reads | Occupancy |
+|---|---|---|
+| Claude Code | `~/.claude/projects/**/*.jsonl` | every call; window by model lookup |
+| OpenAI Codex CLI | `~/.codex/sessions/**/*.jsonl` | every call; window reported |
+| Cursor | `~/.cursor/**/agent-transcripts/**/*.jsonl` | **none**, activity only |
+
+Read from each tool's own source code, not yet seen on a real Mac: OpenCode,
+Pi, Amp, Gemini CLI, Qwen Code, Goose, Cline, Roo Code, Kilo Code (every call);
+Copilot in VS Code (per request); Crush (latest turn only); Aider (rounded, so
+estimated, no gauge); Factory Droid, Copilot CLI, Zed (activity only). Not read
+at all: Kiro, Continue, Windsurf, Warp and every cloud/web session
+(`docs/harnesses/unsupported.md`). **The rule that predicts supportability:**
+local-first CLI agents write the API usage block into their transcripts because
+they need it offline; subscription-metered IDEs keep usage on their servers.
+
+- **A harness says what it can't do.** `HarnessCapabilities` is honest per
+  harness, and `HarnessSupport` turns it into "What <harness> records" on the
+  Session page and the phone, and a notice in place of a gauge. Nothing
+  downstream checks which harness it is.
+- **Windows for non-Claude models come from models.dev**, generated into
+  `ModelWindows.swift` by `scripts/model-windows.py`: prompt capacity
+  (`limit.input`, else `limit.context`), matched exactly or by dated snapshot,
+  never by prefix. An unknown model gets no window, never the fallback.
+- **Claude doesn't claim a `.jsonl` inside another harness's folder**
+  (OpenCode's data folder holds git checkouts and trace logs).
 
 ## Quick start
 
@@ -278,7 +296,9 @@ plausible and are wrong.
 
 ## Adding a new harness
 
-Done twice (Codex, Cursor); follow the same path.
+Follow the brief the eighteen were built from: read the harness's own writer
+code first and cite it, map to the four counters (rule 2), set capabilities
+honestly, and add one line to `HarnessRegistry.extra`.
 
 1. **Investigate before coding.** Find the harness's local data and answer one
    question: *does it record per-turn prompt tokens and the context window?*

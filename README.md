@@ -8,10 +8,11 @@
 
 </div>
 
-Ullage watches your Claude Code and OpenAI Codex CLI session transcripts, keeps
-every API call in a local SQLite database, and shows the context window's fill
-level as a percentage in the macOS menu bar. It also lists Cursor agent activity,
-though Cursor records no token counts locally so it has no fill percentage. Click it to break the current session down turn by turn
+Ullage watches your coding agents' session transcripts (Claude Code, Codex,
+Gemini CLI, OpenCode, Cline, Copilot and a dozen more), keeps every API call in a
+local SQLite database, and shows the context window's fill level as a percentage
+in the macOS menu bar. Where an agent doesn't record token counts locally
+(Cursor, Zed, Copilot CLI), Ullage lists its activity and says what's missing. Click it to break the current session down turn by turn
 and see what is actually taking up the window. A separate history window charts
 your activity across days and projects.
 
@@ -487,17 +488,16 @@ no window; there is no percentage to compute for a Cursor session.
 
 ## Current limitations
 
-- **Full support for two harnesses: Claude Code and the OpenAI Codex CLI.**
-  Ullage reads Claude Code's `~/.claude/projects` transcripts and Codex's
-  `~/.codex/sessions` rollouts, both with exact occupancy. The `vendor` and
-  `confidence` columns keep each harness's numbers distinct.
-- **Cursor is activity-only.** Cursor is a server-backed IDE: its token and
-  context accounting lives on Cursor's servers, and the local agent transcripts
-  (`~/.cursor/**/agent-transcripts`) hold conversation content but no token
-  counts, model, window, or timestamps. Ullage lists Cursor sessions with their
-  turn and tool counts (timed by the file, `confidence = unmeasured`) but shows
-  no occupancy, and a Cursor session never drives the menu bar gauge. GitHub
-  Copilot, Aider, and the rest are not read at all.
+- **Eighteen harnesses, three checked on real files.** Claude Code and Codex are
+  exact and verified; Cursor is activity only (its token accounting lives on
+  Cursor's servers). OpenCode, Pi, Amp, Gemini CLI, Qwen Code, Goose and Cline,
+  Roo Code and Kilo Code record every call; Copilot in VS Code one reading per
+  request; Crush the latest turn; Aider rounded figures (shown as estimates, no
+  gauge); Factory Droid, Copilot CLI and Zed activity only. Those fifteen are
+  read from each tool's own source code and haven't been checked against real
+  sessions yet; each session says so, and says what its harness doesn't record.
+  `ullage harnesses` lists them all. Kiro, Continue, Windsurf, Warp and cloud
+  sessions are not read (`docs/harnesses/unsupported.md`).
 - **Cloud and web sessions are invisible.** Both harnesses can run in the cloud
   (Claude Code on the web, Codex cloud tasks); those transcripts stay on the
   server with no public per-session usage API, so only sessions that write to
