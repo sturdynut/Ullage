@@ -158,6 +158,12 @@ plausible and are wrong.
 - **Window-less rows never drive the gauge.** `latestCall()` filters
   `window_limit IS NOT NULL` so a Cursor session cannot hijack the menu bar
   percentage, while still appearing in `sessions` and history.
+- **The popover is a glance; the main window is everything.** The popover is
+  the headline, bar, chart and one row per section; a row opens that section's
+  page in `MainWindow` (Overview, Context, Session, Agents, Token
+  savers, History, Plan limits). Nothing expands inline in the popover. The
+  phone page has the same structure: an Overview of rows, each sliding its page
+  in, with `#page=<id>` in the address so Back closes it.
 - **Logic in Core, not in views.** A rule that decides what to show is written
   and tested in `UllageCore`; SwiftUI only renders it. Hence `MenuBarState`,
   `SessionHistory`, `Composition` as plain structs — and `CompositionTreemap`,
@@ -293,6 +299,23 @@ Work on a branch; open a PR into `main` and merge it. The repo's own default
 branch is `claude/two-slices-link-empty-repo-51t02z`, but `main` is kept current
 — update both when they diverge. Reinstall with `scripts/install-app.sh` after
 any app change so what is running matches what is committed.
+
+## Releasing
+
+Homebrew installs from `sturdynut/homebrew-tap` (`Formula/ullage.rb`), which
+builds a tagged release from source. To release:
+
+1. Merge to `main`, then `git tag -a vX.Y.Z -m "Ullage X.Y.Z"`, push the tag,
+   and `gh release create vX.Y.Z`.
+2. `curl -sL https://github.com/sturdynut/Ullage/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256`.
+3. In the tap, set the formula's `url` and `sha256`, then
+   `brew audit --strict --online sturdynut/tap/ullage` and
+   `brew reinstall --build-from-source sturdynut/tap/ullage && brew test sturdynut/tap/ullage`.
+
+The formula builds with `--disable-sandbox` (SwiftPM's sandbox can't start
+inside Homebrew's) and bundles the app with `scripts/bundle-app.sh`, the same
+script `install-app.sh` uses. Its `license` is `:cannot_represent`: PolyForm
+Shield isn't in Homebrew's SPDX list.
 
 ## Layout
 

@@ -80,7 +80,7 @@ public enum HelpText {
     )
 
     public static let composition = HelpTopic(
-        title: "Context composition",
+        title: "Context",
         intro: "What's in the context window right now.",
         entries: [
             HelpEntry("What's the baseline?",
