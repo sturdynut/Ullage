@@ -121,7 +121,7 @@ public typealias TranscriptFormat = Harness
 
 /// Where harnesses beyond the first three register; one line each.
 enum HarnessRegistry {
-    static let extra: [Harness] = [.opencode, .droid, .pi, .amp, .geminiCLI, .qwenCode, .copilotVSCode, .copilotCLI]
+    static let extra: [Harness] = [.opencode, .droid, .pi, .amp, .geminiCLI, .qwenCode, .copilotVSCode, .copilotCLI, .zed, .aider, .goose, .crush]
 }
 
 /// What a harness writes down, so each part of Ullage can say plainly when a
