@@ -212,7 +212,7 @@ public enum WebPage {
     flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
     padding: 4px 16px max(28px, env(safe-area-inset-bottom));
   }
-  .sheetbody > div { max-width: 640px; margin: 0 auto; }
+  .sheetbody > div { max-width: 640px; margin: 0 auto; min-width: 0; }
   body.sheet-open { overflow: hidden; }
   #help p { font-size: 14px; color: var(--dim); margin: 6px 0; line-height: 1.45; }
   #help ul { margin: 6px 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
@@ -237,6 +237,63 @@ public enum WebPage {
   #help .ans p { margin: 0 0 6px; color: var(--ink); }
   #help .ans .why { color: var(--dim); }
   footer { margin-top: 26px; color: var(--quiet); font-size: 12px; }
+  /* The usage dashboard: its own sheet, like help, so the gauge behind it
+     keeps its place. Everything in it is drawn from dashboard.json. */
+  .dashlink {
+    display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 14px; text-align: left;
+    font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 12px; padding: 12px 15px; cursor: pointer; min-height: 44px;
+  }
+  .dashlink b { font-weight: 650; }
+  .dashlink span { flex: 1; color: var(--dim); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dashlink::after { content: '›'; color: var(--faint); font-size: 18px; }
+  #dash .ctls { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 14px; }
+  #dash .segs { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .seg { display: inline-flex; flex: none; border: 1px solid var(--rule); border-radius: 9px; overflow: hidden; background: var(--panel); }
+  .seg button {
+    font: inherit; font-size: 13px; border: 0; border-left: 1px solid var(--rule); background: none;
+    color: var(--ink); padding: 0 11px; min-height: 34px; cursor: pointer; white-space: nowrap;
+  }
+  .seg button:first-child { border-left: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .seg button:disabled { opacity: .4; cursor: default; }
+  .seg .lbl { font-size: 11px; color: var(--faint); padding: 0 4px 0 9px; align-self: center; text-transform: uppercase; letter-spacing: .08em; }
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  @media (min-width: 620px) { .tiles.key { grid-template-columns: repeat(4, minmax(0, 1fr)); } .tiles.more { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .tile { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 11px 12px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .tile .k { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); font-weight: 650; }
+  /* Two lines held for every key title, so the four values share a baseline
+     whether or not their title wraps. */
+  .tiles.key .tile .k { min-height: 2.7em; }
+  .tile .v { font-size: 24px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .tile .s { font-size: 12px; color: var(--dim); }
+  .tile .c { font-size: 12px; color: var(--faint); }
+  .tile .c b { font-weight: 650; }
+  .tile .c b.up { color: var(--warn); } .tile .c b.down { color: var(--fill); } .tile .c b.flat { color: var(--dim); }
+  .tile .why { font-size: 11.5px; color: var(--faint); border-top: 1px solid var(--rule); margin-top: 6px; padding-top: 6px; line-height: 1.35; }
+  #dash details.moretiles { border: 0; padding: 4px 0 0; }
+  #dash details.moretiles > summary { color: var(--accent); font-size: 14px; font-weight: 600; min-height: 40px; display: flex; align-items: center; gap: 6px; }
+  #dash details.moretiles > summary::before { content: '›'; transition: transform .15s; }
+  #dash details.moretiles[open] > summary::before { transform: rotate(90deg); }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule); overflow-x: auto; margin-top: 10px; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button {
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--dim); background: none; border: 0;
+    border-bottom: 2px solid transparent; padding: 0 8px; min-height: 42px; white-space: nowrap; cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  .pane { padding-top: 12px; }
+  .pane h4 { font-size: 12px; font-weight: 600; color: var(--dim); margin: 16px 0 4px; }
+  .pane h4:first-child { margin-top: 0; }
+  .pane svg { display: block; width: 100%; }
+  .pane svg text { fill: var(--faint); font-size: 10px; font-family: inherit; font-variant-numeric: tabular-nums; }
+  .pane .note { font-size: 12px; color: var(--faint); margin: 6px 0 0; }
+  .pill { font-size: 11px; color: var(--dim); border: 1px solid var(--rule); border-radius: 99px; padding: 0 6px; margin-left: 6px; }
+  .pill.hot { color: var(--warn); border-color: var(--warn); }
+  .est { font-size: 10px; color: var(--c-other); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; margin-left: 6px; letter-spacing: .04em; }
+  .meter { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--rule); margin: 4px 0; }
+  .meter i { display: block; height: 100%; }
+  .empty { color: var(--faint); font-size: 14px; padding: 20px 0; text-align: center; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -276,11 +333,29 @@ public enum WebPage {
     <button id="alerts-button" hidden></button>
   </div>
 
+  <button class="dashlink" id="open-dash" aria-haspopup="dialog"><b>Usage dashboard</b><span>Rates, the typical session, peak fill</span></button>
+
   <h2>Sessions</h2>
   <ol id="sessions"></ol>
 
   <footer id="foot"></footer>
 </main>
+
+<section id="dash" class="sheet" role="dialog" aria-modal="true" aria-labelledby="dash-title" aria-hidden="true">
+  <header class="sheethead">
+    <h3 id="dash-title">Usage</h3>
+    <button class="done" id="dash-close">Done</button>
+  </header>
+  <div class="sheetbody" id="dash-scroll">
+    <div>
+      <div class="ctls">
+        <div class="segs"><div class="seg" id="d-vendor"></div><div class="seg" id="d-days"></div></div>
+        <div class="segs"><div class="seg" id="d-counter"></div><div class="seg" id="d-gap"></div></div>
+      </div>
+      <div id="dash-body"><p class="empty">Loading…</p></div>
+    </div>
+  </div>
+</section>
 
 <section id="help" class="sheet" role="dialog" aria-modal="true" aria-labelledby="help-title" aria-hidden="true">
   <header class="sheethead">
@@ -628,6 +703,213 @@ public enum WebPage {
     if (b.dataset.plan) { confirmPlan(b.dataset.plan, b.dataset.kind); return; }
     if (b.dataset.saver) { act(b.dataset.saver, b.dataset.action); }
   });
+
+  // ---- Usage dashboard ----------------------------------------------------
+  // Its own sheet over the gauge. Every figure, label and ranking arrives
+  // decided and formatted in dashboard.json (ServeDashboard, from the same
+  // UsageDashboard as the Mac window); this only lays them out and draws
+  // two charts from the numbers it was given.
+
+  var DASH = { vendor: 'claude-code', counter: 'output', days: '30', gap: '30', tab: 'weekly', rank: 'total', more: false };
+  try { var savedDash = JSON.parse(localStorage.getItem('ullage.dash') || '{}'); for (var k in savedDash) DASH[k] = savedDash[k]; } catch (e) {}
+  function saveDash() { try { localStorage.setItem('ullage.dash', JSON.stringify(DASH)); } catch (e) {} }
+  var dashData = null, dashSeq = 0, dashTimer = null;
+  var TABS = [['weekly', 'Weekly'], ['sessions', 'Sessions'], ['context', 'Context'], ['projects', 'Projects'], ['tools', 'Tools']];
+
+  function segHTML(choices, key, label, disabled) {
+    return (label ? '<span class="lbl">' + esc(label) + '</span>' : '') + choices.map(function (c) {
+      return '<button type="button" data-key="' + key + '" data-v="' + esc(c.id) + '" aria-pressed="' + (DASH[key] === c.id) + '"' +
+        (disabled ? ' disabled' : '') + '>' + esc(c.label) + '</button>';
+    }).join('');
+  }
+
+  function tileHTML(t) {
+    return '<div class="tile"><span class="k">' + esc(t.title) + '</span><span class="v">' + esc(t.value) + '</span>' +
+      '<span class="s">' + esc(t.detail) + '</span>' +
+      (t.change ? '<span class="c"><b class="' + esc(t.direction) + '">' + esc(t.change) + '</b> ' + esc(t.caption) + '</span>' : '') +
+      (t.why ? '<span class="why">' + esc(t.why) + '</span>' : '') + '</div>';
+  }
+
+  function niceTop(v) {
+    if (!(v > 0)) return 1;
+    var e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
+  }
+
+  // Weekly bars, one scale; the rate gets a chart of its own rather than a
+  // second axis on this one.
+  function barsSVG(values, labels, color, fmt, height) {
+    var W = 340, H = height || 150, pl = 34, pb = 18, pt = 12, iw = W - pl - 4, ih = H - pt - pb;
+    var top = niceTop(Math.max.apply(null, values.concat([0])));
+    var bw = iw / Math.max(values.length, 1), g = '';
+    for (var i = 0; i <= 2; i++) {
+      var y = pt + ih - ih * i / 2;
+      g += '<line x1="' + pl + '" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--rule)"/>' +
+        '<text x="' + (pl - 4) + '" y="' + (y + 3) + '" text-anchor="end">' + fmt(top * i / 2) + '</text>';
+    }
+    values.forEach(function (v, i) {
+      var h = ih * v / top;
+      g += '<rect x="' + (pl + i * bw + bw * .15).toFixed(1) + '" y="' + (pt + ih - h).toFixed(1) + '" width="' + Math.max(1, bw * .7).toFixed(1) +
+        '" height="' + h.toFixed(1) + '" rx="2" fill="' + color + '"' + (i === values.length - 1 ? '' : ' opacity=".6"') + '/>';
+    });
+    var step = Math.ceil(labels.length / 5);
+    labels.forEach(function (l, i) {
+      if (i % step === 0 || i === labels.length - 1) g += '<text x="' + (pl + i * bw + bw / 2).toFixed(1) + '" y="' + (H - 4) + '" text-anchor="middle">' + esc(l) + '</text>';
+    });
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' + g + '</svg>';
+  }
+
+  function lineSVG(values, labels, color, fmt) {
+    var W = 340, H = 120, pl = 34, pb = 18, pt = 10, iw = W - pl - 8, ih = H - pt - pb;
+    var real = values.filter(function (v) { return v != null; });
+    if (!real.length) return '<p class="note">No week had 10 active minutes.</p>';
+    var top = niceTop(Math.max.apply(null, real)), n = values.length, g = '', d = '', pen = false;
+    var x = function (i) { return pl + (n > 1 ? i * iw / (n - 1) : iw / 2); };
+    for (var i = 0; i <= 2; i++) {
+      var y = pt + ih - ih * i / 2;
+      g += '<line x1="' + pl + '" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--rule)"/>' +
+        '<text x="' + (pl - 4) + '" y="' + (y + 3) + '" text-anchor="end">' + fmt(top * i / 2) + '</text>';
+    }
+    values.forEach(function (v, i) {
+      if (v == null) { pen = false; return; }
+      d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + (pt + ih - ih * v / top).toFixed(1); pen = true;
+    });
+    g += '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="2"/>';
+    values.forEach(function (v, i) {
+      if (v != null) g += '<circle cx="' + x(i).toFixed(1) + '" cy="' + (pt + ih - ih * v / top).toFixed(1) + '" r="' + (i === n - 1 ? 3.5 : 2.2) + '" fill="' + color + '"/>';
+    });
+    var step = Math.ceil(labels.length / 5);
+    labels.forEach(function (l, i) {
+      // The ends sit on the plot's edges, so their labels hang inward.
+      var anchor = n > 1 && i === n - 1 ? 'end' : i === 0 && n > 1 ? 'start' : 'middle';
+      if (i % step === 0 || i === labels.length - 1) g += '<text x="' + x(i).toFixed(1) + '" y="' + (H - 4) + '" text-anchor="' + anchor + '">' + esc(l) + '</text>';
+    });
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' + g + '</svg>';
+  }
+
+  function rowHTML(r, extra) {
+    return '<div class="row"><span class="l">' + esc(r.name) + (extra || '') + '</span><span class="v">' + esc(r.value) + '</span>' +
+      '<span class="d">' + esc(r.line) + '</span><span class="bar"><i style="width:' + Math.max(1, Math.round(r.share * 100)) + '%"></i></span></div>';
+  }
+
+  function paneHTML(d) {
+    var counterFmt = function (v) { return compact(Math.round(v)); };
+    switch (DASH.tab) {
+      case 'weekly':
+        if (!d.weeks.length) return '<p class="empty">No sessions in this range.</p>';
+        var labels = d.weeks.map(function (w) { return w.label; });
+        return '<h4>' + esc(d.weeksTitle) + '</h4>' + barsSVG(d.weeks.map(function (w) { return w.total; }), labels, 'var(--accent)', counterFmt) +
+          (d.rateTitle ? '<h4>' + esc(d.rateTitle) + '</h4>' + lineSVG(d.weeks.map(function (w) { return w.perHour; }), labels, 'var(--c-output)', counterFmt) +
+            '<p class="note">A week with under 10 active minutes has no rate.</p>' : '');
+      case 'sessions':
+        if (!d.measured) return '<p class="empty">This harness reports no tokens to rank by.</p>';
+        var r = d.rankings[DASH.rank];
+        var list = function (rows) {
+          return rows.length ? rows.map(function (s) {
+            return rowHTML({ name: s.project, value: s.value, line: s.line + ' · ' + s.id.slice(0, 8), share: s.share },
+              '<span class="pill' + (s.hot ? ' hot' : '') + '">' + esc(s.peak) + '</span>');
+          }).join('') : '<p class="empty">No sessions in this range.</p>';
+        };
+        return '<div class="seg" style="margin-bottom:8px">' + segHTML([{ id: 'total', label: 'Total' }, { id: 'perHour', label: 'Per active hour' }], 'rank') + '</div>' +
+          '<p class="note" style="margin:0 0 4px">' + d.eligible + ' sessions with 10+ active minutes. The pill is the fullest the window got.</p>' +
+          '<h4>Highest ' + esc(r.title.toLowerCase()) + '</h4>' + list(r.highest) +
+          '<h4>Lowest</h4>' + list(r.lowest) +
+          '<h4>Session size · ' + esc(d.sizeTitle) + '</h4>' +
+          (d.sizeBands.length ? barsSVG(d.sizeBands.map(function (b) { return b.sessions; }), d.sizeBands.map(function (b) { return b.label; }), 'var(--c-tools)', function (v) { return String(Math.round(v)); }, 130) : '');
+      case 'context':
+        if (!d.health) return '<p class="empty">No measured windows in this range.</p>';
+        var h = d.health;
+        return '<h4>Main thread only</h4>' + h.facts.map(function (f) {
+          return '<div class="row"><span class="l">' + esc(f.label) + '</span><span class="v">' + esc(f.value) + '</span></div>';
+        }).join('') + (h.hotShare != null ? '<h4>Turns by how full the window was</h4><div class="meter"><i style="width:' + ((1 - h.hotShare) * 100).toFixed(1) +
+          '%;background:var(--fill);opacity:.5"></i><i style="width:' + (h.hotShare * 100).toFixed(1) + '%;background:var(--warn)"></i></div><p class="note">' + esc(h.hotText) + '</p>' : '');
+      case 'projects':
+        return '<h4>By project</h4>' + (d.projects.length ? d.projects.map(function (r) { return rowHTML(r); }).join('') : '<p class="empty">No sessions in this range.</p>') +
+          '<h4>By model</h4>' + (d.models.length ? d.models.map(function (r) { return rowHTML(r); }).join('') : '<p class="empty">No sessions in this range.</p>');
+      case 'tools':
+        return '<h4>Where context comes from<span class="est">≈ ESTIMATE</span></h4>' +
+          (d.tools.length ? d.tools.map(function (r) { return rowHTML(r); }).join('') : '<p class="empty">No tool results in this range.</p>') +
+          '<p class="note">Tool result size is a length estimate (about 4 bytes per token), not a token count.</p>';
+    }
+    return '';
+  }
+
+  function renderDash() {
+    var d = dashData;
+    if (!d) return;
+    el('dash-body').style.opacity = '';
+    var o = d.options;
+    el('d-vendor').innerHTML = segHTML(o.vendors, 'vendor');
+    el('d-days').innerHTML = segHTML(o.ranges, 'days');
+    el('d-counter').innerHTML = segHTML(o.counters, 'counter', null, !d.measured);
+    el('d-gap').innerHTML = segHTML(o.gaps, 'gap', 'Idle');
+    var html = '<div class="tiles key">' + d.keyTiles.map(tileHTML).join('') + '</div>';
+    if (d.moreTiles.length) {
+      html += '<details class="moretiles"' + (DASH.more ? ' open' : '') + '><summary>Show all metrics (' + d.moreTiles.length + ' more)</summary>' +
+        '<div class="tiles more">' + d.moreTiles.map(tileHTML).join('') + '</div></details>';
+    }
+    html += '<div class="tabs" role="tablist">' + TABS.map(function (t) {
+      return '<button role="tab" data-tab="' + t[0] + '" aria-selected="' + (DASH.tab === t[0]) + '">' + t[1] + '</button>';
+    }).join('') + '</div><div class="pane" role="tabpanel">' + paneHTML(d) + '</div>' +
+      '<p class="legend">' + esc(d.footnote) + '</p>';
+    el('dash-body').innerHTML = html;
+    var more = el('dash-body').querySelector('details.moretiles');
+    if (more) more.addEventListener('toggle', function () { DASH.more = more.open; saveDash(); });
+  }
+
+  function loadDash() {
+    var seq = ++dashSeq;
+    var q = 'dashboard.json?vendor=' + encodeURIComponent(DASH.vendor) + '&counter=' + encodeURIComponent(DASH.counter) +
+      '&days=' + encodeURIComponent(DASH.days) + '&gap=' + encodeURIComponent(DASH.gap);
+    fetch(q, { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) { if (seq !== dashSeq) return; dashData = d; renderDash(); })
+      .catch(function () {
+        if (seq !== dashSeq) return;
+        el('dash-body').style.opacity = '';
+        if (!dashData) el('dash-body').innerHTML = '<p class="empty">Not reachable. Is the Mac awake?</p>';
+      });
+  }
+
+  function dashOpen() { return el('dash').classList.contains('open'); }
+  function showDash() {
+    var sheet = el('dash');
+    sheet.classList.add('open');
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('sheet-open');
+    try { history.replaceState(null, '', location.pathname + location.search + '#dashboard'); } catch (e) {}
+    loadDash();
+    clearInterval(dashTimer);
+    dashTimer = setInterval(function () { if (document.visibilityState === 'visible' && dashOpen()) loadDash(); }, 60000);
+    el('dash-close').focus();
+  }
+  function hideDash() {
+    var sheet = el('dash');
+    sheet.classList.remove('open');
+    sheet.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('sheet-open');
+    clearInterval(dashTimer);
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    el('open-dash').focus();
+  }
+  el('open-dash').addEventListener('click', showDash);
+  el('dash-close').addEventListener('click', hideDash);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && dashOpen()) hideDash(); });
+  el('dash').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.tab) { DASH.tab = b.dataset.tab; saveDash(); renderDash(); return; }
+    if (b.dataset.key) {
+      var key = b.dataset.key;
+      if (DASH[key] === b.dataset.v) return;
+      DASH[key] = b.dataset.v; saveDash();
+      if (key === 'rank') { renderDash(); return; }
+      el('dash-body').style.opacity = '.5';
+      loadDash();
+    }
+  });
+  // Opened straight from a bookmark or the home screen: ullage…/#dashboard.
+  if (location.hash === '#dashboard') showDash();
 
   // ---- Polling -----------------------------------------------------------
   function setStale(message) {

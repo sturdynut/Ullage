@@ -516,6 +516,10 @@ struct PopoverContent: View {
                 NSApp.activate(ignoringOtherApps: true)
             }
             .buttonStyle(.borderedProminent)
+            Button("Dashboard…") {
+                openWindow(id: DashboardWindow.id)
+                NSApp.activate(ignoringOtherApps: true)
+            }
             Spacer()
             // One way in to every explanation, opposite the main action.
             HelpButton()

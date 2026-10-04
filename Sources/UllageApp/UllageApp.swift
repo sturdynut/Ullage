@@ -32,6 +32,12 @@ struct UllageApp: App {
         }
         .defaultSize(width: 980, height: 680)
 
+        // Averages, rates and ranked sessions over a range of days.
+        Window("Ullage Dashboard", id: DashboardWindow.id) {
+            DashboardWindow()
+        }
+        .defaultSize(width: 1000, height: 760)
+
         // The popover's treemap, big enough to open every tile.
         Window("Context Composition", id: CompositionExplorer.id) {
             CompositionExplorer(model: model)
