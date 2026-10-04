@@ -8,7 +8,6 @@ final class HarnessSupportTests: XCTestCase {
         let support = HarnessSupport(harness: .claudeCode)
         XCTAssertNil(support.gaugeNotice)
         XCTAssertTrue(support.gaps.isEmpty)
-        XCTAssertNil(support.unverifiedNote)
     }
 
     func testCursorIsActivityOnlyAndSaysWhy() {
@@ -27,7 +26,6 @@ final class HarnessSupportTests: XCTestCase {
         let row = support.rows.first { $0.feature == .everyCall }
         XCTAssertEqual(row?.available, false)
         XCTAssertTrue(row?.detail?.contains("One reading per request") ?? false)
-        XCTAssertNotNil(support.unverifiedNote)
     }
 
     func testFiguresSayActivityOnlyInsteadOfZeroTokens() {

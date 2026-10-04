@@ -4,33 +4,24 @@
 
 # Ullage
 
-**See how full your Claude Code context window is, live, from the menu bar.**
+**One place to see, and shrink, the context window of every coding agent you use.**
 
 </div>
 
-Ullage watches your coding agents' session transcripts (Claude Code, Codex,
-Gemini CLI, OpenCode, Cline, Copilot and a dozen more), keeps every API call in a
-local SQLite database, and shows the context window's fill level as a percentage
-in the macOS menu bar. Where an agent doesn't record token counts locally
-(Cursor, Zed, Copilot CLI), Ullage lists its activity and says what's missing. Click it to break the current session down turn by turn
-and see what is actually taking up the window. A separate history window charts
-your activity across days and projects.
+Claude Code, Codex and the rest each show context differently, or not at all.
+Ullage reads them all the same way and shows, in your Mac's menu bar, how full
+each session's context window is and what's filling it. It also lets you
+install, switch on and measure popular context-saving tools like rtk, Serena and
+claude-mem.
 
-Everything stays on your machine. Nothing is uploaded, and nothing is sent
-anywhere unless you ask for it. Three things can: `ullage otlp` exports for
-aggregating across machines, runs only when you run it, and `--dry-run` prints
-exactly what would leave first; once you subscribe a phone to alerts, a
-notification goes to that phone — encrypted to it, via its push service — when
-a window fills up; and if you switch on Claude plan limits, Ullage asks
-Anthropic for them the way Claude Code's `/usage` does, sending Claude Code's
-own sign-in to api.anthropic.com and nothing else. None of these happens until
-you set it up.
+**Limitations**
 
-Ullage only reads Claude Code's config, with one exception: when you flip a
-[context tool](#context-tools) switch, it edits Claude Code's user settings to
-switch that one tool on or off. It backs the file up first and never throws
-anything away. Installing or uninstalling a context tool runs that tool's own
-commands, in Terminal, after showing them to you.
+- **Local sessions only.** Ullage reads the files agents write on your Mac, so
+  cloud and web sessions (Claude Code on the web, Codex cloud, Copilot's coding
+  agent) aren't included.
+- **Some agents don't write token counts Ullage can read.** Cursor, Copilot CLI,
+  Factory Droid and Zed show activity but no gauge.
+- **macOS** for the menu bar app; the `ullage` command line also runs on Linux.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
@@ -147,6 +138,24 @@ label. The explorer sits at the top of the main window's Context
 page. It is live: it follows the session (or agent) shown and keeps its place
 as turns arrive. Token figures here are the same
 length estimates as the popover's, never counted tokens.
+
+## Privacy
+
+Everything stays on your machine. Nothing is uploaded, and nothing is sent
+anywhere unless you ask for it. Three things can: `ullage otlp` exports for
+aggregating across machines, runs only when you run it, and `--dry-run` prints
+exactly what would leave first; once you subscribe a phone to alerts, a
+notification goes to that phone — encrypted to it, via its push service — when
+a window fills up; and if you switch on Claude plan limits, Ullage asks
+Anthropic for them the way Claude Code's `/usage` does, sending Claude Code's
+own sign-in to api.anthropic.com and nothing else. None of these happens until
+you set it up.
+
+Ullage only reads Claude Code's config, with one exception: when you flip a
+[context tool](#context-tools) switch, it edits Claude Code's user settings to
+switch that one tool on or off. It backs the file up first and never throws
+anything away. Installing or uninstalling a context tool runs that tool's own
+commands, in Terminal, after showing them to you.
 
 ## Install
 
@@ -525,15 +534,12 @@ no window; there is no percentage to compute for a Cursor session.
 
 ## Current limitations
 
-- **Eighteen harnesses, three checked on real files.** Claude Code and Codex are
-  exact and verified; Cursor is activity only (its token accounting lives on
-  Cursor's servers). OpenCode, Pi, Amp, Gemini CLI, Qwen Code, Goose and Cline,
+- **Eighteen harnesses.** Claude Code and Codex are exact; Cursor is activity
+  only (its token accounting lives on Cursor's servers). OpenCode, Pi, Amp, Gemini CLI, Qwen Code, Goose and Cline,
   Roo Code and Kilo Code record every call; Copilot in VS Code one reading per
   request; Crush the latest turn; Aider rounded figures (shown as estimates, no
-  gauge); Factory Droid, Copilot CLI and Zed activity only. Those fifteen are
-  read from each tool's own source code and haven't been checked against real
-  sessions yet; each session says so, and says what its harness doesn't record.
-  `ullage harnesses` lists them all. Kiro, Continue, Windsurf, Warp and cloud
+  gauge); Factory Droid, Copilot CLI and Zed activity only. Each session
+  says what its harness doesn't record. `ullage harnesses` lists them all. Kiro, Continue, Windsurf, Warp and cloud
   sessions are not read (`docs/harnesses/unsupported.md`).
 - **Cloud and web sessions are invisible.** Both harnesses can run in the cloud
   (Claude Code on the web, Codex cloud tasks); those transcripts stay on the

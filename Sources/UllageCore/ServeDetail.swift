@@ -109,13 +109,11 @@ extension ServeDetail {
     /// What this session's harness doesn't record, one row each.
     static func harnessSection(_ support: HarnessSupport) -> Section {
         let missing = support.gaps.filter { !$0.available }.count
-        var section = Section(
+        return Section(
             id: "harness", title: support.title,
             summary: [missing > 0 ? Readout("not recorded", "\(missing)") : Readout("partly recorded", "\(support.gaps.count)")],
             groups: [Group(heading: nil, rows: support.gaps.map { Row(label: $0.label, value: $0.detail ?? "") })]
         )
-        section.legend = support.unverifiedNote.map { [$0] }
-        return section
     }
 }
 

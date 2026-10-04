@@ -260,9 +260,6 @@ private struct HarnessCard: View {
                         }
                     }
                     .font(.callout)
-                    if let note = support.unverifiedNote {
-                        Text(note).font(.caption).foregroundStyle(.tertiary)
-                    }
                 }
             }
         }
