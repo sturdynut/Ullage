@@ -11,6 +11,8 @@
 #
 # ULLAGE_VERSION overrides the version; otherwise `git describe`, else "dev"
 # (a release tarball has no .git, so Homebrew passes the version in).
+# SWIFT_BUILD_FLAGS is passed to `swift build`: Homebrew builds inside its own
+# sandbox, where SwiftPM's sandbox can't start, so it passes --disable-sandbox.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -18,7 +20,7 @@ OUT_DIR="${1:?usage: scripts/bundle-app.sh <out-dir>}"
 VERSION="${ULLAGE_VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}"
 LOGO="assets/branding/ullage-logo.png"
 
-swift build -c release --product UllageApp
+swift build ${SWIFT_BUILD_FLAGS:-} -c release --product UllageApp
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT

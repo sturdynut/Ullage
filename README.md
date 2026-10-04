@@ -565,3 +565,13 @@ scripts/recon.sh       inspect the on-disk transcript format
 scripts/install-app.sh build, bundle, and install the app
 docs/                  the observed transcript format
 ```
+
+## License
+
+Ullage is source-available under the [PolyForm Shield License 1.0.0](LICENSE.md).
+In short: you can use it for anything, including at work, and change it for
+your own use, but you can't sell it, offer it as a service, or build a product
+that competes with it. The license text is what counts; this summary isn't
+legal advice.
+
+Copyright 2026 Matti Salokangas.
