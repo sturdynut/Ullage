@@ -57,6 +57,12 @@ The display rules are the menu bar's, not a second copy:
 - A harness that reported no window shows a dash. Never `0%` — an unmeasured
   session is not an empty one.
 
+The usage dashboard opens as its own sheet (or straight away at `/#dashboard`).
+Every figure, label and ranking in it arrives formatted in `dashboard.json`, from
+the same `UsageDashboard` the Mac's Dashboard window draws; the page only lays
+them out and draws two charts from the numbers. It refreshes every minute while
+open, not every few seconds: these are averages over days.
+
 If the page cannot reach the Mac — asleep, off the tailnet, `serve` stopped —
 it dims and says when it last heard back, rather than leaving a stale percentage
 on screen looking authoritative. A number that cannot be refreshed is the
@@ -68,6 +74,7 @@ browser's version of a stale menu bar.
 |---|---|
 | `/` | The page |
 | `/state.json` | The live gauge and recent sessions (`ServeSnapshot`) |
+| `/dashboard.json` | The usage dashboard (`ServeDashboard`); `vendor`, `counter`, `days` (or `all`) and `gap` (minutes: 15, 30, 60) |
 | `/healthz` | `ok` |
 
 `state.json` is the whole contract; the page is just one consumer of it, and a

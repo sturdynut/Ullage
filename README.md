@@ -393,6 +393,13 @@ opens a Codex session's thread in the Codex app — the places to `/clear`,
 `/compact` or run a skill in it. The Codex link is the app's own
 `codex://threads/<id>`, so it works wherever the Codex app is installed.
 
+**Usage dashboard**, below the gauge, slides in the Dashboard window's figures
+at phone width: the same four key tiles and "Show all metrics", controls for
+harness, range, counter and idle gap, and tabs for weekly, sessions, context,
+projects and tools. It comes from `dashboard.json`, built from the same Core
+model as the Mac window, so the two cannot disagree. Add `#dashboard` to the
+page's address to open straight to it, which suits a home-screen bookmark.
+
 The token savers section works here too: switches with Undo, and install or
 uninstall, after the page shows the tool's exact commands. Installs run in a
 Terminal window on the Mac, and the page reports how they went; a plan that

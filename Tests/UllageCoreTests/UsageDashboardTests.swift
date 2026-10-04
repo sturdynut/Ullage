@@ -190,4 +190,40 @@ final class UsageDashboardTests: XCTestCase {
         XCTAssertEqual(s.peakOccupancy, 0.2)
         XCTAssertEqual(d.tools, [ToolUsage(name: "Read", calls: 1, estimatedResultTokens: 1_200, errors: 0)])
     }
+
+    // MARK: - Phone page
+
+    func testQueryChoosesTheOptionsAndIgnoresAnythingElse() {
+        let o = ServeDashboard.options(from: ["vendor": "codex", "counter": "cache_write", "days": "all", "gap": "60"])
+        XCTAssertEqual(o, .init(vendor: Vendor.codex, counter: .cacheWrite, days: nil, idleGap: 3_600))
+        let junk = ServeDashboard.options(from: ["vendor": "copilot", "counter": "total", "days": "-3", "gap": "7"])
+        XCTAssertEqual(junk, .init(), "anything unknown falls back to the defaults, never to a sum")
+    }
+
+    func testRouterServesTheDashboardTheWindowDraws() throws {
+        let store = try Store.inMemory()
+        for i in 0..<20 {
+            try store.upsert(call: CallRow(
+                dedupeKey: "m\(i)", ts: Timestamps.string(from: now.addingTimeInterval(Double(i - 30) * 60)),
+                sessionId: "a", project: "proj", output: 100, contextTokens: 90_000, windowLimit: 100_000,
+                turnIndex: i, sourceFile: "a.jsonl"
+            ))
+        }
+        let router = ServeRouter(store: store, now: { self.now })
+        let response = router.respond(to: .init(method: "GET", path: "/dashboard.json", host: "localhost", query: ["days": "7"]))
+        XCTAssertEqual(response.status, 200)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: response.body) as? [String: Any])
+        let tiles = try XCTUnwrap(json["keyTiles"] as? [[String: Any]])
+        let expected = try store.usageDashboard(.init(days: 7), now: now).keyTiles
+        XCTAssertEqual(tiles.map { $0["value"] as? String }, expected.map(\.value), "the page shows the window's figures, not its own")
+        XCTAssertEqual(tiles[2]["value"] as? String, "90%")
+        let rankings = try XCTUnwrap(json["rankings"] as? [String: Any])
+        XCTAssertEqual(Set(rankings.keys), ["total", "perHour"], "both rankings, so switching needs no second request")
+        let projects = try XCTUnwrap(json["projects"] as? [[String: Any]])
+        XCTAssertEqual(projects.first?["line"] as? String, "1 session · 2.0k each · 6.3k/h · peak 90%")
+
+        let page = String(decoding: router.respond(to: .init(method: "GET", path: "/", host: "localhost")).body, as: UTF8.self)
+        XCTAssertTrue(page.contains("dashboard.json"), "the page fetches the endpoint this router serves")
+        XCTAssertTrue(page.contains("id=\"open-dash\""))
+    }
 }

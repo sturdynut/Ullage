@@ -644,15 +644,17 @@ extension Store {
         WHERE session_id IN (SELECT session_id FROM call GROUP BY session_id HAVING MAX(ts) >= ?1)
         """
         let sql = """
-        SELECT session_id, vendor, project, model, ts, agent_id, input, output, cache_read, cache_write,
+        SELECT session_id, vendor, project, model, (julianday(ts) - 2440587.5) * 86400.0, agent_id, input, output, cache_read, cache_write,
                context_tokens, window_limit, context_delta, confidence
         FROM call \(filter)
         ORDER BY session_id, ts;
         """
+        // Epoch seconds from SQLite: parsing 36k ISO strings with a formatter
+        // took two seconds, which a phone waiting on the page should not.
         return try database.query(sql, since.map { [.text($0)] } ?? []) { row in
             UsageCall(
                 sessionId: row.text(0), vendor: row.text(1), project: row.optionalText(2), model: row.optionalText(3),
-                ts: Timestamps.date(from: row.text(4)) ?? .distantPast, agentId: row.optionalText(5),
+                ts: row.isNull(4) ? .distantPast : Date(timeIntervalSince1970: row.double(4)), agentId: row.optionalText(5),
                 input: row.int(6), output: row.int(7), cacheRead: row.int(8), cacheWrite: row.int(9),
                 contextTokens: row.int(10), windowLimit: row.optionalInt(11), contextDelta: row.optionalInt(12),
                 measured: row.text(13) != Confidence.unmeasured.rawValue
