@@ -141,7 +141,7 @@ final class MobileParityTests: XCTestCase {
         var idle = SaverUsage(saver: .headroom)
         idle.mcpConfigured = true
         let report = SaverSessionReport(sessionId: "s", cwd: nil, bashCalls: 0, usages: [idle], doubleHookedCalls: 0)
-        let panel = SaverPanel.build(report: report, states: [.headroom: .off], comparison: nil, installed: [.headroom])
+        let panel = SaverPanel.build(report: report, states: [.headroom: .off], installed: [.headroom])
         XCTAssertEqual(panel.rows.first?.pending, SaverPanel.offNextSession)
     }
 

@@ -1,103 +1,5 @@
 import Foundation
 
-/// A third-party tool that exists to spend fewer tokens.
-///
-/// They split by *what* they shrink, and that decides what Ullage can say
-/// about them:
-///
-/// - **rtk** and **Tokenade** shrink what the model reads (tool output). Ullage
-///   only ever sees the output *after* shrinking, so the saving itself cannot be
-///   measured here — only the tool's own ledger can claim it, and it is shown
-///   as that tool's claim (rule 6).
-/// - **caveman** shrinks what the model writes. Output tokens are measured, so
-///   turns with it and without it can be compared — a comparison of different
-///   work, never a counterfactual saving.
-/// - **Headroom** is an MCP server; it only saves anything when called. Whether
-///   it was configured and whether it was called are both facts.
-///
-/// Detection comes from the transcript first: every hook Claude Code runs is
-/// written down with its command, so a saver's hook is evidence it ran. Config
-/// is only consulted for what is switched on *now*.
-public enum TokenSaver: String, CaseIterable, Sendable {
-    case rtk
-    case tokenade
-    case caveman
-    case headroom
-
-    public var displayName: String {
-        switch self {
-        case .rtk: return "rtk"
-        case .tokenade: return "Tokenade"
-        case .caveman: return "caveman"
-        case .headroom: return "Headroom"
-        }
-    }
-
-    public var shrinks: String {
-        switch self {
-        case .rtk: return "Bash output"
-        case .tokenade: return "Bash and Read output, MCP tool lists"
-        case .caveman: return "the model's replies"
-        case .headroom: return "tool output, when called"
-        }
-    }
-
-    /// Where a figure about this saver's saving comes from.
-    public var savingSource: String {
-        switch self {
-        case .rtk: return "rtk's own estimate (bytes ÷ 4)"
-        case .tokenade: return "Tokenade's own ledger; its method is not stated"
-        case .caveman: return "measured output, with vs without — a comparison, not a saving"
-        case .headroom: return "not measured"
-        }
-    }
-
-    /// Does a hook command belong to this saver? Matched on the command text,
-    /// which is what both `settings.json` and the transcript record.
-    public func matches(hookCommand command: String) -> Bool {
-        let lowered = command.lowercased()
-        switch self {
-        case .rtk:
-            // A word, not a substring: "rtk" inside another word is not rtk.
-            return lowered.range(of: #"(^|[\s/"'])rtk([\s\-_."']|$)"#, options: .regularExpression) != nil
-        case .tokenade: return lowered.contains("tokenade")
-        case .caveman: return lowered.contains("caveman")
-        case .headroom: return lowered.contains("headroom")
-        }
-    }
-
-    public func matches(mcpServer name: String) -> Bool {
-        let lowered = name.lowercased()
-        switch self {
-        case .rtk, .caveman: return false
-        case .tokenade: return lowered.contains("tokenade")
-        case .headroom: return lowered.contains("headroom")
-        }
-    }
-
-    /// `enabledPlugins` keys are `<plugin>@<marketplace>`.
-    public func matches(pluginKey key: String) -> Bool {
-        switch self {
-        case .caveman: return key.lowercased().hasPrefix("caveman@")
-        default: return false
-        }
-    }
-
-    /// Skill tool targets and slash commands: `caveman`, `caveman:compress`,
-    /// `caveman-commit`.
-    public func matches(skillOrCommand name: String) -> Bool {
-        let lowered = name.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        switch self {
-        case .caveman: return lowered == "caveman" || lowered.hasPrefix("caveman:") || lowered.hasPrefix("caveman-")
-        default: return false
-        }
-    }
-
-    public static func saver(forHookCommand command: String) -> TokenSaver? {
-        allCases.first { $0.matches(hookCommand: command) }
-    }
-}
-
 // MARK: - What the transcript records
 
 /// One hook run, as Claude Code wrote it down in an `attachment` line.
@@ -113,10 +15,14 @@ public struct HookRun: Equatable {
     public var rewrittenCommand: String?
     /// The first few hundred bytes of stderr — enough to say "not installed".
     public var stderr: String?
+    /// Bytes the hook added to the model's context: `additionalContext` from
+    /// its JSON, or the plain stdout of a SessionStart/UserPromptSubmit hook,
+    /// which Claude Code adds to the context as is. A size, never the text.
+    public var injectedBytes: Int?
 
     public init(
         hookEvent: String, hookName: String? = nil, command: String, toolUseId: String? = nil,
-        exitCode: Int? = nil, rewrittenCommand: String? = nil, stderr: String? = nil
+        exitCode: Int? = nil, rewrittenCommand: String? = nil, stderr: String? = nil, injectedBytes: Int? = nil
     ) {
         self.hookEvent = hookEvent
         self.hookName = hookName
@@ -125,6 +31,7 @@ public struct HookRun: Equatable {
         self.exitCode = exitCode
         self.rewrittenCommand = rewrittenCommand
         self.stderr = stderr
+        self.injectedBytes = injectedBytes
     }
 
     static let stderrLimit = 300
@@ -136,6 +43,7 @@ public struct HookRun: Equatable {
         object["exit_code"] = exitCode
         object["rewrite"] = rewrittenCommand
         object["stderr"] = stderr
+        object["injected"] = injectedBytes
         return object
     }
 
@@ -153,7 +61,8 @@ public struct HookRun: Equatable {
             toolUseId: JSONAccess.string(object, "tool_use_id"),
             exitCode: JSONAccess.int(object, "exit_code"),
             rewrittenCommand: JSONAccess.string(object, "rewrite"),
-            stderr: JSONAccess.string(object, "stderr")
+            stderr: JSONAccess.string(object, "stderr"),
+            injectedBytes: JSONAccess.int(object, "injected")
         )
     }
 

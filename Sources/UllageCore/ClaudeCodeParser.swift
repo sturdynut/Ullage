@@ -100,7 +100,7 @@ public enum ParsedLine: Equatable {
 public enum ClaudeCodeParser {
     /// Bump on every parser change. Tells you which rows to distrust after an
     /// upstream format shift.
-    public static let version = 7
+    public static let version = 8
 
     public static func parse(line: Data, context: LineContext) -> ParsedLine? {
         guard !line.isEmpty else { return nil }
@@ -357,7 +357,8 @@ public enum ClaudeCodeParser {
             toolUseId: JSONAccess.string(attachment, "toolUseID"),
             exitCode: JSONAccess.int(attachment, "exitCode"),
             rewrittenCommand: rewrittenCommand(stdout: JSONAccess.string(attachment, "stdout")),
-            stderr: stderr
+            stderr: stderr,
+            injectedBytes: injectedBytes(event: hookEvent, stdout: JSONAccess.string(attachment, "stdout"))
         )
         return EventRow(
             id: eventID(kind: .hook, entry: entry, rawLine: rawLine, context: context),
@@ -376,6 +377,21 @@ public enum ClaudeCodeParser {
               let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
         let specific = JSONAccess.dict(root, "hookSpecificOutput")
         return JSONAccess.string(JSONAccess.dict(specific, "updatedInput"), "command")
+    }
+
+    /// What a hook put into the context, as a size: `additionalContext` in
+    /// its JSON answer, or — for SessionStart and UserPromptSubmit, whose
+    /// plain stdout Claude Code adds to the context — that stdout. A JSON
+    /// answer without `additionalContext` (a `systemMessage` shown to the
+    /// user, a rewrite) injects nothing.
+    static func injectedBytes(event: String, stdout: String?) -> Int? {
+        guard let stdout, !stdout.isEmpty else { return nil }
+        if let data = stdout.data(using: .utf8),
+           let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            let context = JSONAccess.string(JSONAccess.dict(root, "hookSpecificOutput"), "additionalContext")
+            return context.map { $0.utf8.count }
+        }
+        return ["SessionStart", "UserPromptSubmit"].contains(event) ? stdout.utf8.count : nil
     }
 
     /// `<command-name>/caveman</command-name> … <command-args>ultra</command-args>`

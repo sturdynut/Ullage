@@ -34,7 +34,7 @@ public final class SaverControl {
     private var undo: [TokenSaver: (previous: Bool, at: Date)] = [:]
     private var runs: [TokenSaver: (plan: InstallPlan, marker: URL, started: Date)] = [:]
     private var cached: (at: Date, states: [TokenSaver: SaverSwitchState], installed: Set<TokenSaver>, ledger: [LedgerEntry])?
-    private var comparison: (at: Date, cwd: String, value: OutputComparison?)?
+    private var comparison: (at: Date, cwd: String, value: [TokenSaver: OutputComparison])?
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         let board = SaverSwitchboard(environment: environment)
@@ -54,18 +54,18 @@ public final class SaverControl {
                       SaverLedgers.load(since: now.addingTimeInterval(-31 * 86_400)))
         }
         let report = try sessionId.map { try store.saverReport(sessionId: $0, ledger: cached?.ledger ?? []) }
-        var outputComparison: OutputComparison?
+        var outputComparisons: [TokenSaver: OutputComparison] = [:]
         if let cwd = report?.cwd {
             if let c = comparison, c.cwd == cwd, now.timeIntervalSince(c.at) < Self.cacheLifetime * 5 {
-                outputComparison = c.value
+                outputComparisons = c.value
             } else {
-                outputComparison = try store.outputComparison(cwd: cwd, since: Timestamps.string(from: now.addingTimeInterval(-30 * 86_400)))
-                comparison = (now, cwd, outputComparison)
+                outputComparisons = try store.outputComparisons(cwd: cwd, since: Timestamps.string(from: now.addingTimeInterval(-30 * 86_400)))
+                comparison = (now, cwd, outputComparisons)
             }
         }
         notes = notes.filter { now.timeIntervalSince($0.value.at) < Self.noteLifetime || runs[$0.key] != nil }
         undo = undo.filter { now.timeIntervalSince($0.value.at) < Self.noteLifetime }
-        return SaverPanel.build(report: report, states: cached?.states ?? [:], comparison: outputComparison,
+        return SaverPanel.build(report: report, states: cached?.states ?? [:], comparisons: outputComparisons,
                                 installed: cached?.installed ?? [],
                                 pending: notes.mapValues(\.text), undoable: Set(undo.keys))
     }

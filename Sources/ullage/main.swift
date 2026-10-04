@@ -28,7 +28,8 @@ USAGE
   ullage rebuilds [session]  Turns that re-cached most of their context, and why
   ullage rebuilds --days N   Rebuilds across every session in the last N days, by cause
   ullage savers --days N     Each token saver across every session in the last N days
-  ullage savers [session]    Token savers (rtk, Tokenade, caveman, Headroom): switched on, and what they did
+  ullage savers [session]    Context tools (rtk, caveman, Serena, claude-mem…): switched on, and what they did
+  ullage tools               Every context tool Ullage knows, built in or from ~/.config/ullage/tools
   ullage savers enable|disable <name> [--dry-run]
                              Switch one in Claude Code's user config (applies to new sessions)
   ullage savers install|uninstall <name> [--dry-run] [--yes]
@@ -474,7 +475,7 @@ func printSaverRange(_ store: Store, days: Int) throws {
         if detail.failedRuns > 0 { facts.append("\(detail.failedRuns) runs failed") }
         if detail.mcpCalls > 0 { facts.append("\(detail.mcpCalls) MCP calls") }
         if detail.sessionsIdle > 0 { facts.append("loaded but unused in \(detail.sessionsIdle)") }
-        print("  " + pad(saver.displayName, 10) + facts.joined(separator: " · "))
+        print("  " + pad(saver.displayName, 16) + facts.joined(separator: " · "))
         if let ledger = detail.ledger {
             print("  " + pad("", 10) + "≈\(thousands(ledger.savedTokens)) saved by its own count over \(ledger.entries) commands")
         }
@@ -500,7 +501,7 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     let states = switchboard.states()
     print("SWITCHED ON IN CLAUDE CODE (user config)")
     for saver in TokenSaver.allCases {
-        print("  " + pad(saver.displayName, 10) + pad(states[saver]?.rawValue ?? "—", 15) + "shrinks " + saver.shrinks)
+        print("  " + pad(saver.displayName, 16) + pad(states[saver]?.rawValue ?? "—", 15) + "shrinks " + saver.shrinks)
     }
 
     let sessionId: String?
@@ -525,7 +526,7 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
         if usage.mcpCalls > 0 { facts.append("\(usage.mcpCalls) MCP calls") }
         if usage.idle { facts.append("configured, never called") }
         if usage.invocations > 0 { facts.append("invoked \(usage.invocations)×") }
-        print("  " + pad(usage.saver.displayName, 10) + facts.joined(separator: " · "))
+        print("  " + pad(usage.saver.displayName, 16) + facts.joined(separator: " · "))
         if usage.broken, let message = usage.failureMessage {
             print("  " + pad("", 10) + "says: " + message.replacingOccurrences(of: "\n", with: " "))
         }
@@ -540,15 +541,16 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     }
     if report.doubleHookedCalls > 0 {
         print("")
-        print("  ! \(report.doubleHookedCalls) Bash calls went through both rtk and Tokenade; their savings overlap and cannot be added")
+        let names = report.overlapping.map(\.displayName).joined(separator: " and ")
+        print("  ! \(report.doubleHookedCalls) Bash calls went through both \(names); their savings overlap and cannot be added")
     }
-    if let cwd = report.cwd,
-       let since = Calendar.current.date(byAdding: .day, value: -30, to: Date()),
-       let comparison = try store.outputComparison(cwd: cwd, since: Timestamps.string(from: since)) {
+    if let cwd = report.cwd, let since = Calendar.current.date(byAdding: .day, value: -30, to: Date()) {
+      for (tool, comparison) in try store.outputComparisons(cwd: cwd, since: Timestamps.string(from: since)).sorted(by: { $0.key.id < $1.key.id }) {
         print("")
-        print("CAVEMAN, this directory, 30 days (measured output per main-thread turn; a comparison, not a saving)")
+        print("\(tool.displayName.uppercased()), this directory, 30 days (measured output per main-thread turn; a comparison, not a saving)")
         print("  with     median \(thousands(comparison.withMedian))  over \(comparison.withTurns) turns in \(comparison.withSessions) sessions")
         print("  without  median \(thousands(comparison.withoutMedian))  over \(comparison.withoutTurns) turns in \(comparison.withoutSessions) sessions")
+      }
     }
 }
 
@@ -896,6 +898,15 @@ do {
             try printRebuilds(store, sessionPrefix: options.paths.first)
         }
 
+    case "tools":
+        let registry = ToolRegistry.shared
+        let builtin = Set(BuiltinTools.all.map(\.id))
+        print("CONTEXT TOOLS  (add your own: one JSON file each in \(ToolRegistry.toolsDirectory().path))")
+        for tool in registry.tools {
+            let origin = builtin.contains(tool.id) && BuiltinTools.all.contains(tool.descriptor) ? "built in" : "your file"
+            print("  " + pad(tool.id, 16) + pad(tool.kind.rawValue, 14) + pad(origin, 11) + tool.descriptor.about)
+        }
+        for problem in registry.problems { print("  ! skipped " + problem) }
     case "savers":
         let switchboard = SaverSwitchboard()
         if let verb = options.paths.first, let action = SaverAction(rawValue: verb) {

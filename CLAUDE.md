@@ -266,6 +266,12 @@ plausible and are wrong.
   what can be switched now. Logic lives in `TokenSavers`, `SaverReport`,
   `SaverLedgers`, `SaverPanel`, `SaverDetail` (the window's ranges) and
   `SaverSwitchboard`.
+- **Context tools are descriptors, not cases.** rtk, caveman, Serena,
+  claude-mem and the rest are `ToolDescriptor` values (`BuiltinTools.swift`,
+  or JSON in `~/.config/ullage/tools/`); see `docs/CONTEXT-TOOLS.md`. Rows,
+  installs, switches and help branch on the tool's `kind`, never on which tool
+  it is: a `switch` on a specific tool is the bug this design exists to
+  prevent. The only per-tool Swift is a ledger reader in `SaverLedgers.readers`.
 - **`session_env` is the one irreproducible table.** MCP servers, skills and
   CLAUDE.md are snapshotted at ingest because nothing on disk records what they
   were when a session ran. It is Claude-Code-only; other vendors skip it.

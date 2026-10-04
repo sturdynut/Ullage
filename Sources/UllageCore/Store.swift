@@ -6,7 +6,7 @@ public final class Store {
     public let database: SQLiteDatabase
     public let path: String
 
-    public static let schemaVersion = 9
+    public static let schemaVersion = 10
 
     public init(path: String) throws {
         self.path = path
@@ -110,6 +110,17 @@ public final class Store {
                 }
             }
             try database.execute("PRAGMA user_version=9;")
+        }
+        if current < 10 {
+            // Parser v8 records how much a hook injected into the context
+            // (memory tools like claude-mem); rewind Claude files once.
+            if current > 0 {
+                let paths = try database.query("SELECT path FROM file_cursor;") { $0.text(0) }
+                for path in paths where TranscriptFormat.detect(path: path) == .claudeCode {
+                    try database.run("UPDATE file_cursor SET byte_offset = 0 WHERE path = ?1;", [.text(path)])
+                }
+            }
+            try database.execute("PRAGMA user_version=10;")
         }
     }
 

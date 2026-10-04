@@ -11,7 +11,7 @@ import UllageCore
 /// labelled "saved". Every figure is decided in `SaverDetail`.
 struct SaversPage: View {
     @ObservedObject var model: MenuBarModel
-    @State private var selection: TokenSaver? = .rtk
+    @State private var selection: TokenSaver? = TokenSaver.allCases.first
     @State private var detail: SaverDetail?
     @AppStorage("saversWindowRange") private var rangeName = SaverRange.session.rawValue
 
@@ -97,10 +97,10 @@ private struct DetailPage: View {
         VStack(alignment: .leading, spacing: 22) {
             header
             facts
-            switch saver {
-            case .rtk, .tokenade: ledger
-            case .caveman: caveman
-            case .headroom: EmptyView()
+            switch saver.kind {
+            case .outputFilter: ledger
+            case .replyStyle: replyStyle
+            case .onDemand, .codeSearch, .memory: EmptyView()
             }
             Text(saver.savingSource.prefix(1).uppercased() + saver.savingSource.dropFirst() + ".")
                 .font(.caption)
@@ -146,22 +146,34 @@ private struct DetailPage: View {
                 fact(detail.range == .session ? "Ran this session" : "Sessions it ran in",
                      detail.range == .session ? (detail.sessionsUsed > 0 ? "yes" : "no")
                         : "\(detail.sessionsUsed) of \(detail.sessions)")
-                switch saver {
-                case .rtk, .tokenade:
+                switch saver.kind {
+                case .outputFilter:
                     fact("Hook runs", detail.hookRuns.formatted())
                     fact("Bash commands rewritten", "\(detail.rewrites.formatted()) of \(detail.bashCalls.formatted())")
                     fact("Runs that failed", detail.failedRuns.formatted(), warning: detail.failedRuns > 0)
-                    if saver == .tokenade { fact("MCP calls", detail.mcpCalls.formatted()) }
+                    if !saver.descriptor.detect.mcpServer.isEmpty { fact("MCP calls", detail.mcpCalls.formatted()) }
                     if detail.doubleHookedCalls > 0 {
-                        fact("Also rewritten by the other", detail.doubleHookedCalls.formatted(), warning: true)
+                        fact("Also rewritten by another filter", detail.doubleHookedCalls.formatted(), warning: true)
                     }
-                case .caveman:
+                case .replyStyle:
                     fact("Switched on / invoked", detail.invocations.formatted())
-                case .headroom:
-                    fact("Loaded, never used", detail.range == .session
-                         ? (detail.sessionsIdle > 0 ? "yes" : "no") : "\(detail.sessionsIdle) sessions",
-                         warning: detail.sessionsIdle > 0)
-                    fact("Calls", detail.mcpCalls.formatted())
+                case .onDemand, .codeSearch:
+                    if !saver.descriptor.detect.mcpServer.isEmpty {
+                        fact("Loaded, never used", detail.range == .session
+                             ? (detail.sessionsIdle > 0 ? "yes" : "no") : "\(detail.sessionsIdle) sessions",
+                             warning: detail.sessionsIdle > 0)
+                    }
+                    fact("Calls", (detail.mcpCalls + detail.bashRuns).formatted())
+                    if detail.resultTokens > 0 {
+                        fact("What they returned", "≈" + TokenFormat.compact(detail.resultTokens) + " tokens")
+                    }
+                case .memory:
+                    fact("Injected at session start", detail.sessionsInjected == 0 ? "nothing"
+                         : "≈" + TokenFormat.compact(detail.injectedBytes / 4 / max(1, detail.sessionsInjected)) + " tokens"
+                            + (detail.range == .session ? "" : " per session"))
+                    fact("Hook runs", detail.hookRuns.formatted())
+                    fact("Runs that failed", detail.failedRuns.formatted(), warning: detail.failedRuns > 0)
+                    fact("Memory searches", detail.mcpCalls.formatted())
                 }
             }
             .font(.callout)
@@ -171,7 +183,7 @@ private struct DetailPage: View {
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
             }
-            if saver == .headroom, detail.sessionsIdle > 0 {
+            if detail.sessionsIdle > 0 {
                 Text("A loaded MCP server puts its tool definitions in every prompt, used or not.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -258,15 +270,15 @@ private struct DetailPage: View {
         .help("≈\(before.formatted()) before · ≈\(after.formatted()) reached the model, by \(saver.displayName)'s count")
     }
 
-    // MARK: caveman: measured, compared
+    // MARK: Reply style: measured, compared
 
     @ViewBuilder
-    private var caveman: some View {
+    private var replyStyle: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Output per reply, with and without").font(.headline)
             if let comparison = detail.comparison {
                 HStack(alignment: .firstTextBaseline, spacing: 36) {
-                    median(comparison.withMedian, "with caveman",
+                    median(comparison.withMedian, "with \(saver.displayName)",
                            "\(comparison.withTurns.formatted()) replies · \(comparison.withSessions) sessions")
                     median(comparison.withoutMedian, "without",
                            "\(comparison.withoutTurns.formatted()) replies · \(comparison.withoutSessions) sessions")
@@ -276,14 +288,14 @@ private struct DetailPage: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Needs \(OutputComparison.minimumTurns) replies with caveman and \(OutputComparison.minimumTurns) without in this folder before there is anything to compare.")
+                Text("Needs \(OutputComparison.minimumTurns) replies with \(saver.displayName) and \(OutputComparison.minimumTurns) without in this folder before there is anything to compare.")
                     .foregroundStyle(.secondary)
             }
             if !detail.turns.isEmpty {
                 Text("This session, reply by reply").font(.subheadline.weight(.semibold)).padding(.top, 6)
                 Chart(detail.turns) { turn in
                     BarMark(x: .value("Turn", turn.turn), y: .value("Output tokens", turn.output))
-                        .foregroundStyle(by: .value("caveman", turn.on ? "on" : "off"))
+                        .foregroundStyle(by: .value(saver.displayName, turn.on ? "on" : "off"))
                 }
                 .chartForegroundStyleScale(["on": Color.green, "off": Color.gray])
                 .chartYAxisLabel("output tokens")

@@ -31,13 +31,30 @@ public struct LedgerEntry: Equatable {
 }
 
 public enum SaverLedgers {
-    /// Both ledgers, from their default places.
+    /// Reads one kind of ledger. A tool's descriptor names its reader in
+    /// `claims.reader`; a ledger format Ullage has no reader for is simply
+    /// not shown — claims are optional, transcripts are the facts.
+    public typealias Reader = @Sendable (_ since: Date?, _ environment: [String: String]) -> [LedgerEntry]
+
+    /// The ledger formats Ullage can read, by the name descriptors use.
+    public static let readers: [String: Reader] = [
+        "rtk-history": { since, environment in rtkEntries(at: rtkDatabaseURL(environment: environment), since: since) },
+        "tokenade-gain": { since, environment in tokenadeEntries(at: tokenadeLedgerURL(environment: environment), since: since) },
+    ]
+
+    /// Every registered tool's ledger, from its default place.
     public static func load(
         since: Date? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> [LedgerEntry] {
-        rtkEntries(at: rtkDatabaseURL(environment: environment), since: since)
-            + tokenadeEntries(at: tokenadeLedgerURL(environment: environment), since: since)
+        TokenSaver.allCases.flatMap { tool -> [LedgerEntry] in
+            guard let name = tool.descriptor.claims?.reader, let reader = readers[name] else { return [] }
+            return reader(since, environment).map { entry in
+                var entry = entry
+                entry.saver = tool
+                return entry
+            }
+        }
     }
 
     // MARK: - Paths

@@ -174,7 +174,7 @@ final class TokenSaverTests: XCTestCase {
             EventRow(id: "c2", sessionId: "a", ts: "2026-09-01T10:52:30.000Z", kind: EventKind.command.rawValue,
                      detail: SlashCommand(name: "caveman", args: "off").detailJSON),
         ]
-        let comparison = OutputComparison.build(turns: turns, signals: OutputComparison.signals(events: events, toolCalls: []))
+        let comparison = OutputComparison.build(turns: turns, signals: OutputComparison.signals(for: .caveman, events: events, toolCalls: []))
         XCTAssertEqual(comparison?.withTurns, 23)
         XCTAssertEqual(comparison?.withMedian, 200)
         XCTAssertEqual(comparison?.withoutTurns, 32)
@@ -268,7 +268,7 @@ final class TokenSaverTests: XCTestCase {
                                         doubleHookedCalls: 0)
         let panel = SaverPanel.build(report: report,
                                      states: [.rtk: .notInstalled, .tokenade: .notInstalled, .caveman: .off, .headroom: .on],
-                                     comparison: nil)
+                                     )
         XCTAssertEqual(panel.rows.map(\.saver), [.rtk, .caveman, .headroom])
         XCTAssertEqual(panel.rows[0].metric, "not running")
         XCTAssertEqual(panel.rows[0].note, "WARNING: rtk is not installed or not in PATH")
@@ -284,7 +284,7 @@ final class TokenSaverTests: XCTestCase {
         rtk.rewrites = 4
         rtk.ledger = LedgerMatch(entries: 4, savedTokens: 18_400, beforeTokens: 23_000, afterTokens: 4_600, groups: [])
         let report = SaverSessionReport(sessionId: "s1", cwd: "/repo", bashCalls: 9, usages: [rtk], doubleHookedCalls: 2)
-        let panel = SaverPanel.build(report: report, states: [.rtk: .on, .tokenade: .on], comparison: nil)
+        let panel = SaverPanel.build(report: report, states: [.rtk: .on, .tokenade: .on])
         XCTAssertEqual(panel.rows.first?.metric, "≈18k")
         XCTAssertEqual(panel.rows.first?.line, "4 of 9 Bash calls rewritten · ≈80% smaller")
         XCTAssertNil(panel.rows.first?.note, "the source is said once, in the legend")
@@ -365,12 +365,12 @@ final class TokenSaverTests: XCTestCase {
     }
 
     func testPanelOffersWhatIsNotInstalled() {
-        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], comparison: nil, installed: [.headroom, .rtk])
+        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], installed: [.headroom, .rtk])
         XCTAssertEqual(panel.rows.map(\.saver), [.rtk, .headroom])
         XCTAssertEqual(panel.rows.first?.line, "Installed, not set up in Claude Code")
         XCTAssertTrue(panel.rows.allSatisfy(\.isInstalled))
-        XCTAssertEqual(panel.installable, [.tokenade, .caveman])
-        XCTAssertFalse(SaverPanel.build(report: nil, states: [:], comparison: nil).isEmpty, "nothing installed still offers installs")
+        XCTAssertEqual(panel.installable, TokenSaver.allCases.filter { ![.headroom, .rtk].contains($0) })
+        XCTAssertFalse(SaverPanel.build(report: nil, states: [:]).isEmpty, "nothing installed still offers installs")
     }
 
     // MARK: - Collapsed line and pending state
@@ -386,7 +386,7 @@ final class TokenSaverTests: XCTestCase {
         let report = SaverSessionReport(sessionId: "s", cwd: "/r", bashCalls: 3,
                                         usages: [broken, SaverUsage(saver: .tokenade), ranThenOff, idle], doubleHookedCalls: 0)
         let panel = SaverPanel.build(report: report, states: [.tokenade: .on, .caveman: .off, .headroom: .on],
-                                     comparison: nil, installed: [.tokenade, .caveman, .headroom])
+                                     installed: [.tokenade, .caveman, .headroom])
         XCTAssertEqual(Readout.line(panel.summary), "rtk not running · Headroom idle · 1 on · 1 off")
         XCTAssertEqual(panel.summary.filter(\.isWarning).count, 2)
         XCTAssertEqual(panel.rows.first { $0.saver == .caveman }?.pending, SaverPanel.offNextSession,
@@ -395,7 +395,7 @@ final class TokenSaverTests: XCTestCase {
     }
 
     func testExplicitPendingAndPendingInstalls() {
-        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], comparison: nil, installed: [.headroom],
+        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], installed: [.headroom],
                                      pending: [.headroom: SaverPanel.onNextSession, .rtk: "Installing rtk in Terminal…"])
         XCTAssertEqual(panel.rows.first?.pending, SaverPanel.onNextSession)
         XCTAssertEqual(panel.pendingInstalls, ["Installing rtk in Terminal…"])
@@ -442,7 +442,7 @@ final class TokenSaverTests: XCTestCase {
     }
 
     func testUndoOnlyForSwitchedRows() {
-        let panel = SaverPanel.build(report: nil, states: [.headroom: .off, .caveman: .on], comparison: nil,
+        let panel = SaverPanel.build(report: nil, states: [.headroom: .off, .caveman: .on],
                                      installed: [.headroom, .caveman],
                                      pending: [.headroom: SaverPanel.offNextSession, .caveman: "caveman installed · on from the next session"],
                                      undoable: [.headroom])

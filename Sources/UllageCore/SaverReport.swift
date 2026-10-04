@@ -18,6 +18,12 @@ public struct SaverUsage: Equatable {
     /// Named in the session's MCP config when Ullage snapshotted it.
     public var mcpConfigured = false
     public var mcpCalls = 0
+    /// Length estimate of what its MCP tools returned (~4 bytes/token, rule 6).
+    public var mcpResultTokens = 0
+    /// Bash calls that ran its command (`codegraph explore …`).
+    public var bashRuns = 0
+    /// Bytes its hooks added to the context (claude-mem's SessionStart memory).
+    public var injectedBytes = 0
     /// Skill-tool calls and slash commands (caveman).
     public var invocations = 0
     public var ledger: LedgerMatch?
@@ -25,7 +31,7 @@ public struct SaverUsage: Equatable {
     public init(saver: TokenSaver) { self.saver = saver }
 
     /// Left any trace of running in this session.
-    public var ran: Bool { hookRuns > 0 || mcpCalls > 0 || invocations > 0 }
+    public var ran: Bool { hookRuns > 0 || mcpCalls > 0 || invocations > 0 || bashRuns > 0 }
     /// Loaded but never used: configured MCP server with no calls.
     public var idle: Bool { !ran && mcpConfigured }
     /// Every run failed — installed in config, missing on disk.
@@ -63,9 +69,11 @@ public struct SaverSessionReport: Equatable {
     public var bashCalls: Int
     /// One per saver, in `TokenSaver.allCases` order, so rows never swap.
     public var usages: [SaverUsage]
-    /// Bash calls that went through both rtk's and Tokenade's hooks. Each
-    /// tool claims the whole saving on those, so the two ledgers overlap.
+    /// Bash calls that went through two output filters' hooks. Each tool
+    /// claims the whole saving on those, so the two ledgers overlap.
     public var doubleHookedCalls: Int
+    /// The output filters those doubled calls went through.
+    public var overlapping: [TokenSaver] = []
 
     public func usage(_ saver: TokenSaver) -> SaverUsage {
         usages.first { $0.saver == saver } ?? SaverUsage(saver: saver)
@@ -102,6 +110,9 @@ public enum SaverReport {
                 usages[saver]?.failedRuns += 1
                 usages[saver]?.failureMessage = run.stderr.map { String($0.prefix(160)) } ?? "exited \(run.exitCode ?? -1)"
             }
+            if let injected = run.injectedBytes, !run.failed {
+                usages[saver]?.injectedBytes += injected
+            }
             if let toolUseId = run.toolUseId, run.hookEvent == "PreToolUse" {
                 hookedBy[toolUseId, default: []].insert(saver)
             }
@@ -121,6 +132,13 @@ public enum SaverReport {
             if let server = tool.mcpServer {
                 for saver in TokenSaver.allCases where saver.matches(mcpServer: server) {
                     usages[saver]?.mcpCalls += 1
+                    usages[saver]?.mcpResultTokens += tool.resultTokens ?? 0
+                }
+            }
+            if tool.name == "Bash", let command = tool.target {
+                for saver in TokenSaver.allCases where saver.matches(bashCommand: command) {
+                    usages[saver]?.bashRuns += 1
+                    usages[saver]?.mcpResultTokens += tool.resultTokens ?? 0
                 }
             }
         }
@@ -139,7 +157,7 @@ public enum SaverReport {
         if let cwd, let span, let start = Timestamps.date(from: span.0), let end = Timestamps.date(from: span.1) {
             let from = start.addingTimeInterval(-ledgerSlack)
             let to = end.addingTimeInterval(ledgerSlack)
-            for saver in [TokenSaver.rtk, .tokenade] {
+            for saver in TokenSaver.allCases where saver.descriptor.claims != nil {
                 let matched = ledger.filter {
                     $0.saver == saver && $0.ts >= from && $0.ts <= to && samePlace($0.cwd, cwd)
                 }
@@ -148,14 +166,18 @@ public enum SaverReport {
         }
 
         let bashIds = Set(toolCalls.filter { $0.name == "Bash" }.map(\.id))
-        let doubled = hookedBy.filter { bashIds.contains($0.key) && $0.value.isSuperset(of: [.rtk, .tokenade]) }.count
+        let doubledBy = hookedBy.filter { bashIds.contains($0.key) }
+            .mapValues { $0.filter { $0.kind == .outputFilter } }
+            .filter { $0.value.count >= 2 }
+        let overlapping = Set(doubledBy.values.flatMap { $0 })
 
         return SaverSessionReport(
             sessionId: sessionId,
             cwd: cwd,
             bashCalls: bashIds.count,
             usages: TokenSaver.allCases.compactMap { usages[$0] },
-            doubleHookedCalls: doubled
+            doubleHookedCalls: doubledBy.count,
+            overlapping: TokenSaver.allCases.filter(overlapping.contains)
         )
     }
 
@@ -216,7 +238,7 @@ public enum SaverReport {
     }
 }
 
-// MARK: - caveman: output with and without
+// MARK: - Reply style: output with and without
 
 /// Median output tokens per main-thread turn, split by whether caveman was on.
 ///
@@ -289,23 +311,24 @@ public struct OutputComparison: Equatable {
         return sorted.count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
     }
 
-    /// caveman's on/off moments from hook runs, slash commands and skill calls.
-    public static func signals(events: [EventRow], toolCalls: [ToolCallRow]) -> [Signal] {
+    /// A reply-style tool's on/off moments from hook runs, slash commands
+    /// and skill calls.
+    public static func signals(for tool: TokenSaver, events: [EventRow], toolCalls: [ToolCallRow]) -> [Signal] {
         var signals: [Signal] = []
         for event in events {
             if event.kind == EventKind.hook.rawValue,
-               let run = HookRun(detail: event.detail), TokenSaver.caveman.matches(hookCommand: run.command), !run.failed {
+               let run = HookRun(detail: event.detail), tool.matches(hookCommand: run.command), !run.failed {
                 signals.append(Signal(sessionId: event.sessionId, ts: event.ts, on: true))
             } else if event.kind == EventKind.command.rawValue,
-                      let command = SlashCommand(detail: event.detail), TokenSaver.caveman.matches(skillOrCommand: command.name) {
+                      let command = SlashCommand(detail: event.detail), tool.matches(skillOrCommand: command.name) {
                 let args = command.args?.lowercased().trimmingCharacters(in: .whitespaces) ?? ""
                 let off = ["off", "stop", "normal", "disable"].contains(args)
                 signals.append(Signal(sessionId: event.sessionId, ts: event.ts, on: !off))
             }
         }
-        for tool in toolCalls where tool.kind == ToolKind.skill.rawValue {
-            if let target = tool.target, TokenSaver.caveman.matches(skillOrCommand: target) {
-                signals.append(Signal(sessionId: tool.sessionId, ts: tool.ts, on: true))
+        for call in toolCalls where call.kind == ToolKind.skill.rawValue {
+            if let target = call.target, tool.matches(skillOrCommand: target) {
+                signals.append(Signal(sessionId: call.sessionId, ts: call.ts, on: true))
             }
         }
         return signals
@@ -328,8 +351,19 @@ extension Store {
         )
     }
 
-    /// caveman on vs off across one directory's main-thread turns since a date.
-    public func outputComparison(cwd: String, since: String) throws -> OutputComparison? {
+    /// Every reply-style tool's on-vs-off comparison in one directory, for
+    /// those with enough turns each way.
+    public func outputComparisons(cwd: String, since: String) throws -> [TokenSaver: OutputComparison] {
+        var result: [TokenSaver: OutputComparison] = [:]
+        for tool in TokenSaver.allCases where tool.kind == .replyStyle {
+            result[tool] = try outputComparison(cwd: cwd, since: since, tool: tool)
+        }
+        return result
+    }
+
+    /// A reply-style tool on vs off across one directory's main-thread turns
+    /// since a date.
+    public func outputComparison(cwd: String, since: String, tool: TokenSaver) throws -> OutputComparison? {
         let turns = try database.query(
             """
             SELECT session_id, ts, output FROM call
@@ -355,6 +389,6 @@ extension Store {
             [.text(cwd), .text(since)]
         ) { ToolCallRow(id: $0.text(0), callId: $0.text(1), sessionId: $0.text(2), ts: $0.text(3),
                         name: $0.text(4), kind: $0.text(5), target: $0.optionalText(6)) }
-        return OutputComparison.build(turns: turns, signals: OutputComparison.signals(events: events, toolCalls: skills))
+        return OutputComparison.build(turns: turns, signals: OutputComparison.signals(for: tool, events: events, toolCalls: skills))
     }
 }
