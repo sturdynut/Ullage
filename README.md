@@ -147,6 +147,28 @@ length estimates as the popover's, never counted tokens.
 
 Requires macOS 14 or later, and Swift 6 (Xcode 16) to build.
 
+### With Homebrew
+
+```bash
+brew install sturdynut/tap/ullage
+ln -sf "$(brew --prefix)/opt/ullage/Ullage.app" /Applications/Ullage.app
+open /Applications/Ullage.app
+```
+
+Homebrew builds Ullage from source on your Mac, so there's no Gatekeeper
+warning. It installs the `ullage` command and `Ullage.app`; the `ln` puts the
+app in Applications. To serve the [phone page](#reading-it-from-a-phone) in the
+background, and again at every login:
+
+```bash
+brew services start ullage      # runs `ullage serve --no-watch` on 127.0.0.1:7878
+```
+
+`--no-watch` because the app already ingests; use `ullage serve` on its own if
+the app isn't running. Update with `brew upgrade ullage`.
+
+### From source
+
 ```bash
 git clone https://github.com/sturdynut/Ullage.git
 cd Ullage
@@ -156,7 +178,8 @@ open /Applications/Ullage.app
 
 Pass a directory to install elsewhere, e.g. `scripts/install-app.sh ~/Applications`.
 
-Because the app is ad-hoc signed rather than notarized, the first launch may draw
+Because the app is ad-hoc signed rather than notarized, a copy you didn't build
+yourself may draw
 a Gatekeeper warning; right-click the app and choose **Open**, or approve it once
 under System Settings → Privacy & Security. To start it at login, add Ullage
 under System Settings → General → Login Items.
