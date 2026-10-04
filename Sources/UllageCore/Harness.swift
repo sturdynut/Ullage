@@ -67,8 +67,20 @@ public struct Harness: @unchecked Sendable, Equatable, Identifiable {
     public static func owning(_ path: String) -> Harness? {
         let path = databasePath(path)
         if let harness = registered.first(where: { $0.owns(path) }) { return harness }
-        return path.hasSuffix(".jsonl") ? .claudeCode : nil
+        // Another harness's data folder can hold its own logs or users' git
+        // checkouts; a `.jsonl` there is never a Claude session.
+        guard path.hasSuffix(".jsonl"), !otherRoots.contains(where: { path.hasPrefix($0) }) else { return nil }
+        return .claudeCode
     }
+
+    /// Every non-Claude harness's root, as a folder prefix, unless it is also
+    /// inside Claude's own (an override pointing both at one folder).
+    static let otherRoots: [String] = {
+        let claude = Harness.claudeCode.roots(ProcessInfo.processInfo.environment).map { $0.standardizedFileURL.path + "/" }
+        return registered.flatMap { $0.roots(ProcessInfo.processInfo.environment) }
+            .map { $0.standardizedFileURL.path + "/" }
+            .filter { root in !claude.contains { root.hasPrefix($0) || $0.hasPrefix(root) } }
+    }()
 
     /// `x.db-wal` → `x.db`: a write to a database lands in its WAL first.
     public static func databasePath(_ path: String) -> String {

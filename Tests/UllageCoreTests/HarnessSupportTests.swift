@@ -43,6 +43,10 @@ final class HarnessSupportTests: XCTestCase {
         XCTAssertEqual(Harness.owning("/Users/me/.codex/sessions/2026/10/04/rollout-x.jsonl"), .codex)
         XCTAssertEqual(Harness.owning("/tmp/anything.jsonl"), .claudeCode)
         XCTAssertNil(Harness.owning("/tmp/notes.md"))
+        if let root = Harness.otherRoots.first {
+            XCTAssertNotEqual(Harness.owning(root + "repos/x/notes.jsonl"), .claudeCode,
+                              "a .jsonl in another harness's folder is not a Claude session")
+        }
         XCTAssertEqual(Harness.databasePath("/a/opencode.db-wal"), "/a/opencode.db")
     }
 
