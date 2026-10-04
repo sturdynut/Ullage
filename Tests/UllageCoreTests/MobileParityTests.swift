@@ -164,7 +164,7 @@ final class MobileParityTests: XCTestCase {
         XCTAssertTrue(page.contains("What's an orange triangle?"))
         XCTAssertTrue(page.contains("rebuildCaused"), "marks carry their glyph so the page draws them as the chart does")
         XCTAssertEqual(HelpText.sections.map(\.title),
-                       ["The chart", "Context composition", "Session information", "Agents", "Token savers", "Plan limits"],
+                       ["The chart", "Context", "Session information", "Agents", "Token savers", "Plan limits"],
                        "one sheet, a section per part of the page, in page order")
         XCTAssertEqual(HelpText.chart.entries.last?.question, "What's compaction?", "compaction closes the chart's list")
         XCTAssertTrue(page.contains("id=\"explain\""), "one Explain button")

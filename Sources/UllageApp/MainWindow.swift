@@ -13,7 +13,7 @@ enum MainPage: String, CaseIterable, Identifiable, Hashable {
     var title: String {
         switch self {
         case .overview: return "Overview"
-        case .composition: return "Context composition"
+        case .composition: return "Context"
         case .session: return "Session"
         case .agents: return "Agents"
         case .savers: return "Token savers"
@@ -167,7 +167,7 @@ private struct OverviewPage: View {
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 14)], alignment: .leading, spacing: 14) {
                     if let composition = model.composition {
-                        SummaryCard(title: "Context composition", page: .composition, model: model) {
+                        SummaryCard(title: "Context", page: .composition, model: model) {
                             CompositionBar(composition: composition)
                             ReadoutLine(items: zip(composition.summary, composition.segments).map {
                                 ReadoutLine.Item(readout: $0, dot: CompositionView.color(for: $1.name))
@@ -343,7 +343,7 @@ private struct CompositionPage: View {
         if let composition = model.composition {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    PageTitle(title: "Context composition", subtitle: "What's in the context window right now")
+                    PageTitle(title: "Context", subtitle: "What's in the context window right now")
                     // The drill-down treemap the popover's ⤢ used to open.
                     CompositionExplorer(model: model)
                         .frame(height: 440)

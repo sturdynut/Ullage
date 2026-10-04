@@ -160,7 +160,7 @@ plausible and are wrong.
   percentage, while still appearing in `sessions` and history.
 - **The popover is a glance; the main window is everything.** The popover is
   the headline, bar, chart and one row per section; a row opens that section's
-  page in `MainWindow` (Overview, Context composition, Session, Agents, Token
+  page in `MainWindow` (Overview, Context, Session, Agents, Token
   savers, History, Plan limits). Nothing expands inline in the popover. The
   phone page has the same structure: an Overview of rows, each sliding its page
   in, with `#page=<id>` in the address so Back closes it.

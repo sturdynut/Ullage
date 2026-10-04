@@ -62,7 +62,7 @@ struct PopoverContent: View {
     private var sections: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let composition = model.composition {
-                SectionLink("Context composition", scope: scopeName,
+                SectionLink("Context", scope: scopeName,
                             shares: composition.segments.map {
                                 RuleShare(color: CompositionView.color(for: $0.name), weight: Double($0.tokens))
                             },

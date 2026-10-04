@@ -38,7 +38,7 @@ commands, in Terminal, after showing them to you.
 
 <div align="center">
 
-<img src="docs/screenshots/popover.png" alt="The Ullage popover: the Ullage session with its path and claude-opus-5-5 · medium, 227k left in a 1M window over a bar at 77% used with Open in Claude beside it; the context-per-turn chart with grey and orange cache-rebuild triangles; then Context composition (Baseline 52k, Tools ≈122k, Output 467k, Other ≈129k), Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits, each collapsed to one line; History and Explain at the bottom" width="360">
+<img src="docs/screenshots/popover.png" alt="The Ullage popover: the Ullage session with its path and claude-opus-5-5 · medium, 227k left in a 1M window over a bar at 77% used with Open in Claude beside it; the context-per-turn chart with grey and orange cache-rebuild triangles; then Context (Baseline 52k, Tools ≈122k, Output 467k, Other ≈129k), Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits, each collapsed to one line; History and Explain at the bottom" width="360">
 
 </div>
 
@@ -70,7 +70,7 @@ commands, in Terminal, after showing them to you.
   window on its Overview, and **Explain**, at the bottom right, opens one sheet
   with a section for the chart and for each part of the popover: the questions
   you might have, each answered with what it is, why it matters and what to do.
-  - **Context composition**: the four totals, always in the same order and
+  - **Context**: the four totals, always in the same order and
     colours (`● Baseline 48k · ● Tools ≈41k · ● Output 85k · ● Other ≈55k`),
     `≈` on every estimate, with the section's rule drawn as their proportions.
   - **Session information**: the last turn's change and the turn count
@@ -92,7 +92,7 @@ commands, in Terminal, after showing them to you.
   Explain at the foot of the sidebar:
   - **Overview**: the headline, a large chart with a key to its triangles, and
     a card per section that opens its page.
-  - **Context composition**: the [explorer](#composition-explorer) treemap,
+  - **Context**: the [explorer](#composition-explorer) treemap,
     then the four totals, the baseline's parts (CLAUDE.md, MCP servers,
     skills), every tool in the window, the targets **called most** (`Bash git
     status ×12`), and what is **along for the ride**: tool results from 50+
@@ -136,7 +136,7 @@ segments; click one to open it, and the breadcrumb or Escape goes back up:
   not always what fills the window.
 
 The table beside the treemap lists every tile, including ones too small to
-label. The explorer sits at the top of the main window's Context composition
+label. The explorer sits at the top of the main window's Context
 page. It is live: it follows the session (or agent) shown and keeps its place
 as turns arrive. Token figures here are the same
 length estimates as the popover's, never counted tokens.
@@ -358,7 +358,7 @@ transcripts changes nothing.
 
 <div align="center">
 
-<img src="docs/screenshots/phone.png" alt="The phone page: the Ullage session with 258k left of a 1M window, a bar at 74% used, the context chart with grey and orange cache-rebuild triangles, then Context composition, Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits each collapsed to one line, and Open in Claude and Explain at the bottom" width="300">
+<img src="docs/screenshots/phone.png" alt="The phone page: the Ullage session with 258k left of a 1M window, a bar at 74% used, the context chart with grey and orange cache-rebuild triangles, then Context, Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits each collapsed to one line, and Open in Claude and Explain at the bottom" width="300">
 &nbsp;&nbsp;
 <img src="docs/screenshots/phone-help.png" alt="The phone page's help: How to read Ullage, with The chart open and its questions listed, each beside the mark it explains; What's an orange triangle? is open, saying it is a cache rebuild you caused and why it costs full price or more" width="300">
 

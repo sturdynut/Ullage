@@ -225,7 +225,7 @@ struct CompositionView: View {
     /// therefore the first thing macOS truncated.
     private var caption: String {
         var text = showsTitle
-            ? "Context composition  ·  turns \(composition.windowStartTurn)–\(composition.lastTurn)"
+            ? "Context  ·  turns \(composition.windowStartTurn)–\(composition.lastTurn)"
             : "turns \(composition.windowStartTurn)–\(composition.lastTurn)"
         if composition.compactions > 0 { text += "  ·  after \(composition.compactions) compaction\(composition.compactions == 1 ? "" : "s")" }
         return text

@@ -206,7 +206,7 @@ extension ServeDetail {
             }
             groups.append(Group(heading: "Along for the ride", rows: rows))
         }
-        return Section(id: "composition", title: "Context composition", summary: c.summary,
+        return Section(id: "composition", title: "Context", summary: c.summary,
                        dots: c.segments.map { key($0.name) },
                        shares: c.segments.map { Share(key: key($0.name), name: $0.name, tokens: $0.tokens,
                                                       estimate: ContextComposition.isEstimate(segment: $0.name)) },
