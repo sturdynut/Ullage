@@ -27,11 +27,19 @@ public struct SaverUsage: Equatable {
     /// Skill-tool calls and slash commands (caveman).
     public var invocations = 0
     public var ledger: LedgerMatch?
+    /// The ledger rows behind `ledger`, so a range can count each once and
+    /// place each on the Bash call it names.
+    public var ledgerEntries: [LedgerEntry] = []
 
     public init(saver: TokenSaver) { self.saver = saver }
 
-    /// Left any trace of running in this session.
-    public var ran: Bool { hookRuns > 0 || mcpCalls > 0 || invocations > 0 || bashRuns > 0 }
+    /// Left any trace of running in this session. A ledger row counts when
+    /// it names this session or was matched to one of its turns; a row
+    /// matched only by folder and time could be another session's.
+    public var ran: Bool {
+        hookRuns > 0 || mcpCalls > 0 || invocations > 0 || bashRuns > 0
+            || ledgerEntries.contains { $0.sessionId != nil || $0.cwd == nil }
+    }
     /// Loaded but never used: configured MCP server with no calls.
     public var idle: Bool { !ran && mcpConfigured }
     /// Every run failed — installed in config, missing on disk.
@@ -87,6 +95,9 @@ public enum SaverReport {
     /// Slack either side of the session's turns when matching a ledger: a hook
     /// fires before the tool it rewrites, and the turn is stamped after.
     public static let ledgerSlack: TimeInterval = 120
+    /// A proxy's row is stamped when the request went through, a few seconds
+    /// either side of the turn Claude Code recorded for it.
+    public static let requestSlack: TimeInterval = 30
 
     public static func build(
         sessionId: String,
@@ -149,19 +160,11 @@ public enum SaverReport {
         }
 
         let cwd = calls.first { $0.agentId == nil && $0.cwd != nil }?.cwd ?? calls.first { $0.cwd != nil }?.cwd
-        // `ts` is normalised and sorts as text, so only the two ends are
-        // parsed — and only when there is a ledger to match against.
-        let span = ledger.isEmpty ? nil : calls.lazy.map(\.ts).min().flatMap { first in
-            calls.lazy.map(\.ts).max().map { (first, $0) }
-        }
-        if let cwd, let span, let start = Timestamps.date(from: span.0), let end = Timestamps.date(from: span.1) {
-            let from = start.addingTimeInterval(-ledgerSlack)
-            let to = end.addingTimeInterval(ledgerSlack)
-            for saver in TokenSaver.allCases where saver.descriptor.claims != nil {
-                let matched = ledger.filter {
-                    $0.saver == saver && $0.ts >= from && $0.ts <= to && samePlace($0.cwd, cwd)
-                }
-                if !matched.isEmpty { usages[saver]?.ledger = summarize(matched) }
+        for saver in TokenSaver.allCases where saver.descriptor.claims != nil {
+            let matched = match(ledger.filter { $0.saver == saver }, sessionId: sessionId, cwd: cwd, calls: calls)
+            if !matched.isEmpty {
+                usages[saver]?.ledger = summarize(matched)
+                usages[saver]?.ledgerEntries = matched
             }
         }
 
@@ -179,6 +182,37 @@ public enum SaverReport {
             doubleHookedCalls: doubledBy.count,
             overlapping: TokenSaver.allCases.filter(overlapping.contains)
         )
+    }
+
+    /// A ledger's rows that belong to this session, by the best evidence each
+    /// row carries: the session it names; else the session's folder and time
+    /// span; else, with neither (a proxy), a turn of this session within
+    /// `requestSlack` of it.
+    static func match(_ entries: [LedgerEntry], sessionId: String, cwd: String?, calls: [CallRow]) -> [LedgerEntry] {
+        guard !entries.isEmpty, let firstTs = calls.lazy.map(\.ts).min(), let lastTs = calls.lazy.map(\.ts).max(),
+              let start = Timestamps.date(from: firstTs), let end = Timestamps.date(from: lastTs) else {
+            return entries.filter { $0.sessionId == sessionId }
+        }
+        let from = start.addingTimeInterval(-ledgerSlack), to = end.addingTimeInterval(ledgerSlack)
+        var turnTimes: [Date]?
+        return entries.filter { entry in
+            if let named = entry.sessionId { return named == sessionId }
+            guard entry.ts >= from, entry.ts <= to else { return false }
+            if let path = entry.cwd { return cwd.map { samePlace(path, $0) } ?? false }
+            if turnTimes == nil { turnTimes = calls.compactMap { Timestamps.date(from: $0.ts) }.sorted() }
+            return nearest(entry.ts, in: turnTimes ?? []).map { abs($0.timeIntervalSince(entry.ts)) <= requestSlack } ?? false
+        }
+    }
+
+    /// The closest of sorted dates to `date`.
+    static func nearest(_ date: Date, in sorted: [Date]) -> Date? {
+        var low = 0, high = sorted.count
+        while low < high {
+            let mid = (low + high) / 2
+            if sorted[mid] < date { low = mid + 1 } else { high = mid }
+        }
+        let candidates = [low - 1, low].filter { sorted.indices.contains($0) }.map { sorted[$0] }
+        return candidates.min { abs($0.timeIntervalSince(date)) < abs($1.timeIntervalSince(date)) }
     }
 
     /// A ledger path matches the session's directory, or one is inside the
@@ -338,6 +372,32 @@ public struct OutputComparison: Equatable {
 // MARK: - Store reads
 
 extension Store {
+    /// Every tool's ledger, with each row that names neither a session nor a
+    /// folder (a proxy's) given to the one session whose turn is nearest to
+    /// it, across all sessions, within `SaverReport.requestSlack`. Matched per
+    /// session instead, one request would count in every session that had a
+    /// turn in those seconds.
+    public func ledger(since: Date? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) -> [LedgerEntry] {
+        place(SaverLedgers.load(since: since, environment: environment))
+    }
+
+    public func place(_ entries: [LedgerEntry]) -> [LedgerEntry] {
+        entries.map { entry in
+            guard entry.sessionId == nil, entry.cwd == nil else { return entry }
+            let slack = SaverReport.requestSlack
+            let rows = (try? database.query(
+                "SELECT session_id, ts FROM call WHERE ts >= ?1 AND ts <= ?2;",
+                [.text(Timestamps.string(from: entry.ts.addingTimeInterval(-slack))),
+                 .text(Timestamps.string(from: entry.ts.addingTimeInterval(slack)))]
+            ) { ($0.text(0), $0.text(1)) }) ?? []
+            let nearest = rows.compactMap { row in Timestamps.date(from: row.1).map { (row.0, abs($0.timeIntervalSince(entry.ts))) } }
+                .min { ($0.1, $0.0) < ($1.1, $1.0) }
+            var placed = entry
+            placed.sessionId = nearest?.0
+            return placed
+        }
+    }
+
     public func saverReport(sessionId: String, ledger: [LedgerEntry]) throws -> SaverSessionReport {
         let events = try self.events(sessionId: sessionId, kind: EventKind.hook.rawValue, scope: .all)
             + self.events(sessionId: sessionId, kind: EventKind.command.rawValue, scope: .all)

@@ -89,6 +89,9 @@ public struct SaverPanel: Equatable {
 
     public var isEmpty: Bool { rows.isEmpty && installable.isEmpty }
 
+    /// Starts the legend line about claims, so a page that explains claims
+    /// in its own legend can drop this one.
+    public static let claimsLegendLead = "≈ saved is the tool's own count, which Ullage can't check"
     public static let nextSessionNote = "applies to sessions started from now"
     public static let offNextSession = "Off from the next session"
     public static let onNextSession = "On from the next session"
@@ -148,7 +151,7 @@ public struct SaverPanel: Equatable {
         let claims = rows.filter { $0.metric.hasPrefix("≈") && $0.saver.descriptor.claims != nil }
             .compactMap { $0.saver.descriptor.claims?.how }
         if !claims.isEmpty {
-            legend.append("≈ saved is the tool's own count, which Ullage can't check (\(claims.joined(separator: "; "))).")
+            legend.append(claimsLegendLead + " (\(claims.joined(separator: "; "))).")
         }
         let compared = rows.filter { $0.saver.kind == .replyStyle && $0.metricCaption == "tokens/reply" }.map(\.saver.displayName)
         if !compared.isEmpty {
@@ -192,7 +195,7 @@ public struct SaverPanel: Equatable {
         case .outputFilter:
             if let ledger = usage.ledger {
                 row.metric = "≈" + TokenFormat.compact(ledger.savedTokens)
-                row.metricCaption = "saved"
+                row.metricCaption = "claimed"
                 var facts: [String] = []
                 if usage.rewrites > 0, bashCalls > 0 {
                     facts.append("\(usage.rewrites) of \(bashCalls) Bash calls rewritten")
@@ -222,7 +225,12 @@ public struct SaverPanel: Equatable {
                     : "\(offLine) · not used this session"
             }
         case .onDemand:
-            if usage.mcpCalls > 0 {
+            if let ledger = usage.ledger {
+                row.metric = "≈" + TokenFormat.compact(ledger.savedTokens)
+                row.metricCaption = "claimed"
+                row.line = "\(ledger.entries) request\(ledger.entries == 1 ? "" : "s") compressed"
+                    + (usage.mcpCalls > 0 ? " · \(usage.mcpCalls) calls" : "")
+            } else if usage.mcpCalls > 0 {
                 row.metric = "\(usage.mcpCalls)"
                 row.metricCaption = usage.mcpCalls == 1 ? "call" : "calls"
                 row.line = "Used this session · it keeps no record of savings"

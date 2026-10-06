@@ -194,13 +194,20 @@ final class MenuBarModel: ObservableObject {
         refresh()
     }
 
-    /// One saver over a range, for the Token savers window. Anchored on the
-    /// session the popover is showing. A 30-day range reads every session in
-    /// it, so the window asks for this on a change, not on every redraw.
-    func saverDetail(_ saver: TokenSaver, range: SaverRange) -> SaverDetail? {
-        guard let readStore else { return nil }
-        let ledger = saverLedger?.entries ?? SaverLedgers.load(since: Date().addingTimeInterval(-31 * 86_400))
-        return try? readStore.saverDetail(saver, range: range, sessionId: state.sessionId, ledger: ledger)
+    /// Every saver over a range, for the Context tools window. Anchored on
+    /// the session the popover is showing. A range reads every session in it,
+    /// and the comparisons up to 30 days of them, so it runs off the main
+    /// thread on its own connection, and the window asks on a change, not on
+    /// every redraw.
+    func saverDetails(range: SaverRange) async -> [SaverDetail] {
+        let path = databasePath
+        let sessionId = state.sessionId
+        let cached = saverLedger?.entries
+        return await Task.detached(priority: .userInitiated) {
+            guard let store = try? Store(path: path) else { return [] }
+            let ledger = cached ?? store.ledger(since: Date().addingTimeInterval(-31 * 86_400))
+            return (try? store.saverDetails(range: range, sessionId: sessionId, ledger: ledger)) ?? []
+        }.value
     }
 
     func saverSwitchState(_ saver: TokenSaver) -> SaverSwitchState {
@@ -283,7 +290,7 @@ final class MenuBarModel: ObservableObject {
             saverInstalls = Dictionary(uniqueKeysWithValues: TokenSaver.allCases.map { ($0, installer.installation(of: $0)) })
         }
         if saverLedger.map({ now.timeIntervalSince($0.at) > Self.saverCacheInterval }) ?? true {
-            saverLedger = (now, SaverLedgers.load(since: now.addingTimeInterval(-31 * 86_400)))
+            saverLedger = (now, store.ledger(since: now.addingTimeInterval(-31 * 86_400)))
         }
         let report = try sessionId.map { try store.saverReport(sessionId: $0, ledger: saverLedger?.entries ?? []) }
         var comparison: [TokenSaver: OutputComparison] = [:]

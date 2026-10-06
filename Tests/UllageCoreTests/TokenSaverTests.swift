@@ -288,7 +288,7 @@ final class TokenSaverTests: XCTestCase {
         XCTAssertEqual(panel.rows.first?.metric, "≈18k")
         XCTAssertEqual(panel.rows.first?.line, "4 of 9 Bash calls rewritten · ≈80% smaller")
         XCTAssertNil(panel.rows.first?.note, "the source is said once, in the legend")
-        XCTAssertEqual(panel.rows.first?.metricCaption, "saved")
+        XCTAssertEqual(panel.rows.first?.metricCaption, "claimed")
         XCTAssertEqual(panel.legend, ["≈ saved is the tool's own count, which Ullage can't check (rtk counts bytes ÷ 4)."])
         XCTAssertTrue(panel.warning?.contains("2 Bash calls") == true)
     }

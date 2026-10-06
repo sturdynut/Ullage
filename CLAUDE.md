@@ -70,7 +70,7 @@ they need it offline; subscription-metered IDEs keep usage on their servers.
 
 ```bash
 swift build
-swift test                 # 252 tests on macOS; 241 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 381 tests on macOS; on Linux all but the CryptoKit and AppKit ones
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -284,6 +284,16 @@ plausible and are wrong.
   what can be switched now. Logic lives in `TokenSavers`, `SaverReport`,
   `SaverLedgers`, `SaverPanel`, `SaverDetail` (the window's ranges) and
   `SaverSwitchboard`.
+- **A context tool's value is graded, never totalled.** `SaverValue` turns a
+  `SaverDetail` into cost and benefit figures, each with an `Evidence` grade
+  (measured, estimated, claimed, compared, derived). A claim placed on the
+  Bash call it names (rtk's `hook_decisions`) is carried over the prompts the
+  result stayed in until a compaction — `derived`, labelled "claim × prompts":
+  a running total of tokens sent, never room in the window, never a counter.
+  With-vs-without comparisons are their own group (neither saving nor cost),
+  within one harness and the days both sides have sessions. rtk's `history.db` is WAL: a read-only
+  open fails when rtk isn't running (no `-shm`), so it is then read as
+  immutable, which is exact because there is no `-wal` either.
 - **Context tools are descriptors, not cases.** rtk, caveman, Serena,
   claude-mem and the rest are `ToolDescriptor` values (`BuiltinTools.swift`,
   or JSON in `~/.config/ullage/tools/`); see `docs/CONTEXT-TOOLS.md`. Rows,

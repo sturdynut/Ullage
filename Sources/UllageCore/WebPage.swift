@@ -135,6 +135,13 @@ public enum WebPage {
   .saver .sub { padding-left: 54px; font-size: 13px; color: var(--dim); }
   .saver .note { padding-left: 54px; font-size: 12px; color: var(--faint); }
   .saver .pend { padding-left: 54px; font-size: 13px; color: var(--accent); font-weight: 600; }
+  .saver .figs { padding-left: 54px; margin-top: 6px; display: grid; gap: 6px; }
+  .saver .fig .fl { font-size: 12px; color: var(--dim); }
+  .saver .figs .fh { font-size: 11px; font-weight: 650; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
+  .saver .fig .fv { font-weight: 650; font-variant-numeric: tabular-nums; }
+  .saver .fig .fv.w { color: var(--warn); }
+  .saver .fig .ev { font-size: 11px; color: var(--dim); border: 1px solid var(--rule); border-radius: 999px; padding: 0 6px; margin-left: 6px; white-space: nowrap; }
+  .saver .fig .fd { font-size: 12px; color: var(--faint); }
   .switch {
     position: relative; width: 44px; height: 26px; border-radius: 13px; border: 0; padding: 0;
     background: var(--rule); flex: none; cursor: pointer; transition: background .15s;
@@ -446,7 +453,25 @@ public enum WebPage {
         (s.canUndo ? ' <button class="linkbtn" data-saver="' + s.id + '" data-action="undo">Undo</button>' : '') + '</div>' : '') +
       '<div class="sub">' + esc(s.line) + '</div>' +
       (s.note ? '<div class="note">' + esc(s.note) + '</div>' : '') +
+      figuresBlock(s.figures || []) +
       '</div>';
+  }
+
+  // Cost and benefit under two small headings, as the window's two columns.
+  function figuresBlock(figs) {
+    var html = '';
+    [['benefit', 'Keeps out'], ['cost', 'Costs'], ['comparison', 'With vs without']].forEach(function (side) {
+      var some = figs.filter(function (f) { return f.side === side[0]; });
+      if (some.length) html += '<div class="figs"><div class="fh">' + side[1] + '</div>' + some.map(figureBlock).join('') + '</div>';
+    });
+    return html;
+  }
+
+  // One graded figure: what, its value, how it is known.
+  function figureBlock(f) {
+    return '<div class="fig"><div class="fl">' + esc(f.label) + '</div>' +
+      '<div><span class="fv' + (f.warning ? ' w' : '') + '">' + esc(f.value) + '</span><span class="ev">' + esc(f.evidence) + '</span></div>' +
+      '<div class="fd">' + esc(f.detail) + '</div></div>';
   }
 
   // A section on the Overview: its name, its one line, a chevron. Tapping

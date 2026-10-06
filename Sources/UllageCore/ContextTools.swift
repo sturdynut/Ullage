@@ -154,6 +154,11 @@ public struct ToolDescriptor: Codable, Equatable, Sendable {
         public var source: String
         /// For the legend: "rtk counts bytes ÷ 4".
         public var how: String
+        /// True when each claim is about one API request (a proxy that
+        /// compresses every prompt anew), not one tool result. A result's
+        /// saving is kept out of every later prompt, so it can be carried
+        /// forward; a request's is already per prompt and must not be.
+        public var perRequest: Bool? = nil
     }
 
     public struct Install: Codable, Equatable, Sendable {

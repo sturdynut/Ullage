@@ -59,10 +59,11 @@ public enum BuiltinTools {
     )
 
     public static let headroom = ToolDescriptor(
-        id: "headroom", name: "Headroom", kind: .onDemand, shrinks: "tool output, when called",
-        about: "Compresses content when the model asks it to, as an MCP server.",
+        id: "headroom", name: "Headroom", kind: .onDemand, shrinks: "tool output, when called or proxied",
+        about: "Compresses content when the model asks it to, as an MCP server, or every request, as a proxy.",
         detect: .init(hookCommand: ["headroom"], mcpServer: ["headroom"]),
-        claims: nil,
+        claims: .init(reader: "headroom-proxy", source: "Headroom's own proxy log, matched to turns by time",
+                      how: "Headroom counts what its proxy compressed out of each request", perRequest: true),
         install: .init(
             binary: "headroom", package: "headroom-ai",
             packages: [

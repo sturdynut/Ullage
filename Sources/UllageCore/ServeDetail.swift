@@ -62,6 +62,18 @@ public struct ServeDetail: Codable, Equatable {
         public var note: String?
         public var pending: String?
         public var canUndo: Bool
+        /// Cost and benefit in this session, each with how it is known.
+        public var figures: [Figure]? = nil
+    }
+
+    /// One graded figure (`ValueFigure`), as the phone draws it.
+    public struct Figure: Codable, Equatable {
+        public var side: String     // benefit | cost | comparison
+        public var label: String
+        public var value: String
+        public var evidence: String // the badge
+        public var detail: String
+        public var warning: Bool
     }
 
     public struct Section: Codable, Equatable {
@@ -135,7 +147,10 @@ extension ServeDetail {
                                 groups: [Group(heading: nil, rows: SessionInfo.rows(figures, history: history)
                                     .map { Row(label: $0.label, value: $0.value) })]))
         if !tree.isEmpty { sections.append(agentsSection(tree, state: state, history: history)) }
-        if let savers { sections.append(saversSection(try savers.panel(store: store, sessionId: sessionId, now: now))) }
+        if let savers {
+            sections.append(saversSection(try savers.panel(store: store, sessionId: sessionId, now: now),
+                                          values: try savers.values(store: store, sessionId: sessionId, now: now)))
+        }
         let support = HarnessSupport(vendor: call.vendor)
         if !support.gaps.isEmpty { sections.append(harnessSection(support)) }
         let limits = PlanLimitFormatter.displays(for: try store.planLimits(), now: now)
@@ -251,8 +266,8 @@ extension ServeDetail {
         return Section(id: "agents", title: "Agents", summary: tree.summary, groups: [Group(heading: nil, rows: rows)])
     }
 
-    static func saversSection(_ panel: SaverPanel) -> Section {
-        Section(
+    static func saversSection(_ panel: SaverPanel, values: [TokenSaver: SaverValue] = [:]) -> Section {
+        var section = Section(
             id: "savers", title: "Context tools", summary: panel.summary,
             warning: panel.warning,
             groups: panel.pendingInstalls.isEmpty ? [] : [Group(heading: nil, rows: panel.pendingInstalls.map { Row(label: $0) })],
@@ -265,6 +280,24 @@ extension ServeDetail {
             installable: panel.installable.map { Installable(id: $0.rawValue, name: $0.displayName, shrinks: $0.shrinks) },
             legend: panel.legend
         )
+        var shown: [ValueFigure] = []
+        for index in (section.savers ?? []).indices {
+            guard let saver = TokenSaver(rawValue: section.savers![index].id), let value = values[saver], !value.isEmpty else { continue }
+            // The row already leads with its metric; the same figure again is noise.
+            let metric = section.savers![index].metric
+            let figures = value.all.filter { $0.value != metric }
+            // The legend still explains the metric's grade when its figure is dropped.
+            shown += value.all
+            section.savers![index].figures = figures.map {
+                Figure(side: $0.side.rawValue, label: $0.label, value: $0.value, evidence: $0.evidence.badge,
+                       detail: $0.detail, warning: $0.warning)
+            }
+        }
+        if !shown.isEmpty {
+            let kept = (section.legend ?? []).filter { !$0.hasPrefix(SaverPanel.claimsLegendLead) }
+            section.legend = kept + Evidence.legend(for: shown)
+        }
+        return section
     }
 
     static func limitsSection(_ limits: [PlanLimitDisplay], store: Store, now: Date) throws -> Section {

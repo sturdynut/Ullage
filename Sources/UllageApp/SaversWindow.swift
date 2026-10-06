@@ -3,28 +3,36 @@ import Charts
 import SwiftUI
 import UllageCore
 
-/// The Token savers window: each saver over this session, 7 or 30 days.
+/// The Context tools window: each tool over this session, 7 or 30 days.
 ///
-/// What the transcripts prove comes first, as counts. A saver's claimed
-/// saving comes second, marked `≈` and named as its own. caveman's
-/// comparison is shown as two measured medians, never as a difference
-/// labelled "saved". Every figure is decided in `SaverDetail`.
+/// A tool's page leads with what it is worth — keeps out, costs, with vs
+/// without — because that is the page's question; every figure there carries
+/// its grade, so a claim never reads as a measurement and a comparison never
+/// as a saving. What the transcripts prove follows, as counts. Every figure
+/// is decided in `SaverValue` and `SaverDetail`.
 struct SaversPage: View {
     @ObservedObject var model: MenuBarModel
-    @State private var selection: TokenSaver? = TokenSaver.allCases.first
-    @State private var detail: SaverDetail?
+    /// `overview`, or a tool's id.
+    @State private var selection: String? = SaversPage.overviewTag
+    @State private var details: [SaverDetail] = []
+    /// The range `details` belong to: the picker changes before they do.
+    @State private var loadedRange: SaverRange?
+    @State private var loading = false
     @AppStorage("saversWindowRange") private var rangeName = SaverRange.session.rawValue
 
+    static let overviewTag = "overview"
     private var range: SaverRange { SaverRange(rawValue: rangeName) ?? .session }
+    private var detail: SaverDetail? { details.first { $0.saver.rawValue == selection } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Context tools").font(.title2.weight(.bold))
-                    Text("Switches change Claude Code's settings for new sessions").foregroundStyle(.secondary)
+                    Text("What each tool costs the context, and what it keeps out").foregroundStyle(.secondary)
                 }
                 Spacer()
+                if loading { ProgressView().controlSize(.small).padding(.trailing, 6) }
                 Picker("Range", selection: $rangeName) {
                     ForEach(SaverRange.allCases) { Text($0.rawValue).tag($0.rawValue) }
                 }
@@ -36,39 +44,56 @@ struct SaversPage: View {
             .padding(24)
             Divider()
             HStack(spacing: 0) {
-                List(TokenSaver.allCases, id: \.self, selection: $selection) { saver in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(saver.displayName).font(.body.weight(.semibold))
-                        Text(sidebarStatus(saver))
-                            .font(.caption)
-                            .foregroundStyle(sidebarWarning(saver) ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
+                List(selection: $selection) {
+                    Text("Overview").font(.body.weight(.semibold)).padding(.vertical, 2).tag(Self.overviewTag)
+                    Section("Tools") {
+                        ForEach(TokenSaver.allCases, id: \.self) { saver in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(saver.displayName).font(.body.weight(.semibold))
+                                Text(sidebarStatus(saver))
+                                    .font(.caption)
+                                    .foregroundStyle(sidebarWarning(saver) ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
+                            }
+                            .padding(.vertical, 2)
+                            .tag(saver.rawValue)
+                        }
                     }
-                    .padding(.vertical, 2)
                 }
                 .frame(width: 190)
                 Divider()
                 ScrollView {
-                    if let detail {
-                        DetailPage(detail: detail, row: model.savers.rows.first { $0.saver == detail.saver },
-                                   switchState: model.saverSwitchState(detail.saver),
-                                   installed: model.saverIsInstalled(detail.saver),
-                                   onSwitch: { model.setSaver(detail.saver, on: $0) },
-                                   onUndo: { model.undoSaver(detail.saver) },
-                                   onPlan: { action in
-                                       let plan = model.installPlan(detail.saver, action)
-                                       if InstallConfirmation.confirm(plan) { model.run(plan) }
-                                   })
-                            .padding(20)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Text("Pick a tool.").foregroundStyle(.secondary).padding(40)
+                    Group {
+                        if selection == Self.overviewTag {
+                            OverviewPage(details: details, range: loadedRange, loading: loading) { selection = $0.rawValue }
+                        } else if let detail {
+                            DetailPage(detail: detail, row: model.savers.rows.first { $0.saver == detail.saver },
+                                       switchState: model.saverSwitchState(detail.saver),
+                                       installed: model.saverIsInstalled(detail.saver),
+                                       onSwitch: { model.setSaver(detail.saver, on: $0) },
+                                       onUndo: { model.undoSaver(detail.saver) },
+                                       onPlan: { action in
+                                           let plan = model.installPlan(detail.saver, action)
+                                           if InstallConfirmation.confirm(plan) { model.run(plan) }
+                                       })
+                            .opacity(loading ? 0.5 : 1)
+                        } else if loading {
+                            Text("Reading sessions…").foregroundStyle(.secondary)
+                        } else {
+                            Text("Pick a tool.").foregroundStyle(.secondary)
+                        }
                     }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .task(id: "\(selection?.rawValue ?? "")|\(rangeName)|\(model.state.sessionId ?? "")|\(model.savers.rows.map(\.switchState.rawValue))") {
-            guard let selection else { detail = nil; return }
-            detail = model.saverDetail(selection, range: range)
+        .task(id: "\(rangeName)|\(model.state.sessionId ?? "")|\(model.savers.rows.map(\.switchState.rawValue))") {
+            loading = true
+            let loaded = await model.saverDetails(range: range)
+            guard !Task.isCancelled else { return }
+            details = loaded
+            loadedRange = range
+            loading = false
         }
     }
 
@@ -79,6 +104,183 @@ struct SaversPage: View {
 
     private func sidebarWarning(_ saver: TokenSaver) -> Bool {
         model.savers.rows.first(where: { $0.saver == saver })?.statusIsWarning ?? false
+    }
+}
+
+// MARK: - Cost and benefit, shared by the overview and each tool's page
+
+/// One graded figure: the label, the value, a badge saying how it is known.
+private struct FigureView: View {
+    let figure: ValueFigure
+    var large = true
+
+    var body: some View {
+        let big = large && !figure.secondary
+        VStack(alignment: .leading, spacing: 3) {
+            Text(figure.label).font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(figure.value)
+                    .font(big ? .system(size: 22, weight: .semibold) : .body.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(figure.warning ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.primary))
+                EvidenceBadge(evidence: figure.evidence)
+            }
+            Text(figure.detail)
+                .font(.caption)
+                .foregroundStyle(figure.warning ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// How a figure is known, as a small outlined capsule. Outlined, not filled:
+/// the grade qualifies the number, it isn't a status to notice. A claim, or
+/// anything built on one, gets a dashed outline: weaker, not louder.
+struct EvidenceBadge: View {
+    let evidence: Evidence
+
+    private var dashed: Bool { evidence == .claimed || evidence == .derived }
+
+    var body: some View {
+        Text(evidence.badge)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.6),
+                                            style: StrokeStyle(lineWidth: 0.75, dash: dashed ? [2, 2] : [])))
+            .help(evidence.explanation)
+    }
+}
+
+/// What each badge means, folded away: the tooltips say it too.
+private struct EvidenceLegend: View {
+    let figures: [ValueFigure]
+
+    var body: some View {
+        let legend = Evidence.legend(for: figures)
+        if !legend.isEmpty {
+            DisclosureGroup("How each figure is known") {
+                VStack(alignment: .leading, spacing: 3) { ForEach(legend, id: \.self) { Text($0) } }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Keeps out on the left, costs on the right, with vs without beneath: all
+/// context tokens, but of different grades, so they sit side by side and are
+/// never netted.
+private struct CostBenefit: View {
+    let value: SaverValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 28) {
+                column("Keeps out", value.benefits, empty: emptyBenefit)
+                column("Costs", value.costs, empty: "No cost seen in this range.")
+            }
+            if !value.comparisons.isEmpty {
+                column("With vs without", value.comparisons, empty: "")
+            }
+            EvidenceLegend(figures: value.all)
+        }
+    }
+
+    private var emptyBenefit: String {
+        let saver = value.saver
+        if saver.descriptor.claims == nil, saver.kind == .outputFilter || saver.kind == .onDemand {
+            return "\(saver.displayName) keeps no count of what it saves, and Ullage can't see what the output would have been."
+        }
+        return "Nothing it kept out shows in this range."
+    }
+
+    private func column(_ title: String, _ figures: [ValueFigure], empty: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+            if figures.isEmpty {
+                Text(empty).font(.callout).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(figures) { FigureView(figure: $0) }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+/// Every tool's figures, in the registry's order. Not ranked: a claim, a
+/// comparison and an estimate aren't one scale.
+private struct OverviewPage: View {
+    let details: [SaverDetail]
+    /// The range `details` were read for, which lags the picker while loading.
+    let range: SaverRange?
+    let loading: Bool
+    let onOpen: (TokenSaver) -> Void
+
+    var body: some View {
+        let overview = SaverValue.overview(details)
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Keeps out and costs, by tool").font(.title2.weight(.semibold))
+            if let range {
+                Text("Over \(range == .session ? "this session" : "the last \(range.days ?? 30) days"). Each figure says how it is known; figures of different kinds are never added together.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if details.isEmpty, loading {
+                Text("Reading sessions…").foregroundStyle(.secondary)
+            } else if overview.shown.isEmpty, !loading {
+                Text("No context tool left a trace in this range.").foregroundStyle(.secondary)
+            }
+            Grid(alignment: .topLeading, horizontalSpacing: 20, verticalSpacing: 16) {
+                if !overview.shown.isEmpty {
+                    GridRow {
+                        Text("")
+                        heading("Keeps out")
+                        heading("Costs")
+                        heading("With vs without")
+                    }
+                }
+                ForEach(overview.shown) { value in
+                    GridRow {
+                        Button(value.saver.displayName) { onOpen(value.saver) }
+                            .buttonStyle(.link)
+                            .font(.body.weight(.semibold))
+                        cell(value.benefits.filter { !$0.secondary })
+                        cell(value.costs)
+                        cell(value.comparisons)
+                    }
+                    Divider().gridCellColumns(4)
+                }
+            }
+            .opacity(loading ? 0.4 : 1)
+            if !overview.quiet.isEmpty {
+                Text("No trace in this range: " + overview.quiet.map(\.displayName).joined(separator: ", "))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            EvidenceLegend(figures: overview.shown.flatMap(\.all))
+        }
+    }
+
+    private func heading(_ text: String) -> some View {
+        Text(text).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+    }
+
+    /// The first two figures; the tool's page has the rest.
+    private func cell(_ figures: [ValueFigure]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if figures.isEmpty { Text("—").foregroundStyle(.tertiary) }
+            ForEach(figures.prefix(2)) { FigureView(figure: $0, large: false) }
+            if figures.count > 2 {
+                Text("+\(figures.count - 2) more").font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+        .frame(minWidth: 150, maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -96,6 +298,10 @@ private struct DetailPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             header
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Cost and benefit").font(.headline)
+                CostBenefit(value: detail.value)
+            }
             facts
             switch saver.kind {
             case .outputFilter: ledger
@@ -204,21 +410,15 @@ private struct DetailPage: View {
     @ViewBuilder
     private var ledger: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("What \(saver.displayName) says it saved").font(.headline)
+            Text("Where \(saver.displayName)'s claim comes from").font(.headline)
             if let ledger = detail.ledger {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("≈" + ledger.savedTokens.formatted())
-                        .font(.system(size: 28, weight: .semibold))
-                        .monospacedDigit()
-                    Text("tokens, by its own count, over \(ledger.entries) commands")
-                        .foregroundStyle(.secondary)
-                    if let reduction = ledger.reduction {
-                        Text("· ≈\(Int((reduction * 100).rounded()))% smaller").foregroundStyle(.secondary)
-                    }
-                }
+                Text("Its own count, by command, largest first. Each bar is the output before \(saver.displayName) shrank it; the solid part reached the model.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 commandTable(ledger)
             } else {
-                Text("Nothing in \(saver.displayName)'s log matches these sessions, so there is no saving to show.")
+                Text("Nothing in \(saver.displayName)'s log matches these sessions, so there is no claim to show.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -275,24 +475,16 @@ private struct DetailPage: View {
     @ViewBuilder
     private var replyStyle: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Output per reply, with and without").font(.headline)
-            if let comparison = detail.comparison {
-                HStack(alignment: .firstTextBaseline, spacing: 36) {
-                    median(comparison.withMedian, "with \(saver.displayName)",
-                           "\(comparison.withTurns.formatted()) replies · \(comparison.withSessions) sessions")
-                    median(comparison.withoutMedian, "without",
-                           "\(comparison.withoutTurns.formatted()) replies · \(comparison.withoutSessions) sessions")
-                }
-                Text("Medians of measured output tokens, main thread, \(detail.comparisonFolder.map(Self.shortPath) ?? "this folder"), last \(detail.range.days ?? 30) days. Different replies did different work, so this is a comparison, not a saving. Output includes thinking, which caveman doesn't shorten.")
+            Text("This session, reply by reply").font(.headline)
+            if detail.comparison == nil {
+                Text("Needs \(OutputComparison.minimumTurns) replies with \(saver.displayName) and \(OutputComparison.minimumTurns) without in this folder before there is anything to compare. Output includes thinking, which \(saver.displayName) doesn't shorten.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("Needs \(OutputComparison.minimumTurns) replies with \(saver.displayName) and \(OutputComparison.minimumTurns) without in this folder before there is anything to compare.")
-                    .foregroundStyle(.secondary)
             }
-            if !detail.turns.isEmpty {
-                Text("This session, reply by reply").font(.subheadline.weight(.semibold)).padding(.top, 6)
+            if detail.turns.isEmpty {
+                Text("No replies in this session yet.").foregroundStyle(.secondary)
+            } else {
                 Chart(detail.turns) { turn in
                     BarMark(x: .value("Turn", turn.turn), y: .value("Output tokens", turn.output))
                         .foregroundStyle(by: .value(saver.displayName, turn.on ? "on" : "off"))
@@ -302,21 +494,6 @@ private struct DetailPage: View {
                 .frame(height: 160)
             }
         }
-    }
-
-    private func median(_ value: Int, _ label: String, _ sample: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(value.formatted()).font(.system(size: 28, weight: .semibold)).monospacedDigit()
-                Text("tokens/reply \(label)").foregroundStyle(.secondary)
-            }
-            Text(sample).font(.caption).foregroundStyle(.tertiary)
-        }
-    }
-
-    private static func shortPath(_ path: String) -> String {
-        let home = NSHomeDirectory()
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 }
 #endif

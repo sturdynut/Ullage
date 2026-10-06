@@ -313,19 +313,24 @@ what a session would have cost without the tool.
   is gone, and prints "rtk is not installed" every time.
 - **rtk and Tokenade** filter tool output before the model sees it, so Ullage
   only ever sees the smaller version. Their savings come from their own logs
-  (rtk's `history.db`, Tokenade's `~/.tokenade/gain.jsonl`), matched to a
-  session by directory and time. They are shown with `≈` as that tool's own
-  claim: rtk counts bytes ÷ 4, and Tokenade doesn't say how it counts. When
-  both rewrite the same Bash call, the popover warns that their figures
-  overlap and can't be added together.
+  (rtk's `history.db`, Tokenade's `~/.tokenade/gain.jsonl`). rtk's log names
+  the Claude Code session and Bash call each rewrite was for, so its claims
+  land on the exact call; other logs are matched by directory and time. They
+  are shown with `≈` as that tool's own claim: rtk counts bytes ÷ 4, and
+  Tokenade doesn't say how it counts. Where a call ran a single rtk command,
+  Ullage checks rtk's "after" against what reached the model. When both
+  rewrite the same Bash call, the popover warns that their figures overlap
+  and can't be added together.
 - **caveman** shortens the model's replies, and Ullage measures output tokens
   exactly. It compares the median output per turn with caveman on and with it
   off, over the same directory's last 30 days of main-thread turns. That is a
   comparison of different work, not a saving, and it is labelled as one. It
   needs 20 turns on each side.
-- **Headroom** is an MCP server. Ullage shows whether it was loaded and
-  whether it was ever called; a loaded server that is never called still puts
-  its tool definitions in every prompt.
+- **Headroom** is an MCP server or a proxy. Ullage shows whether the server was
+  loaded and whether it was ever called; a loaded server that is never called
+  still puts its tool definitions in every prompt. The proxy's own log
+  (`~/.headroom/proxy_savings.json`) is matched to turns by time and shown as
+  its claim, per request.
 - **Serena, codegraph and claude-context** are code search. Ullage counts their
   lookups (MCP calls, and `codegraph` commands run in Bash) and roughly how much
   they returned, instead of whole files. claude-context sends your code to
@@ -334,18 +339,30 @@ what a session would have cost without the tool.
   it added to the context at session start, which is then sent with every turn.
 
 The main window's **Context tools** page shows each tool over this session, 7
-days or 30 days:
+days or 30 days. An **Overview** lists every tool's cost and benefit side by
+side, and each tool's page leads with the same:
+- **keeps out, costs, and with vs without**, each figure with a badge for how
+  it is known: *measured*, *estimate*, *its claim*, *with vs without*, or
+  *claim × prompts*. Figures of different kinds are never added or netted.
+  *Not re-sent in later prompts* is the tool's claim counted again in each
+  prompt the shrunk result stayed in, up to the next compaction: a running
+  total of tokens sent (mostly cache reads), not room in the window. *With vs
+  without* sets a figure, such as the first prompt, from sessions with the tool
+  beside the same figure from sessions without it, over the days both had
+  sessions, in one harness, in this folder or (when it has too few) all
+  folders; it is neither a saving nor a cost;
 - what the transcripts prove: sessions it ran in, hook runs, rewrites, failures
   with the last error message, and MCP calls;
-- for rtk and Tokenade, their own count per command (before, after and saved,
-  all marked `≈`);
+- for rtk and Tokenade, where the claim comes from: their own count per command
+  (before, after and saved, all marked `≈`);
 - for caveman, the two medians with their sample sizes, plus this session's
   output per reply, coloured by whether caveman was on;
 - for Headroom, the sessions where it was loaded but never used;
 - for code search tools, their lookups and what they returned;
 - for claude-mem, what it injected per session and its memory searches.
 
-`ullage savers --days 30` prints the same summary.
+`ullage savers --days 30` prints the same summary, cost and benefit included,
+and the phone page shows each tool's figures under its switch.
 
 **The switches** change Claude Code's user config (`~/.claude/settings.json`,
 `~/.claude.json`), and only when you click one or run `ullage savers
