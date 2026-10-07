@@ -124,7 +124,7 @@ public struct SaverPanel: Equatable {
             let onMachine = installed.contains(saver) || state != .notInstalled
             if !onMachine { installable.append(saver) }
             guard onMachine || usage.ran || usage.idle else { continue }
-            var row = row(saver, state: state, usage: usage, bashCalls: report?.bashCalls ?? 0,
+            var row = row(saver, state: state, usage: usage, bashCalls: usage.bashCallsSeen,
                           comparison: comparisons[saver])
             row.isInstalled = onMachine
             if onMachine, state == .notInstalled, !usage.broken, !usage.ran {

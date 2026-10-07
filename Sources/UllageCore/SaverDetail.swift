@@ -51,6 +51,7 @@ public struct SaverDetail: Equatable {
     /// Sessions it injected into, for an average per session.
     public var sessionsInjected: Int = 0
     public var invocations: Int
+    /// Bash calls in the sessions its hook ran in.
     public var bashCalls: Int
     public var doubleHookedCalls: Int
     public var ledger: LedgerMatch?
@@ -103,7 +104,9 @@ public struct SaverDetail: Equatable {
             injectedBytes: usages.reduce(0) { $0 + $1.injectedBytes },
             sessionsInjected: usages.filter { $0.injectedBytes > 0 }.count,
             invocations: usages.reduce(0) { $0 + $1.invocations },
-            bashCalls: reports.reduce(0) { $0 + $1.bashCalls },
+            // From its first hook run in each session: Bash calls from before
+            // it was installed were never its to rewrite.
+            bashCalls: usages.reduce(0) { $0 + $1.bashCallsSeen },
             doubleHookedCalls: reports.reduce(0) { $0 + $1.doubleHookedCalls },
             ledger: ledger,
             comparison: comparison,

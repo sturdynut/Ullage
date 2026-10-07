@@ -70,7 +70,7 @@ they need it offline; subscription-metered IDEs keep usage on their servers.
 
 ```bash
 swift build
-swift test                 # 388 tests on macOS; on Linux all but the CryptoKit and AppKit ones
+swift test                 # 390 tests on macOS; on Linux all but the CryptoKit and AppKit ones
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```

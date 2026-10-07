@@ -137,6 +137,31 @@ final class SaverChartTests: XCTestCase {
         XCTAssertEqual(rows["headroom"]?.costs?.first?.warning, true)
     }
 
+    func testRewritesAreOutOfBashCallsItsHookCouldSee() {
+        var hooked = SaverUsage(saver: .rtk)
+        hooked.hookRuns = 4
+        hooked.rewrites = 3
+        hooked.bashCallsSeen = 5
+        let after = SaverSessionReport(sessionId: "a", cwd: "/r", bashCalls: 5, usages: [hooked], doubleHookedCalls: 0)
+        let before = SaverSessionReport(sessionId: "b", cwd: "/r", bashCalls: 900, usages: [], doubleHookedCalls: 0)
+        let d = SaverDetail.build(saver: .rtk, range: .month, reports: [before, after])
+        XCTAssertEqual(d.rewrites, 3)
+        XCTAssertEqual(d.bashCalls, 5, "the 900 calls from before it was installed aren't counted against it")
+    }
+
+    /// rtk installed partway into a session: the Bash calls before its first
+    /// hook run were never its to rewrite.
+    func testBashCallsCountFromTheFirstHookRun() {
+        let bash = (0..<6).map { i in
+            ToolCallRow(id: "t\(i)", callId: "c", sessionId: "s1", ts: "2026-10-04T10:0\(i):00.000Z", name: "Bash", kind: "bash", target: "ls")
+        }
+        let run = HookRun(hookEvent: "PreToolUse", command: "rtk hook claude", toolUseId: "t3", exitCode: 0, rewrittenCommand: "rtk ls")
+        let event = EventRow(id: "e", sessionId: "s1", ts: "2026-10-04T10:03:00.000Z", kind: EventKind.hook.rawValue, detail: run.detailJSON)
+        let report = SaverReport.build(sessionId: "s1", calls: [], toolCalls: bash, events: [event], sessionEnv: nil, ledger: [])
+        XCTAssertEqual(report.bashCalls, 6)
+        XCTAssertEqual(report.usage(.rtk).bashCallsSeen, 3, "10:03, 10:04, 10:05")
+    }
+
     func testHelpExplainsThePairedBars() {
         let questions = HelpText.savers.entries.map(\.question)
         XCTAssertTrue(questions.contains("What do the paired bars show?"))

@@ -22,6 +22,11 @@ public struct SaverUsage: Equatable {
     public var mcpResultTokens = 0
     /// Bash calls that ran its command (`codegraph explore …`).
     public var bashRuns = 0
+    /// Bash calls from its first hook run on: the ones it could have
+    /// rewritten. Claude Code records a hook only when it changed something,
+    /// so the calls it let through leave no trace of their own; counting from
+    /// its first run keeps a session it was installed partway into fair.
+    public var bashCallsSeen = 0
     /// Bytes its hooks added to the context (claude-mem's SessionStart memory).
     public var injectedBytes = 0
     /// Skill-tool calls and slash commands (caveman).
@@ -109,11 +114,13 @@ public enum SaverReport {
     ) -> SaverSessionReport {
         var usages = Dictionary(uniqueKeysWithValues: TokenSaver.allCases.map { ($0, SaverUsage(saver: $0)) })
         var hookedBy: [String: Set<TokenSaver>] = [:]
+        var firstRun: [TokenSaver: String] = [:]
 
         for event in events where event.kind == EventKind.hook.rawValue {
             guard let run = HookRun(detail: event.detail),
                   let saver = TokenSaver.saver(forHookCommand: run.command) else { continue }
             usages[saver]?.hookRuns += 1
+            if run.hookEvent == "PreToolUse", firstRun[saver].map({ event.ts < $0 }) ?? true { firstRun[saver] = event.ts }
             if let rewrite = run.rewrittenCommand, !rewrite.isEmpty {
                 usages[saver]?.rewrites += 1
             }
@@ -168,7 +175,11 @@ public enum SaverReport {
             }
         }
 
-        let bashIds = Set(toolCalls.filter { $0.name == "Bash" }.map(\.id))
+        let bashCalls = toolCalls.filter { $0.name == "Bash" }
+        for (saver, since) in firstRun {
+            usages[saver]?.bashCallsSeen = bashCalls.filter { $0.ts >= since }.count
+        }
+        let bashIds = Set(bashCalls.map(\.id))
         let doubledBy = hookedBy.filter { bashIds.contains($0.key) }
             .mapValues { $0.filter { $0.kind == .outputFilter } }
             .filter { $0.value.count >= 2 }
