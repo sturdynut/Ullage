@@ -469,11 +469,14 @@ func printRebuildRange(_ store: Store, days: Int) throws {
 }
 
 func printSaverRange(_ store: Store, days: Int) throws {
-    let range: SaverRange = days <= 7 ? .week : .month
+    let range = SaverRange.covering(days: days)
     let ledger = store.ledger(since: Date().addingTimeInterval(-Double(days + 1) * 86_400))
     let anchor = try store.latestCall()?.sessionId
+    let details = try store.saverDetails(range: range, sessionId: anchor, ledger: ledger)
+    printSavings(try store.savingsSummary(details, range: range))
+    print("")
     print("TOKEN SAVERS, last \(range.days ?? days) days (counts from transcripts; ≈ is the tool's own claim)")
-    for detail in try store.saverDetails(range: range, sessionId: anchor, ledger: ledger) {
+    for detail in details {
         let saver = detail.saver
         var facts = ["ran in \(detail.sessionsUsed) of \(detail.sessions) sessions"]
         if detail.hookRuns > 0 { facts.append("hook ran \(detail.hookRuns)×") }
@@ -483,6 +486,29 @@ func printSaverRange(_ store: Store, days: Int) throws {
         if detail.sessionsIdle > 0 { facts.append("loaded but unused in \(detail.sessionsIdle)") }
         print("  " + pad(saver.displayName, 16) + facts.joined(separator: " · "))
         printCards(detail)
+    }
+}
+
+/// The total, each tool's share and the sessions that saved most.
+func printSavings(_ summary: SavingsSummary) {
+    guard !summary.isEmpty else { print("SAVED  nothing claimed in this range"); return }
+    let period = summary.range.days.map { $0 == 1 ? "last 24 hours" : "last \($0) days" } ?? "this session"
+    print("SAVED, \(period): ≈\(thousands(summary.saved)) tokens  (≈\(thousands(summary.before)) would have been sent, ≈\(thousands(summary.after)) was"
+          + (summary.cut.map { ", −\($0)%" } ?? "") + ")")
+    for tool in summary.tools {
+        print("  " + pad(tool.saver.displayName, 16) + padLeft("≈" + thousands(tool.counted), 16)
+              + (summary.share(tool).map { padLeft("\($0)%", 6) } ?? ""))
+    }
+    if summary.overlap > 0 { print("  ≈\(thousands(summary.overlap)) claimed by two tools for the same calls, counted once") }
+    if !summary.compared.isEmpty {
+        print("  not in the total (compared, not claimed): " + summary.compared.map(\.displayName).joined(separator: ", "))
+    }
+    if !summary.sessions.isEmpty {
+        print("  top sessions:")
+        for session in summary.sessions.prefix(5) {
+            print("    " + pad(String(session.sessionId.prefix(8)) + "  " + (session.project ?? ""), 34)
+                  + padLeft("≈" + thousands(session.total), 16) + padLeft("\(session.turns) turns", 12))
+        }
     }
 }
 

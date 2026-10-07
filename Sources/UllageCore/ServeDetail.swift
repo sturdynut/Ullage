@@ -94,6 +94,24 @@ public struct ServeDetail: Codable, Equatable {
         public var bars: [Bar]
     }
 
+    /// `SavingsSummary`, as the phone draws it.
+    public struct Savings: Codable, Equatable {
+        public struct Tool: Codable, Equatable {
+            public var name: String
+            public var slot: Int
+            public var before: Int
+            public var after: Int
+            public var saved: String
+            public var share: String
+        }
+        public var period: String
+        public var total: String
+        public var sub: String
+        public var tools: [Tool]
+        public var notes: [String]
+        public var overall: SaverChartData
+    }
+
     public struct Cost: Codable, Equatable {
         public var label: String
         public var value: String
@@ -110,6 +128,8 @@ public struct ServeDetail: Codable, Equatable {
         public var shares: [Share]?
         public var warning: String?
         public var groups: [Group] = []
+        /// The tools' total saving over the last 7 days (Context tools only).
+        public var savings: Savings? = nil
         public var savers: [Saver]?
         public var installable: [Installable]?
         public var legend: [String]?
@@ -173,8 +193,10 @@ extension ServeDetail {
                                     .map { Row(label: $0.label, value: $0.value) })]))
         if !tree.isEmpty { sections.append(agentsSection(tree, state: state, history: history)) }
         if let savers {
-            sections.append(saversSection(try savers.panel(store: store, sessionId: sessionId, now: now),
-                                          details: try savers.details(store: store, sessionId: sessionId, now: now), now: now))
+            let details = try savers.details(store: store, sessionId: sessionId, now: now)
+            var section = saversSection(try savers.panel(store: store, sessionId: sessionId, now: now), details: details, now: now)
+            section.savings = savingsData(try store.savingsSummary(TokenSaver.allCases.compactMap { details[$0] }, range: .week, now: now), now: now)
+            sections.append(section)
         }
         let support = HarnessSupport(vendor: call.vendor)
         if !support.gaps.isEmpty { sections.append(harnessSection(support)) }
@@ -317,11 +339,33 @@ extension ServeDetail {
         return section
     }
 
+    static func savingsData(_ summary: SavingsSummary, now: Date) -> Savings? {
+        guard !summary.isEmpty else { return nil }
+        var notes: [String] = []
+        if summary.overlap > 0 { notes.append("≈\(TokenFormat.compact(summary.overlap)) claimed by two tools for the same calls is counted once.") }
+        if !summary.compared.isEmpty { notes.append("Not added in: " + summary.compared.map(\.displayName).joined(separator: ", ") + ".") }
+        return Savings(
+            period: summary.periodText, total: "≈" + TokenFormat.compact(summary.saved) + " tokens",
+            sub: "≈\(TokenFormat.compact(summary.before)) would have been sent · ≈\(TokenFormat.compact(summary.after)) was"
+                + (summary.cut.map { " · −\($0)%" } ?? ""),
+            tools: summary.tools.map {
+                Savings.Tool(name: $0.saver.displayName, slot: SaverChart.colorSlot($0.saver), before: $0.before, after: $0.after,
+                             saved: "≈" + TokenFormat.compact($0.counted), share: summary.share($0).map { "\($0)%" } ?? "")
+            },
+            notes: notes, overall: chart(for: summary.overallChart(now: now), slot: -1)
+        )
+    }
+
     static func chart(for chart: SaverChart, saver: TokenSaver) -> SaverChartData {
+        Self.chart(for: chart, slot: SaverChart.colorSlot(saver))
+    }
+
+    /// `slot` -1 is the overall total, drawn in grey.
+    static func chart(for chart: SaverChart, slot: Int) -> SaverChartData {
         SaverChartData(kind: chart.kind.rawValue, title: chart.title, what: chart.what, more: chart.more,
               beforeLabel: chart.beforeLabel, afterLabel: chart.afterLabel, countUnit: chart.countUnit,
               total: chart.totalText, change: chart.changeText, approximate: chart.approximate,
-              firstDay: chart.firstDay, lastDay: chart.lastDay, slot: SaverChart.colorSlot(saver),
+              firstDay: chart.firstDay, lastDay: chart.lastDay, slot: slot,
               bars: chart.bars.map { SaverChartData.Bar(key: $0.key, label: $0.label, before: $0.before, after: $0.after, count: $0.count) })
     }
 

@@ -29,7 +29,7 @@ public struct SaverChart: Equatable, Identifiable {
         public var id: String { key }
 
         /// Rounded percent from before to after: −47 is 47% smaller.
-        public var change: Int? { SaverChart.change(before, after) }
+        public var change: Int? { SaverChart.percentChange(before, after) }
     }
 
     public var id: String
@@ -55,7 +55,7 @@ public struct SaverChart: Equatable, Identifiable {
 
     public var before: Int { bars.reduce(0) { $0 + $1.before } }
     public var after: Int { bars.reduce(0) { $0 + $1.after } }
-    public var change: Int? { Self.change(before, after) }
+    public var change: Int? { Self.percentChange(before, after) }
 
     /// `≈570k → ≈302k`, or `53k without → 53k with`.
     public var totalText: String {
@@ -69,7 +69,8 @@ public struct SaverChart: Equatable, Identifiable {
     /// `−47%`, `+5%`, or `no change`.
     public var changeText: String { Self.changeText(change) }
 
-    static func change(_ before: Int, _ after: Int) -> Int? {
+    /// Rounded percent from before to after: −47 is 47% smaller.
+    public static func percentChange(_ before: Int, _ after: Int) -> Int? {
         guard before > 0 else { return nil }
         return Int((Double(after - before) / Double(before) * 100).rounded())
     }

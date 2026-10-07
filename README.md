@@ -303,8 +303,9 @@ sessions. Ullage shows what each one actually did and lets you switch it on or o
 Each tool is a description, not code: add your own as a JSON file in
 `~/.config/ullage/tools/` ([docs/CONTEXT-TOOLS.md](docs/CONTEXT-TOOLS.md)), and
 `ullage tools` lists what loaded.
-It never adds up a single "tokens saved" number, because nothing on disk records
-what a session would have cost without the tool.
+Its savings figures are each tool's own claim, marked `≈`. They add up into
+one total, per tool, per session and per period, with a call two tools both
+shortened counted once; with/without comparisons are shown but never added in.
 
 - **Did it run?** Claude Code logs every hook it runs in the transcript: the
   command, the tool call it ran for, the command it was rewritten to, and any
@@ -338,9 +339,11 @@ what a session would have cost without the tool.
 - **claude-mem** carries notes between sessions. Ullage shows roughly how much
   it added to the context at session start, which is then sent with every turn.
 
-The main window's **Context tools** page shows each tool over this session, 7
-days or 30 days. An **Overview** shows every tool's main chart, and each
-tool's page leads with all of them. Each chart is a card with a short title,
+The main window's **Context tools** page shows this session, 1, 7, 21 or 30
+days. **Savings** answers how much you're saving: the total kept from being
+sent, what would have been sent next to what was per day (per hour for 1
+day), each tool's share, and each session's saving split by tool. Each tool's
+page leads with its own charts. Each chart is a card with a short title,
 one line of what it is, and an ⓘ for the details, and pairs two bars: what
 the tool took in (faded) next to what it passed on to the model (solid), so
 the gap is the reduction:

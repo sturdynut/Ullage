@@ -137,6 +137,19 @@ public enum WebPage {
   .saver .pend { padding-left: 54px; font-size: 13px; color: var(--accent); font-weight: 600; }
   .saver .costs { padding-left: 54px; margin-top: 4px; font-size: 13px; color: var(--dim); }
   .saver .costs .w { color: var(--warn); }
+  .savings { padding: 4px 0 14px; border-bottom: 1px solid var(--rule); margin-bottom: 4px; display: grid; gap: 6px; }
+  .savings .sv-k { font-size: 13px; color: var(--dim); }
+  .savings .sv-big { font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .savings .sv-sub { font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+  .savings .sv-tool { display: grid; grid-template-columns: 90px 1fr auto; gap: 10px; align-items: center; }
+  .savings .sv-nm { font-weight: 650; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+  .savings .sv-nm i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .savings .sv-bars { display: grid; gap: 3px; }
+  .savings .sv-bars i { display: block; height: 7px; border-radius: 0 3px 3px 0; min-width: 2px; }
+  .savings .sv-v { text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .savings .sv-v small { display: block; font-size: 11.5px; color: var(--dim); }
+  .savings .sv-note { font-size: 12px; color: var(--faint); }
+  .scard.sv-chart { margin-left: 0; }
   .scard { margin: 10px 0 0 54px; border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
   .scard .sh { display: flex; align-items: flex-start; gap: 8px; }
   .scard .sh > div { flex: 1; }
@@ -490,9 +503,26 @@ public enum WebPage {
     return Math.round((Date.parse(key + 'T12:00:00Z') - Date.parse(first + 'T12:00:00Z')) / 864e5);
   }
 
+  // The tools' total saving: the figure, each tool's share, the overall chart.
+  function savingsBlock(v) {
+    var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+    var widest = Math.max.apply(null, v.tools.map(function (t) { return t.before; }).concat([1]));
+    return '<div class="savings"><div class="sv-k">Saved, ' + esc(v.period) + '</div>' +
+      '<div class="sv-big">' + esc(v.total) + '</div><div class="sv-sub">' + esc(v.sub) + '</div>' +
+      v.tools.map(function (t) {
+        var color = (dark ? DARK : LIGHT)[t.slot % 8];
+        return '<div class="sv-tool"><span class="sv-nm"><i style="background:' + color + '"></i>' + esc(t.name) + '</span>' +
+          '<span class="sv-bars"><i style="width:' + (t.before / widest * 100) + '%;background:' + color + ';opacity:.35"></i>' +
+          '<i style="width:' + (t.after / widest * 100) + '%;background:' + color + '"></i></span>' +
+          '<span class="sv-v">' + esc(t.saved) + '<small>' + esc(t.share) + '</small></span></div>';
+      }).join('') +
+      v.notes.map(function (n) { return '<div class="sv-note">' + esc(n) + '</div>'; }).join('') +
+      chartCard(v.overall).replace('class="scard"', 'class="scard sv-chart"') + '</div>';
+  }
+
   function chartCard(c) {
     var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
-    var after = (dark ? DARK : LIGHT)[c.slot % 8];
+    var after = c.slot < 0 ? (dark ? '#9aa8b6' : '#52606d') : (dark ? DARK : LIGHT)[c.slot % 8];
     var open = !!openInfo[c.title];
     var mark = c.approximate ? '≈' : '';
     return '<div class="scard" data-card="' + esc(c.title) + '">' +
@@ -566,6 +596,7 @@ public enum WebPage {
     var body = '<div>';
     if (sec.warning) body += '<p class="warning">' + esc(sec.warning) + '</p>';
     if (sec.shares) body += sharesBar(sec.shares, 'bigbar');
+    if (sec.savings) body += savingsBlock(sec.savings);
     if (sec.savers) body += sec.savers.map(saverBlock).join('');
     (sec.groups || []).forEach(function (g) {
       body += '<div class="grp">' + (g.heading ? '<h3>' + esc(g.heading) + '</h3>' : '') + rows(g.rows) + '</div>';

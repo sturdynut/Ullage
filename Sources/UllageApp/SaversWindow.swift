@@ -15,8 +15,7 @@ struct SaversPage: View {
     /// `overview`, or a tool's id.
     @State private var selection: String? = SaversPage.overviewTag
     @State private var details: [SaverDetail] = []
-    /// The range `details` belong to: the picker changes before they do.
-    @State private var loadedRange: SaverRange?
+    @State private var summary: SavingsSummary?
     @State private var loading = false
     @AppStorage("saversWindowRange") private var rangeName = SaverRange.session.rawValue
 
@@ -45,7 +44,7 @@ struct SaversPage: View {
             Divider()
             HStack(spacing: 0) {
                 List(selection: $selection) {
-                    Text("Overview").font(.body.weight(.semibold)).padding(.vertical, 2).tag(Self.overviewTag)
+                    Text("Savings").font(.body.weight(.semibold)).padding(.vertical, 2).tag(Self.overviewTag)
                     Section("Tools") {
                         ForEach(TokenSaver.allCases, id: \.self) { saver in
                             VStack(alignment: .leading, spacing: 2) {
@@ -64,7 +63,7 @@ struct SaversPage: View {
                 ScrollView {
                     Group {
                         if selection == Self.overviewTag {
-                            OverviewPage(details: details, range: loadedRange, loading: loading) { selection = $0.rawValue }
+                            OverviewPage(summary: summary, loading: loading) { selection = $0.rawValue }
                         } else if let detail {
                             DetailPage(detail: detail, row: model.savers.rows.first { $0.saver == detail.saver },
                                        switchState: model.saverSwitchState(detail.saver),
@@ -89,10 +88,10 @@ struct SaversPage: View {
         }
         .task(id: "\(rangeName)|\(model.state.sessionId ?? "")|\(model.savers.rows.map(\.switchState.rawValue))") {
             loading = true
-            let loaded = await model.saverDetails(range: range)
+            let loaded = await model.saverPage(range: range)
             guard !Task.isCancelled else { return }
-            details = loaded
-            loadedRange = range
+            details = loaded.details
+            summary = loaded.summary
             loading = false
         }
     }
@@ -131,12 +130,18 @@ private extension NSColor {
 /// paired bars. Hovering a day puts that day's numbers in the total line.
 private struct ChartCard: View {
     let chart: SaverChart
-    let saver: TokenSaver
+    /// The "after" colour: the tool's slot, or grey for the overall total.
+    let color: Color
     var height: CGFloat = 170
+    /// Inside another panel: no card of its own.
+    var bare = false
     @State private var showMore = false
     @State private var hovered: SaverChart.Bar?
 
-    private var after: Color { .saverSlot(SaverChart.colorSlot(saver)) }
+    private var after: Color { color }
+    /// Keys like `2026-10-07T09` are hours.
+    private var hourly: Bool { chart.bars.first?.key.contains("T") ?? (chart.firstDay?.contains("T") ?? false) }
+    private var unit: Calendar.Component { hourly ? .hour : .day }
     private var before: Color { after.opacity(0.35) }
     private var mark: String { chart.approximate ? "≈" : "" }
 
@@ -175,9 +180,9 @@ private struct ChartCard: View {
             .font(.callout)
             plot.frame(height: chart.kind == .comparison ? min(height, 120) : height)
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.2)))
+        .padding(bare ? 0 : 14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(bare ? Color.clear : Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(bare ? Color.clear : Color.secondary.opacity(0.2)))
     }
 
     @ViewBuilder
@@ -214,11 +219,11 @@ private struct ChartCard: View {
         } else {
             Chart(chart.bars) { bar in
                 if let day = Self.date(bar.key) {
-                    BarMark(x: .value("Day", day, unit: .day), y: .value("Tokens", bar.before))
+                    BarMark(x: .value("Day", day, unit: unit), y: .value("Tokens", bar.before))
                         .foregroundStyle(by: .value("Side", chart.beforeLabel))
                         .position(by: .value("Side", chart.beforeLabel))
                         .cornerRadius(3)
-                    BarMark(x: .value("Day", day, unit: .day), y: .value("Tokens", bar.after))
+                    BarMark(x: .value("Day", day, unit: unit), y: .value("Tokens", bar.after))
                         .foregroundStyle(by: .value("Side", chart.afterLabel))
                         .position(by: .value("Side", chart.afterLabel))
                         .cornerRadius(3)
@@ -229,7 +234,11 @@ private struct ChartCard: View {
             .chartXScale(domain: domain)
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 6)) { _ in
-                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    if hourly {
+                        AxisValueLabel(format: .dateTime.hour())
+                    } else {
+                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    }
                 }
             }
             .chartYAxis { tokenAxis }
@@ -263,11 +272,12 @@ private struct ChartCard: View {
         }
     }
 
-    /// The axis spans the range, a day either side of noon so end bars fit.
+    /// The axis spans the range, with half a bucket of room at each end.
     private var domain: ClosedRange<Date> {
         let first = chart.firstDay.flatMap(Self.date) ?? chart.bars.first.flatMap { Self.date($0.key) } ?? Date()
         let last = chart.lastDay.flatMap(Self.date) ?? chart.bars.last.flatMap { Self.date($0.key) } ?? first
-        return first.addingTimeInterval(-12 * 3600)...last.addingTimeInterval(36 * 3600)
+        let step: TimeInterval = hourly ? 3600 : 86_400
+        return first.addingTimeInterval(-step / 2)...last.addingTimeInterval(step * 1.5)
     }
 
     private static let dayFormat: DateFormatter = {
@@ -277,7 +287,14 @@ private struct ChartCard: View {
         return formatter
     }()
 
-    static func date(_ key: String) -> Date? { dayFormat.date(from: key) }
+    private static let hourFormat: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+
+    static func date(_ key: String) -> Date? { key.contains("T") ? hourFormat.date(from: key) : dayFormat.date(from: key) }
 }
 
 /// What a tool adds to the context, as plain warnings above its cards.
@@ -301,49 +318,224 @@ private struct CostLines: View {
     }
 }
 
-/// Every tool's main card, in the registry's order: never ranked, because a
-/// claim and a comparison aren't one scale.
+/// A short title, one line, and the rest behind an ⓘ.
+private struct InfoHeader<Title: View>: View {
+    let title: Title
+    let what: String
+    let more: [String]
+    @State private var open = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    title
+                    Text(what).font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { open.toggle() } label: {
+                    Image(systemName: open ? "info.circle.fill" : "info.circle").imageScale(.large)
+                }
+                .buttonStyle(.borderless)
+                .help(open ? "Hide the details" : "What am I looking at?")
+            }
+            if open {
+                VStack(alignment: .leading, spacing: 6) { ForEach(more, id: \.self) { Text($0) } }
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08)))
+            }
+        }
+    }
+}
+
+/// A panel with the window's card look.
+private struct Panel<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) { content }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.2)))
+    }
+}
+
+/// How many tokens the tools kept from being sent: in total, over time, by
+/// tool and by session. Every figure is decided in `SavingsSummary`.
 private struct OverviewPage: View {
-    let details: [SaverDetail]
-    /// The range `details` were read for, which lags the picker while loading.
-    let range: SaverRange?
+    let summary: SavingsSummary?
     let loading: Bool
     let onOpen: (TokenSaver) -> Void
 
     var body: some View {
-        let shown = details.filter { !SaverChart.charts(for: $0).isEmpty || !$0.value.costs.isEmpty }
-        let quiet = details.filter { SaverChart.charts(for: $0).isEmpty && $0.value.costs.isEmpty }.map(\.saver)
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Token savings").font(.title2.weight(.semibold))
-                Text("What each tool took in, and what it passed on" + (range.map { $0 == .session ? ", this session." : ", last \($0.days ?? 30) days." } ?? "."))
-                    .foregroundStyle(.secondary)
-            }
-            if details.isEmpty, loading {
-                Text("Reading sessions…").foregroundStyle(.secondary)
-            } else if shown.isEmpty, !loading {
-                Text("No context tool left a trace in this range.").foregroundStyle(.secondary)
-            }
-            ForEach(shown, id: \.saver) { detail in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(detail.saver.displayName).font(.headline)
-                        Spacer()
-                        Button("Details") { onOpen(detail.saver) }.buttonStyle(.link)
-                    }
-                    CostLines(costs: detail.value.costs)
-                    if let chart = SaverChart.charts(for: detail).first {
-                        ChartCard(chart: chart, saver: detail.saver, height: 140)
-                    }
+            InfoHeader(title: Text("Token savings").font(.title2.weight(.semibold)),
+                       what: "Everything your context tools kept from being sent to the model.",
+                       more: [
+                           "The total adds up the tools' own figures (≈). A call two tools both shortened is counted once.",
+                           "Tools judged by comparing sessions with and without them aren't added in.",
+                       ])
+            if let summary, !summary.isEmpty {
+                Group {
+                    hero(summary)
+                    Panel { ChartCardBody(chart: summary.overallChart()) }
+                    Panel { tools(summary) }
+                    if !summary.sessions.isEmpty { Panel { sessions(summary) } }
                 }
-            }
-            .opacity(loading ? 0.4 : 1)
-            if !quiet.isEmpty {
-                Text("No trace in this range: " + quiet.map(\.displayName).joined(separator: ", "))
-                    .font(.callout).foregroundStyle(.secondary)
+                .opacity(loading ? 0.4 : 1)
+            } else if loading {
+                Text("Reading sessions…").foregroundStyle(.secondary)
+            } else {
+                Text("No tool claimed any savings in this range.").foregroundStyle(.secondary)
             }
         }
     }
+
+    private func hero(_ summary: SavingsSummary) -> some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Saved, \(summary.periodText)").foregroundStyle(.secondary)
+                Text("≈" + TokenFormat.compact(summary.saved) + " tokens")
+                    .font(.system(size: 34, weight: .semibold)).monospacedDigit()
+                Text("≈\(TokenFormat.compact(summary.before)) would have been sent · ≈\(TokenFormat.compact(summary.after)) was"
+                     + (summary.cut.map { " · −\($0)%" } ?? ""))
+                    .foregroundStyle(.secondary).monospacedDigit()
+            }
+            HStack(spacing: 24) {
+                if summary.range.days != nil, summary.activeBuckets > 0 {
+                    stat("≈" + TokenFormat.compact(summary.saved / summary.activeBuckets), summary.hourly ? "per active hour" : "per active day")
+                }
+                if !summary.sessions.isEmpty {
+                    stat("≈" + TokenFormat.compact(summary.saved / summary.sessions.count), "per session")
+                    stat("\(summary.sessions.count)", summary.sessions.count == 1 ? "session" : "sessions")
+                }
+            }
+            .font(.callout)
+        }
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        HStack(spacing: 5) {
+            Text(value).fontWeight(.semibold).monospacedDigit()
+            Text(label).foregroundStyle(.secondary)
+        }
+    }
+
+    private func tools(_ summary: SavingsSummary) -> some View {
+        let widest = max(1, summary.tools.map(\.before).max() ?? 1)
+        return VStack(alignment: .leading, spacing: 12) {
+            InfoHeader(title: Text("By tool").font(.headline), what: "Each tool's share of the saving.",
+                       more: ["Faded is what the tool took in, solid is what it passed on. The number is what it kept back and its share of the total."])
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 12) {
+                ForEach(summary.tools) { tool in
+                    GridRow {
+                        Button { onOpen(tool.saver) } label: {
+                            HStack(spacing: 7) {
+                                RoundedRectangle(cornerRadius: 2).fill(Color.saverSlot(SaverChart.colorSlot(tool.saver))).frame(width: 10, height: 10)
+                                Text(tool.saver.displayName).fontWeight(.semibold)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open \(tool.saver.displayName)")
+                        pairBars(tool, widest: widest)
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("≈" + TokenFormat.compact(tool.counted)).monospacedDigit()
+                            Text([summary.share(tool).map { "\($0)%" }, SaverChart.percentChange(tool.before, tool.after).map { SaverChart.changeText($0) }]
+                                .compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        .gridColumnAlignment(.trailing)
+                    }
+                }
+            }
+            if summary.overlap > 0 || !summary.compared.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    if summary.overlap > 0 {
+                        Text("≈\(TokenFormat.compact(summary.overlap)) claimed by two tools for the same calls is counted once.")
+                    }
+                    if !summary.compared.isEmpty {
+                        Text("Not added in: " + summary.compared.map(\.displayName).joined(separator: ", ") + ".")
+                    }
+                }
+                .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func pairBars(_ tool: SavingsSummary.Tool, widest: Int) -> some View {
+        let color = Color.saverSlot(SaverChart.colorSlot(tool.saver))
+        return GeometryReader { geometry in
+            VStack(alignment: .leading, spacing: 3) {
+                UnevenRoundedRectangle(bottomTrailingRadius: 3, topTrailingRadius: 3).fill(color.opacity(0.35))
+                    .frame(width: max(2, geometry.size.width * CGFloat(tool.before) / CGFloat(widest)), height: 8)
+                UnevenRoundedRectangle(bottomTrailingRadius: 3, topTrailingRadius: 3).fill(color)
+                    .frame(width: max(2, geometry.size.width * CGFloat(tool.after) / CGFloat(widest)), height: 8)
+            }
+        }
+        .frame(minWidth: 160, maxWidth: .infinity)
+        .frame(height: 19)
+        .help("≈\(tool.before.formatted()) took in · ≈\(tool.after.formatted()) passed on")
+    }
+
+    private func sessions(_ summary: SavingsSummary) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            InfoHeader(title: Text("By session").font(.headline), what: "What each session saved, split by tool.",
+                       more: ["Sessions with any saving in this range, largest first."])
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                GridRow {
+                    Text("Session"); Text("Turns").gridColumnAlignment(.trailing)
+                    ForEach(summary.tools) { Text($0.saver.displayName).gridColumnAlignment(.trailing) }
+                    Text("Saved").gridColumnAlignment(.trailing)
+                    Text("")
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                ForEach(summary.sessions.prefix(15)) { session in
+                    GridRow {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(session.project ?? String(session.sessionId.prefix(8))).fontWeight(.medium)
+                            Text(Self.when(session.firstTs)).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Text(session.turns.formatted()).monospacedDigit()
+                        ForEach(summary.tools) { tool in
+                            Text(session.saved[tool.id].map { "≈" + TokenFormat.compact($0) } ?? "—")
+                                .monospacedDigit().foregroundStyle(session.saved[tool.id] == nil ? .tertiary : .primary)
+                        }
+                        Text("≈" + TokenFormat.compact(session.total)).fontWeight(.semibold).monospacedDigit()
+                        split(session, tools: summary.tools)
+                    }
+                    .font(.callout)
+                }
+            }
+        }
+    }
+
+    /// How a session's saving splits between tools, in their colours.
+    private func split(_ session: SavingsSummary.Session, tools: [SavingsSummary.Tool]) -> some View {
+        GeometryReader { geometry in
+            HStack(spacing: 2) {
+                ForEach(tools.filter { (session.saved[$0.id] ?? 0) > 0 }) { tool in
+                    Rectangle().fill(Color.saverSlot(SaverChart.colorSlot(tool.saver)))
+                        .frame(width: max(2, (geometry.size.width - 2) * CGFloat(session.saved[tool.id] ?? 0) / CGFloat(max(1, session.total))))
+                }
+            }
+        }
+        .frame(width: 110, height: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 3))
+    }
+
+    private static func when(_ ts: String?) -> String {
+        guard let ts, let date = Timestamps.date(from: ts) else { return "" }
+        return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+    }
+}
+
+/// The overall chart drawn without its own panel, inside the overview's.
+private struct ChartCardBody: View {
+    let chart: SaverChart
+    var body: some View { ChartCard(chart: chart, color: .secondary, bare: true) }
 }
 
 private struct DetailPage: View {
@@ -365,16 +557,13 @@ private struct DetailPage: View {
             if charts.isEmpty {
                 Text(noChartLine).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            ForEach(charts) { ChartCard(chart: $0, saver: saver) }
+            ForEach(charts) { ChartCard(chart: $0, color: .saverSlot(SaverChart.colorSlot(saver))) }
             facts
             switch saver.kind {
             case .outputFilter: ledger
             case .replyStyle: replyStyle
             case .onDemand, .codeSearch, .memory: EmptyView()
             }
-            Text(saver.savingSource.prefix(1).uppercased() + saver.savingSource.dropFirst() + ".")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -482,12 +671,8 @@ private struct DetailPage: View {
     @ViewBuilder
     private var ledger: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Where \(saver.displayName)'s claim comes from").font(.headline)
+            Text("By command").font(.headline)
             if let ledger = detail.ledger {
-                Text("Its own count, by command, largest first. Each bar is the output before \(saver.displayName) shrank it; the solid part reached the model.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 commandTable(ledger)
             } else {
                 Text("Nothing in \(saver.displayName)'s log matches these sessions, so there is no claim to show.")

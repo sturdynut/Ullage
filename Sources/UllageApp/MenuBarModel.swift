@@ -9,6 +9,12 @@ import UllageCore
 /// Two SQLite connections on the same file: the tailer writes on its own queue,
 /// this object reads on the main actor. WAL mode allows exactly that, and it is
 /// why the model never shares the ingestor's connection.
+/// Everything the Context tools window shows for one range, read in one pass.
+struct SaverPageData {
+    var details: [SaverDetail]
+    var summary: SavingsSummary?
+}
+
 @MainActor
 final class MenuBarModel: ObservableObject {
     static let shared = MenuBarModel()
@@ -199,14 +205,15 @@ final class MenuBarModel: ObservableObject {
     /// and the comparisons up to 30 days of them, so it runs off the main
     /// thread on its own connection, and the window asks on a change, not on
     /// every redraw.
-    func saverDetails(range: SaverRange) async -> [SaverDetail] {
+    func saverPage(range: SaverRange) async -> SaverPageData {
         let path = databasePath
         let sessionId = state.sessionId
         let cached = saverLedger?.entries
         return await Task.detached(priority: .userInitiated) {
-            guard let store = try? Store(path: path) else { return [] }
+            guard let store = try? Store(path: path) else { return SaverPageData(details: [], summary: nil) }
             let ledger = cached ?? store.ledger(since: Date().addingTimeInterval(-31 * 86_400))
-            return (try? store.saverDetails(range: range, sessionId: sessionId, ledger: ledger)) ?? []
+            let details = (try? store.saverDetails(range: range, sessionId: sessionId, ledger: ledger)) ?? []
+            return SaverPageData(details: details, summary: try? store.savingsSummary(details, range: range))
         }.value
     }
 

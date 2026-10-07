@@ -8,7 +8,9 @@ import Foundation
 /// happened inside a Claude Code session, and it stays a labelled claim.
 public enum SaverRange: String, CaseIterable, Identifiable {
     case session = "This session"
+    case day = "1 day"
     case week = "7 days"
+    case threeWeeks = "21 days"
     case month = "30 days"
 
     public var id: String { rawValue }
@@ -16,9 +18,16 @@ public enum SaverRange: String, CaseIterable, Identifiable {
     public var days: Int? {
         switch self {
         case .session: return nil
+        case .day: return 1
         case .week: return 7
+        case .threeWeeks: return 21
         case .month: return 30
         }
+    }
+
+    /// The range for `--days N`: the shortest that covers it.
+    public static func covering(days: Int) -> SaverRange {
+        allCases.first { ($0.days ?? 0) >= days } ?? .month
     }
 }
 
@@ -69,6 +78,8 @@ public struct SaverDetail: Equatable {
     public var ledgerEntries: [LedgerEntry] = []
     /// Prompts each placed Bash call's result stayed in, by tool_use id.
     public var prompts: [String: Int] = [:]
+    /// The session each ledger row was matched to, by row id.
+    public var entrySessions: [String: String] = [:]
     /// Cost and benefit, graded.
     public var value: SaverValue { SaverValue.build(self) }
 
@@ -115,6 +126,11 @@ public struct SaverDetail: Equatable {
         )
         detail.comparisons = comparisons
         detail.ledgerEntries = entries
+        for report in reports {
+            for entry in report.usage(saver).ledgerEntries where detail.entrySessions[entry.id] == nil {
+                detail.entrySessions[entry.id] = report.sessionId
+            }
+        }
         if saver.descriptor.claims?.perRequest != true {
             detail.carried = CarriedClaim.build(entries: entries, placements: placements)
             for id in entries.compactMap(\.toolUseId) { detail.prompts[id] = placements[id]?.prompts }

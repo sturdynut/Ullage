@@ -89,9 +89,8 @@ public struct SaverPanel: Equatable {
 
     public var isEmpty: Bool { rows.isEmpty && installable.isEmpty }
 
-    /// Starts the legend line about claims, so a page that explains claims
-    /// in its own legend can drop this one.
-    public static let claimsLegendLead = "≈ claimed is the tool's own estimate. Ullage only sees the output after the tool shortened it"
+    /// The one legend line: what `≈` means. Everything else is behind the ⓘ.
+    public static let claimsLegendLead = "≈ is the tool's own estimate"
     public static let nextSessionNote = "applies to sessions started from now"
     public static let offNextSession = "Off from the next session"
     public static let onNextSession = "On from the next session"
@@ -148,15 +147,8 @@ public struct SaverPanel: Equatable {
             warning = "\(filtersOn.map(\.displayName).joined(separator: " and ")) are all switched on and all rewrite Bash. Keep one on."
         }
         var legend: [String] = []
-        if rows.contains(where: { $0.metric.hasPrefix("≈") && $0.saver.descriptor.claims != nil }) {
-            legend.append(claimsLegendLead + ", so it can't check how big it was before.")
-        }
-        let compared = rows.filter { $0.saver.kind == .replyStyle && $0.metricCaption == "tokens/reply" }.map(\.saver.displayName)
-        if !compared.isEmpty {
-            legend.append("\(compared.joined(separator: " and "))'s figure compares measured replies with it on and off. Different work, so not a saving.")
-        }
-        if rows.contains(where: { $0.saver.kind == .memory && $0.metricCaption == "injected" }) {
-            legend.append("≈ injected is the size of what a memory tool added at session start, estimated from its length.")
+        if rows.contains(where: { $0.metric.hasPrefix("≈") }) {
+            legend.append(claimsLegendLead + ".")
         }
         let pendingInstalls = TokenSaver.allCases
             .filter { saver in !rows.contains { $0.saver == saver } }

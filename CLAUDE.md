@@ -70,7 +70,7 @@ they need it offline; subscription-metered IDEs keep usage on their servers.
 
 ```bash
 swift build
-swift test                 # 390 tests on macOS; on Linux all but the CryptoKit and AppKit ones
+swift test                 # 398 tests on macOS; on Linux all but the CryptoKit and AppKit ones
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -152,13 +152,15 @@ plausible and are wrong.
    only beside plan-wide limits (a per-model limit's window would count every
    model). Claude's come from the undocumented `/api/oauth/usage` — parse it
    like a transcript, and never refresh Claude Code's token.
-10. **A token saver's saving is its own claim.** rtk and Tokenade shrink tool
-    output before Ullage sees it, so a saving can't be measured here. It comes
-    from their own ledgers, is shown with `≈` and labelled with where it came
-    from (`TokenSaver.savingSource`), and never enters a counter, occupancy or
-    composition. Two savers' claims about the same call overlap and are never
-    summed. caveman's with/without comparison uses measured output, but it
-    compares different turns and is labelled as a comparison.
+10. **A token saver's saving is its own claim, kept out of the gauge.** rtk,
+    Tokenade and Headroom shrink what the model sees before Ullage sees it, so
+    their saving comes from their own ledgers and is shown with `≈`. It never
+    enters a counter, occupancy or composition. Savings *may* be totalled —
+    across tools, per session, per period (`SavingsSummary`) — on one basis
+    (tokens not sent, over every prompt a result stayed in) with a call two
+    tools both shortened counted once. With/without comparisons (caveman, code
+    search, memory) are never added to a total: they compare different work.
+    Say it once, behind the ⓘ; don't repeat caveats on the page.
 
 ## Architecture and conventions
 
@@ -288,7 +290,9 @@ plausible and are wrong.
   turns a `SaverDetail` into cards of paired bars (took in vs passed on, per
   local day; without vs with for comparisons), drawn by the window (Swift
   Charts), the phone (SVG in `WebPage`, the same palette) and the CLI.
-  `SaverValue` grades the figures behind them and supplies the costs, each with an `Evidence` grade
+  `SavingsSummary` totals the claims across tools, per bucket and per session
+  for the Savings page (rule 10). `SaverValue` grades the figures behind them
+  and supplies the costs, each with an `Evidence` grade
   (measured, estimated, claimed, compared, derived). A claim placed on the
   Bash call it names (rtk's `hook_decisions`) is carried over the prompts the
   result stayed in until a compaction — `derived`, labelled "claim × prompts":
