@@ -339,18 +339,23 @@ what a session would have cost without the tool.
   it added to the context at session start, which is then sent with every turn.
 
 The main window's **Context tools** page shows each tool over this session, 7
-days or 30 days. An **Overview** lists every tool's cost and benefit side by
-side, and each tool's page leads with the same:
-- **keeps out, costs, and with vs without**, each figure with a badge for how
-  it is known: *measured*, *estimate*, *its claim*, *with vs without*, or
-  *claim × prompts*. Figures of different kinds are never added or netted.
-  *Not re-sent in later prompts* is the tool's claim counted again in each
-  prompt the shrunk result stayed in, up to the next compaction: a running
-  total of tokens sent (mostly cache reads), not room in the window. *With vs
-  without* sets a figure, such as the first prompt, from sessions with the tool
-  beside the same figure from sessions without it, over the days both had
-  sessions, in one harness, in this folder or (when it has too few) all
-  folders; it is neither a saving nor a cost;
+days or 30 days. An **Overview** shows every tool's main chart, and each
+tool's page leads with all of them. Each chart is a card with a short title,
+one line of what it is, and an ⓘ for the details, and pairs two bars: what
+the tool took in (faded) next to what it passed on to the model (solid), so
+the gap is the reduction:
+- **output per day**, from the tool's own log (rtk's Bash output, Headroom's
+  proxied requests), every value marked `≈` as its claim;
+- **later prompts per day**: the same before and after, counted in every
+  prompt the result stayed in until a compaction. Tokens sent, mostly cache
+  reads, not room in the window;
+- **without vs with**, for a figure compared across sessions (the first
+  prompt; reply length; file reads; exploring before the first edit), within
+  one harness and the days both sides had sessions, in this folder or, when
+  it has too few, all folders. Different work, so a hint, not a measurement.
+
+What a tool adds to the context (loaded and never used, failed hooks, what a
+memory tool injects) sits above its charts as plain warnings. Below them:
 - what the transcripts prove: sessions it ran in, hook runs, rewrites, failures
   with the last error message, and MCP calls;
 - for rtk and Tokenade, where the claim comes from: their own count per command
@@ -361,8 +366,8 @@ side, and each tool's page leads with the same:
 - for code search tools, their lookups and what they returned;
 - for claude-mem, what it injected per session and its memory searches.
 
-`ullage savers --days 30` prints the same summary, cost and benefit included,
-and the phone page shows each tool's figures under its switch.
+`ullage savers --days 30` prints the same before and after per day, and the
+phone page draws each tool's charts for the last 7 days under its switch.
 
 **The switches** change Claude Code's user config (`~/.claude/settings.json`,
 `~/.claude.json`), and only when you click one or run `ullage savers

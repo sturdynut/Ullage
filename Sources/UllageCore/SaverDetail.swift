@@ -64,6 +64,10 @@ public struct SaverDetail: Equatable {
     /// With vs without in `comparisonFolder`: the first prompt (cost) and the
     /// kind's own benefit metric, each only when both sides have enough.
     public var comparisons: [SaverComparison] = []
+    /// The ledger rows behind `ledger`, each once, for the per-day charts.
+    public var ledgerEntries: [LedgerEntry] = []
+    /// Prompts each placed Bash call's result stayed in, by tool_use id.
+    public var prompts: [String: Int] = [:]
     /// Cost and benefit, graded.
     public var value: SaverValue { SaverValue.build(self) }
 
@@ -107,8 +111,10 @@ public struct SaverDetail: Equatable {
             turns: turns
         )
         detail.comparisons = comparisons
+        detail.ledgerEntries = entries
         if saver.descriptor.claims?.perRequest != true {
             detail.carried = CarriedClaim.build(entries: entries, placements: placements)
+            for id in entries.compactMap(\.toolUseId) { detail.prompts[id] = placements[id]?.prompts }
         }
         return detail
     }

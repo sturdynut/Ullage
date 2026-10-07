@@ -24,12 +24,15 @@ The kind decides what Ullage can honestly say about a tool:
 | `codeSearch` | Serena, codegraph, claude-context | Lookups (MCP calls or Bash runs) and ≈ size of what they returned |
 | `memory` | claude-mem | ≈ size of what its hooks injected at session start (a length estimate) |
 
-## Cost and benefit
+## Before and after
 
-Every tool's page, the Overview, the phone page and `ullage savers` show what
-a tool keeps out of the context and what it adds, built in `SaverValue` from
-the kind and the evidence available, never from which tool it is. Each figure
-carries an `Evidence` grade:
+Every tool's page, the Overview, the phone page and `ullage savers` draw
+`SaverChart` cards: paired bars of what a tool took in next to what it passed
+on, per day, from its ledger (output, then the same over later prompts), and
+without vs with for each comparison. A tool whose ledger has before and after
+gets charts with no Swift of its own. What a tool adds to the context comes
+from `SaverValue`'s costs. Underneath, each figure carries an `Evidence`
+grade:
 
 | Grade | Badge | Example |
 |---|---|---|

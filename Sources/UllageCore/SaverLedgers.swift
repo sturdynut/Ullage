@@ -270,10 +270,13 @@ public enum SaverLedgers {
 
     // MARK: - Headroom
 
-    /// `proxy_savings.json`: a running total appended whenever a proxied
+    /// `proxy_savings.json`: running totals appended whenever a proxied
     /// request saved anything (`headroom/proxy/savings_tracker.py`), so each
-    /// step is one request's claim. Its input total also grows on requests
-    /// that saved nothing, so no per-request "after" can be read from it.
+    /// step is one request's claim. Its input total grows on every request,
+    /// including those that saved nothing and so left no point; a step's
+    /// "after" is therefore what the proxy sent since the previous point —
+    /// this request and any in between. Summed over a day that is everything
+    /// the proxy sent; for one request it can be more than that request.
     /// The first point counts from zero unless the history has been trimmed.
     public static func headroomEntries(at url: URL, since: Date? = nil) -> [LedgerEntry] {
         guard let data = FileManager.default.contents(atPath: url.path) else { return [] }
@@ -286,22 +289,23 @@ public enum SaverLedgers {
     static func headroomEntries(json data: Data, since: Date?) -> [LedgerEntry] {
         guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let history = object["history"] as? [[String: Any]] else { return [] }
-        let points = history.compactMap { point -> (ts: Date, total: Int)? in
+        let points = history.compactMap { point -> (ts: Date, total: Int, sent: Int?)? in
             guard let raw = point["timestamp"] as? String, let ts = lenientDate(raw),
                   let total = int(point["total_tokens_saved"]) else { return nil }
-            return (ts, total)
+            return (ts, total, int(point["total_input_tokens"]))
         }.sorted { $0.ts < $1.ts }
         guard let first = points.first, let last = points.last else { return [] }
         let trimmed = points.count >= headroomHistoryCap || last.ts.timeIntervalSince(first.ts) > 364 * 86_400
         var entries: [LedgerEntry] = []
-        var previous = trimmed ? first.total : 0
+        var previous: (total: Int, sent: Int?) = trimmed ? (first.total, first.sent) : (0, 0)
         for point in points.dropFirst(trimmed ? 1 : 0) {
-            defer { previous = point.total }
-            let saved = point.total - previous
+            defer { previous = (point.total, point.sent ?? previous.sent) }
+            let saved = point.total - previous.total
             guard saved > 0, since.map({ point.ts >= $0 }) ?? true else { continue }
+            let sent = point.sent.flatMap { now in previous.sent.map { now - $0 } }.flatMap { $0 >= 0 ? $0 : nil }
             entries.append(LedgerEntry(
                 saver: .headroom, ts: point.ts, cwd: nil, command: "proxied request",
-                beforeTokens: nil, afterTokens: nil, savedTokens: saved,
+                beforeTokens: sent.map { $0 + saved }, afterTokens: sent, savedTokens: saved,
                 id: "headroom:\(Int(point.ts.timeIntervalSince1970 * 1000)):\(point.total)"
             ))
         }

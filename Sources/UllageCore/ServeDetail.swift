@@ -62,16 +62,41 @@ public struct ServeDetail: Codable, Equatable {
         public var note: String?
         public var pending: String?
         public var canUndo: Bool
-        /// Cost and benefit in this session, each with how it is known.
-        public var figures: [Figure]? = nil
+        /// Before and after over the last 7 days, as the window draws them.
+        public var charts: [SaverChartData]? = nil
+        /// What it adds to the context, as plain warnings.
+        public var costs: [Cost]? = nil
     }
 
-    /// One graded figure (`ValueFigure`), as the phone draws it.
-    public struct Figure: Codable, Equatable {
-        public var side: String     // benefit | cost | comparison
+    /// One `SaverChart`, as the phone draws it.
+    public struct SaverChartData: Codable, Equatable {
+        public struct Bar: Codable, Equatable {
+            public var key: String
+            public var label: String
+            public var before: Int
+            public var after: Int
+            public var count: Int?
+        }
+        public var kind: String         // daily | comparison
+        public var title: String
+        public var what: String
+        public var more: [String]
+        public var beforeLabel: String
+        public var afterLabel: String
+        public var countUnit: String?
+        public var total: String
+        public var change: String
+        public var approximate: Bool
+        public var firstDay: String?
+        public var lastDay: String?
+        /// The tool's palette slot (`SaverChart.colorSlot`).
+        public var slot: Int
+        public var bars: [Bar]
+    }
+
+    public struct Cost: Codable, Equatable {
         public var label: String
         public var value: String
-        public var evidence: String // the badge
         public var detail: String
         public var warning: Bool
     }
@@ -149,7 +174,7 @@ extension ServeDetail {
         if !tree.isEmpty { sections.append(agentsSection(tree, state: state, history: history)) }
         if let savers {
             sections.append(saversSection(try savers.panel(store: store, sessionId: sessionId, now: now),
-                                          values: try savers.values(store: store, sessionId: sessionId, now: now)))
+                                          details: try savers.details(store: store, sessionId: sessionId, now: now), now: now))
         }
         let support = HarnessSupport(vendor: call.vendor)
         if !support.gaps.isEmpty { sections.append(harnessSection(support)) }
@@ -266,7 +291,7 @@ extension ServeDetail {
         return Section(id: "agents", title: "Agents", summary: tree.summary, groups: [Group(heading: nil, rows: rows)])
     }
 
-    static func saversSection(_ panel: SaverPanel, values: [TokenSaver: SaverValue] = [:]) -> Section {
+    static func saversSection(_ panel: SaverPanel, details: [TokenSaver: SaverDetail] = [:], now: Date = Date()) -> Section {
         var section = Section(
             id: "savers", title: "Context tools", summary: panel.summary,
             warning: panel.warning,
@@ -280,24 +305,24 @@ extension ServeDetail {
             installable: panel.installable.map { Installable(id: $0.rawValue, name: $0.displayName, shrinks: $0.shrinks) },
             legend: panel.legend
         )
-        var shown: [ValueFigure] = []
         for index in (section.savers ?? []).indices {
-            guard let saver = TokenSaver(rawValue: section.savers![index].id), let value = values[saver], !value.isEmpty else { continue }
-            // The row already leads with its metric; the same figure again is noise.
-            let metric = section.savers![index].metric
-            let figures = value.all.filter { $0.value != metric }
-            // The legend still explains the metric's grade when its figure is dropped.
-            shown += value.all
-            section.savers![index].figures = figures.map {
-                Figure(side: $0.side.rawValue, label: $0.label, value: $0.value, evidence: $0.evidence.badge,
-                       detail: $0.detail, warning: $0.warning)
+            guard let saver = TokenSaver(rawValue: section.savers![index].id), let detail = details[saver] else { continue }
+            let charts = SaverChart.charts(for: detail, now: now)
+            let costs = detail.value.costs
+            if !charts.isEmpty { section.savers![index].charts = charts.map { chart(for: $0, saver: saver) } }
+            if !costs.isEmpty {
+                section.savers![index].costs = costs.map { Cost(label: $0.label, value: $0.value, detail: $0.detail, warning: $0.warning) }
             }
         }
-        if !shown.isEmpty {
-            let kept = (section.legend ?? []).filter { !$0.hasPrefix(SaverPanel.claimsLegendLead) }
-            section.legend = kept + Evidence.legend(for: shown)
-        }
         return section
+    }
+
+    static func chart(for chart: SaverChart, saver: TokenSaver) -> SaverChartData {
+        SaverChartData(kind: chart.kind.rawValue, title: chart.title, what: chart.what, more: chart.more,
+              beforeLabel: chart.beforeLabel, afterLabel: chart.afterLabel, countUnit: chart.countUnit,
+              total: chart.totalText, change: chart.changeText, approximate: chart.approximate,
+              firstDay: chart.firstDay, lastDay: chart.lastDay, slot: SaverChart.colorSlot(saver),
+              bars: chart.bars.map { SaverChartData.Bar(key: $0.key, label: $0.label, before: $0.before, after: $0.after, count: $0.count) })
     }
 
     static func limitsSection(_ limits: [PlanLimitDisplay], store: Store, now: Date) throws -> Section {

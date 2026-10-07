@@ -139,7 +139,9 @@ final class SaverValueTests: XCTestCase {
         let json = #"{"schema_version":2,"history":[{"timestamp":"2026-06-08T17:48:09Z","total_tokens_saved":2313,"total_input_tokens":13430},{"timestamp":"2026-06-08T17:48:19Z","total_tokens_saved":3000,"total_input_tokens":28835},{"timestamp":"2026-06-08T17:49:00Z","total_tokens_saved":3000},{"timestamp":"bad","total_tokens_saved":9}]}"#
         let entries = SaverLedgers.headroomEntries(json: Data(json.utf8), since: nil)
         XCTAssertEqual(entries.map(\.savedTokens), [2313, 687], "first point from zero; no step, no claim")
-        XCTAssertTrue(entries.allSatisfy { $0.cwd == nil && $0.beforeTokens == nil }, "no folder, no per-request after")
+        XCTAssertTrue(entries.allSatisfy { $0.cwd == nil }, "a proxy names no folder")
+        XCTAssertEqual(entries.map(\.afterTokens), [13430, 15405], "what it sent since the previous point")
+        XCTAssertEqual(entries.map(\.beforeTokens), [13430 + 2313, 15405 + 687])
         let since = SaverLedgers.headroomEntries(json: Data(json.utf8), since: at("2026-06-08T17:48:10Z"))
         XCTAssertEqual(since.map(\.savedTokens), [687])
     }
@@ -427,50 +429,5 @@ final class SaverValueTests: XCTestCase {
         let overview = SaverValue.overview(details)
         XCTAssertEqual(overview.shown.map(\.saver), [.rtk, .headroom])
         XCTAssertEqual(overview.quiet, [.tokenade])
-    }
-
-    // MARK: - Phone
-
-    func testPhoneRowsCarryTheFiguresAndTheirLegend() {
-        var usage = SaverUsage(saver: .rtk)
-        usage.hookRuns = 3
-        usage.rewrites = 3
-        let report = SaverSessionReport(sessionId: "s1", cwd: "/repo", bashCalls: 5, usages: [usage], doubleHookedCalls: 0)
-        let panel = SaverPanel.build(report: report, states: [.rtk: .on])
-        let value = detail(.rtk) {
-            $0.ledger = LedgerMatch(entries: 3, savedTokens: 900, beforeTokens: 1200, afterTokens: 300, groups: [])
-        }.value
-        let section = ServeDetail.saversSection(panel, values: [.rtk: value])
-        let figures = section.savers?.first?.figures
-        XCTAssertEqual(figures?.map(\.evidence), ["its claim"], "the row's metric is \"3 rewrites\", so the claim isn't a repeat")
-        XCTAssertEqual(figures?.first?.side, "benefit")
-        XCTAssertTrue(section.legend?.contains(Evidence.claimed.explanation) ?? false)
-    }
-
-    func testPhoneDropsAFigureTheRowAlreadyLeadsWithAndTheOlderClaimLine() {
-        var usage = SaverUsage(saver: .rtk)
-        usage.hookRuns = 3
-        usage.ledger = LedgerMatch(entries: 3, savedTokens: 900, beforeTokens: 1200, afterTokens: 300, groups: [])
-        let report = SaverSessionReport(sessionId: "s1", cwd: "/repo", bashCalls: 5, usages: [usage], doubleHookedCalls: 0)
-        let panel = SaverPanel.build(report: report, states: [.rtk: .on])
-        XCTAssertTrue(panel.legend.contains { $0.hasPrefix(SaverPanel.claimsLegendLead) })
-        let value = detail(.rtk) {
-            $0.ledger = usage.ledger
-            $0.carried = CarriedClaim(placedEntries: 3, entries: 3, placedSaved: 900, promptTokens: 9_000,
-                                      meanPrompts: 10, checkedCalls: 0, claimedAfter: 0, seenAfter: 0)
-        }.value
-        let section = ServeDetail.saversSection(panel, values: [.rtk: value])
-        XCTAssertEqual(section.savers?.first?.figures?.map(\.value), ["≈9.0k"], "≈900 is the row's metric already")
-        XCTAssertFalse(section.legend?.contains { $0.hasPrefix(SaverPanel.claimsLegendLead) } ?? true,
-                       "the evidence legend explains claims once")
-        XCTAssertTrue(section.legend?.contains(Evidence.claimed.explanation) ?? false,
-                      "still explained, though the claim's own figure was dropped as a repeat")
-    }
-
-    func testHelpExplainsEveryBadge() {
-        let answers = HelpText.savers.entries.map(\.answer).joined(separator: " ")
-        for evidence in Evidence.allCases {
-            XCTAssertTrue(answers.contains(evidence.explanation), "help explains the \(evidence.badge) badge in the same words")
-        }
     }
 }

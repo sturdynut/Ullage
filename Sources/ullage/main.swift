@@ -482,16 +482,23 @@ func printSaverRange(_ store: Store, days: Int) throws {
         if detail.mcpCalls > 0 { facts.append("\(detail.mcpCalls) MCP calls") }
         if detail.sessionsIdle > 0 { facts.append("loaded but unused in \(detail.sessionsIdle)") }
         print("  " + pad(saver.displayName, 16) + facts.joined(separator: " · "))
-        printValue(detail.value)
+        printCards(detail)
     }
 }
 
-/// Cost and benefit, each figure with how it is known.
-func printValue(_ value: SaverValue) {
-    for figure in value.all {
-        let side = figure.side == .benefit ? "+" : figure.side == .cost ? "−" : "~"
-        print("  " + pad("", 4) + side + " " + pad(figure.label, 44) + padLeft(figure.value, 22) + "  "
-              + pad("[" + figure.evidence.badge + "]", 19) + figure.detail + (figure.warning ? "  !" : ""))
+/// Each card's before and after, per day or without vs with, then costs.
+func printCards(_ detail: SaverDetail) {
+    for chart in SaverChart.charts(for: detail) {
+        print("    " + pad(chart.title, 34) + chart.totalText + "  " + chart.changeText)
+        guard chart.kind == .daily else { continue }
+        for bar in chart.bars {
+            let mark = chart.approximate ? "≈" : ""
+            print("      " + pad(bar.label, 10) + padLeft(mark + thousands(bar.before), 14) + " → "
+                  + pad(mark + thousands(bar.after), 14) + SaverChart.changeText(bar.change))
+        }
+    }
+    for cost in detail.value.costs {
+        print("    ! " + cost.label + ": " + cost.value + (cost.detail.isEmpty ? "" : " (" + cost.detail + ")"))
     }
 }
 
@@ -556,10 +563,10 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     let details = try store.saverDetails(report.visible.map(\.saver), range: .session, sessionId: sessionId, ledger: ledger)
     if details.contains(where: { !$0.value.isEmpty }) {
         print("")
-        print("COST AND BENEFIT, this session (+ keeps out, − costs, ~ with vs without: this folder over 30 days, or all folders when it has too few)")
+        print("BEFORE AND AFTER, this session (≈ is the tool's own figure; without vs with compares sessions)")
         for detail in details where !detail.value.isEmpty {
             print("  " + detail.saver.displayName)
-            printValue(detail.value)
+            printCards(detail)
         }
     }
     if report.doubleHookedCalls > 0 {

@@ -91,7 +91,7 @@ public struct SaverPanel: Equatable {
 
     /// Starts the legend line about claims, so a page that explains claims
     /// in its own legend can drop this one.
-    public static let claimsLegendLead = "≈ saved is the tool's own count, which Ullage can't check"
+    public static let claimsLegendLead = "≈ claimed is the tool's own estimate. Ullage only sees the output after the tool shortened it"
     public static let nextSessionNote = "applies to sessions started from now"
     public static let offNextSession = "Off from the next session"
     public static let onNextSession = "On from the next session"
@@ -148,10 +148,8 @@ public struct SaverPanel: Equatable {
             warning = "\(filtersOn.map(\.displayName).joined(separator: " and ")) are all switched on and all rewrite Bash. Keep one on."
         }
         var legend: [String] = []
-        let claims = rows.filter { $0.metric.hasPrefix("≈") && $0.saver.descriptor.claims != nil }
-            .compactMap { $0.saver.descriptor.claims?.how }
-        if !claims.isEmpty {
-            legend.append(claimsLegendLead + " (\(claims.joined(separator: "; "))).")
+        if rows.contains(where: { $0.metric.hasPrefix("≈") && $0.saver.descriptor.claims != nil }) {
+            legend.append(claimsLegendLead + ", so it can't check how big it was before.")
         }
         let compared = rows.filter { $0.saver.kind == .replyStyle && $0.metricCaption == "tokens/reply" }.map(\.saver.displayName)
         if !compared.isEmpty {

@@ -135,13 +135,24 @@ public enum WebPage {
   .saver .sub { padding-left: 54px; font-size: 13px; color: var(--dim); }
   .saver .note { padding-left: 54px; font-size: 12px; color: var(--faint); }
   .saver .pend { padding-left: 54px; font-size: 13px; color: var(--accent); font-weight: 600; }
-  .saver .figs { padding-left: 54px; margin-top: 6px; display: grid; gap: 6px; }
-  .saver .fig .fl { font-size: 12px; color: var(--dim); }
-  .saver .figs .fh { font-size: 11px; font-weight: 650; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
-  .saver .fig .fv { font-weight: 650; font-variant-numeric: tabular-nums; }
-  .saver .fig .fv.w { color: var(--warn); }
-  .saver .fig .ev { font-size: 11px; color: var(--dim); border: 1px solid var(--rule); border-radius: 999px; padding: 0 6px; margin-left: 6px; white-space: nowrap; }
-  .saver .fig .fd { font-size: 12px; color: var(--faint); }
+  .saver .costs { padding-left: 54px; margin-top: 4px; font-size: 13px; color: var(--dim); }
+  .saver .costs .w { color: var(--warn); }
+  .scard { margin: 10px 0 0 54px; border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
+  .scard .sh { display: flex; align-items: flex-start; gap: 8px; }
+  .scard .sh > div { flex: 1; }
+  .scard .st { font-weight: 650; font-size: 14px; }
+  .scard .sw { font-size: 12.5px; color: var(--dim); }
+  .scard .si { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--rule); background: none;
+    color: var(--dim); font: 600 12px/1 inherit; cursor: pointer; }
+  .scard .si[aria-expanded="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .scard .sm { font-size: 12.5px; color: var(--dim); background: var(--rule); border-radius: 8px; padding: 8px 10px; display: grid; gap: 4px; }
+  .scard .sm[hidden] { display: none; }
+  .scard .stot { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .scard .stot .chg { color: var(--dim); }
+  .scard .lg { margin-left: auto; display: flex; gap: 10px; color: var(--dim); font-size: 12px; }
+  .scard .lg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+  .scard svg { width: 100%; height: auto; display: block; }
+  .scard svg text { fill: var(--faint); font-size: 10px; font-variant-numeric: tabular-nums; }
   .switch {
     position: relative; width: 44px; height: 26px; border-radius: 13px; border: 0; padding: 0;
     background: var(--rule); flex: none; cursor: pointer; transition: background .15s;
@@ -453,25 +464,94 @@ public enum WebPage {
         (s.canUndo ? ' <button class="linkbtn" data-saver="' + s.id + '" data-action="undo">Undo</button>' : '') + '</div>' : '') +
       '<div class="sub">' + esc(s.line) + '</div>' +
       (s.note ? '<div class="note">' + esc(s.note) + '</div>' : '') +
-      figuresBlock(s.figures || []) +
+      (s.costs || []).map(function (c) {
+        return '<div class="costs"><span class="' + (c.warning ? 'w' : '') + '">' + esc(c.label) + ': ' + esc(c.value) + '</span>' +
+          (c.detail ? ' · ' + esc(c.detail) : '') + '</div>';
+      }).join('') +
+      (s.charts || []).map(chartCard).join('') +
       '</div>';
   }
 
-  // Cost and benefit under two small headings, as the window's two columns.
-  function figuresBlock(figs) {
-    var html = '';
-    [['benefit', 'Keeps out'], ['cost', 'Costs'], ['comparison', 'With vs without']].forEach(function (side) {
-      var some = figs.filter(function (f) { return f.side === side[0]; });
-      if (some.length) html += '<div class="figs"><div class="fh">' + side[1] + '</div>' + some.map(figureBlock).join('') + '</div>';
-    });
-    return html;
+  // ---- Before and after: one card per SaverChart ---------------------------
+  // The same palette as SaverChart.lightPalette / darkPalette, by slot.
+  var LIGHT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+  var DARK = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
+  var openInfo = {};   // card titles whose details are open, kept across polls
+
+  function compact(v) {
+    return v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e4 ? Math.round(v / 1e3) + 'k' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : String(v);
+  }
+  function changeText(b, a) {
+    if (!(b > 0)) return '';
+    var c = Math.round((a - b) / b * 100);
+    return c === 0 ? 'no change' : (c < 0 ? '−' + (-c) : '+' + c) + '%';
+  }
+  function dayIndex(first, key) {
+    return Math.round((Date.parse(key + 'T12:00:00Z') - Date.parse(first + 'T12:00:00Z')) / 864e5);
   }
 
-  // One graded figure: what, its value, how it is known.
-  function figureBlock(f) {
-    return '<div class="fig"><div class="fl">' + esc(f.label) + '</div>' +
-      '<div><span class="fv' + (f.warning ? ' w' : '') + '">' + esc(f.value) + '</span><span class="ev">' + esc(f.evidence) + '</span></div>' +
-      '<div class="fd">' + esc(f.detail) + '</div></div>';
+  function chartCard(c) {
+    var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+    var after = (dark ? DARK : LIGHT)[c.slot % 8];
+    var open = !!openInfo[c.title];
+    var mark = c.approximate ? '≈' : '';
+    return '<div class="scard" data-card="' + esc(c.title) + '">' +
+      '<div class="sh"><div><div class="st">' + esc(c.title) + '</div><div class="sw">' + esc(c.what) + '</div></div>' +
+      '<button class="si" data-info="' + esc(c.title) + '" aria-expanded="' + open + '" aria-label="About ' + esc(c.title) + '">i</button></div>' +
+      '<div class="sm"' + (open ? '' : ' hidden') + '>' + c.more.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' +
+      '<div class="stot"><span class="ctot" data-total="' + esc(c.total + '  ' + c.change) + '">' + esc(c.total) + ' <span class="chg">' + esc(c.change) + '</span></span>' +
+      '<span class="lg"><span><i style="background:' + after + ';opacity:.35"></i>' + esc(c.beforeLabel) + '</span>' +
+      '<span><i style="background:' + after + '"></i>' + esc(c.afterLabel) + '</span></span></div>' +
+      chartSVG(c, after, mark) + '</div>';
+  }
+
+  function chartSVG(c, color, mark) {
+    var W = 340, H = c.kind === 'comparison' ? 110 : 140, L = 40, R = 4, T = 6, B = 18;
+    var iw = W - L - R, ih = H - T - B;
+    var max = Math.max.apply(null, c.bars.map(function (b) { return Math.max(b.before, b.after); }).concat([1]));
+    var p = Math.pow(10, Math.floor(Math.log10(max / 3))), step = p;
+    [1, 2, 2.5, 5, 10].some(function (m) { step = m * p; return m * p * 3 >= max; });
+    var ticks = Math.ceil(max / step), top = step * ticks;
+    var y = function (v) { return T + ih - v / top * ih; };
+    var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(c.title) + '">';
+    for (var i = 0; i <= ticks; i++) {
+      var yy = y(step * i);
+      out += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--rule)" stroke-width="1"/>' +
+        '<text x="' + (L - 5) + '" y="' + (yy + 3) + '" text-anchor="end">' + (i ? compact(step * i).replace('.0', '') : '0') + '</text>';
+    }
+    var slots, slotOf;
+    if (c.kind === 'comparison') {
+      slots = 1; slotOf = function () { return 0; };
+    } else {
+      var first = c.firstDay || c.bars[0].key, last = c.lastDay || c.bars[c.bars.length - 1].key;
+      slots = dayIndex(first, last) + 1; slotOf = function (b) { return dayIndex(first, b.key); };
+    }
+    var sw = iw / slots, pair = Math.min(sw * 0.8, c.kind === 'comparison' ? 120 : 40), bw = (pair - 2) / 2;
+    function bar(x, v, fill, opacity) {
+      var y1 = y(v), y0 = y(0), h = Math.max(1, y0 - y1), r = Math.min(3, bw / 2, h);
+      return '<path d="M' + x + ',' + y0 + ' V' + (y1 + r) + ' Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 + ' H' + (x + bw - r) +
+        ' Q' + (x + bw) + ',' + y1 + ' ' + (x + bw) + ',' + (y1 + r) + ' V' + y0 + ' Z" fill="' + fill + '"' + (opacity ? ' fill-opacity="' + opacity + '"' : '') + '/>';
+    }
+    c.bars.forEach(function (b) {
+      var s = slotOf(b), cx = L + (s + 0.5) * sw, x = cx - pair / 2;
+      var detail = (b.label ? b.label + '  ' : '') + mark + b.before.toLocaleString() + ' → ' + mark + b.after.toLocaleString() +
+        '  ' + changeText(b.before, b.after) + (b.count ? ' · ' + b.count + ' ' + (c.countUnit || '') : '');
+      out += '<g data-bar="' + esc(detail) + '">' + bar(x, b.before, color, 0.35) + bar(x + bw + 2, b.after, color) +
+        '<rect x="' + (L + s * sw) + '" y="' + T + '" width="' + sw + '" height="' + ih + '" fill="transparent"/></g>';
+    });
+    if (c.kind === 'comparison') {
+      var cx0 = L + iw / 2;
+      out += '<text x="' + (cx0 - pair / 4) + '" y="' + (H - 4) + '" text-anchor="middle">' + esc(c.beforeLabel) + '</text>' +
+        '<text x="' + (cx0 + pair / 4) + '" y="' + (H - 4) + '" text-anchor="middle">' + esc(c.afterLabel) + '</text>';
+    } else {
+      var every = Math.max(1, Math.ceil(slots / 5));
+      for (var d = 0; d < slots; d += every) {
+        var key = new Date(Date.parse((c.firstDay || c.bars[0].key) + 'T12:00:00Z') + d * 864e5);
+        out += '<text x="' + (L + (d + 0.5) * sw) + '" y="' + (H - 4) + '" text-anchor="middle">' +
+          key.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) + '</text>';
+      }
+    }
+    return out + '</svg>';
   }
 
   // A section on the Overview: its name, its one line, a chevron. Tapping
@@ -730,6 +810,21 @@ public enum WebPage {
   });
   var deepLink = (location.hash.match(/^#page=([a-z]+)$/) || [])[1];
   el('page-body').addEventListener('click', function (e) {
+    // Tap a day: its numbers replace the card's total until tapped again.
+    var g = e.target.closest('g[data-bar]');
+    if (g) {
+      var total = g.closest('.scard').querySelector('.ctot');
+      total.textContent = total.textContent.indexOf(g.dataset.bar) === 0 ? total.dataset.total : g.dataset.bar;
+      return;
+    }
+    var info = e.target.closest('button[data-info]');
+    if (info) {
+      var title = info.dataset.info, opening = info.getAttribute('aria-expanded') !== 'true';
+      if (opening) openInfo[title] = true; else delete openInfo[title];
+      info.setAttribute('aria-expanded', String(opening));
+      info.closest('.scard').querySelector('.sm').hidden = !opening;
+      return;
+    }
     var li = e.target.closest('li[data-session]');
     if (li) { choose(li.dataset.session); hidePage(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     var b = e.target.closest('button');

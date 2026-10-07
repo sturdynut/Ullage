@@ -70,7 +70,7 @@ they need it offline; subscription-metered IDEs keep usage on their servers.
 
 ```bash
 swift build
-swift test                 # 381 tests on macOS; on Linux all but the CryptoKit and AppKit ones
+swift test                 # 388 tests on macOS; on Linux all but the CryptoKit and AppKit ones
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -284,8 +284,11 @@ plausible and are wrong.
   what can be switched now. Logic lives in `TokenSavers`, `SaverReport`,
   `SaverLedgers`, `SaverPanel`, `SaverDetail` (the window's ranges) and
   `SaverSwitchboard`.
-- **A context tool's value is graded, never totalled.** `SaverValue` turns a
-  `SaverDetail` into cost and benefit figures, each with an `Evidence` grade
+- **A context tool's value is drawn as before and after.** `SaverChart`
+  turns a `SaverDetail` into cards of paired bars (took in vs passed on, per
+  local day; without vs with for comparisons), drawn by the window (Swift
+  Charts), the phone (SVG in `WebPage`, the same palette) and the CLI.
+  `SaverValue` grades the figures behind them and supplies the costs, each with an `Evidence` grade
   (measured, estimated, claimed, compared, derived). A claim placed on the
   Bash call it names (rtk's `hook_decisions`) is carried over the prompts the
   result stayed in until a compaction — `derived`, labelled "claim × prompts":

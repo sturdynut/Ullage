@@ -35,7 +35,7 @@ public final class SaverControl {
     private var runs: [TokenSaver: (plan: InstallPlan, marker: URL, started: Date)] = [:]
     private var cached: (at: Date, states: [TokenSaver: SaverSwitchState], installed: Set<TokenSaver>, ledger: [LedgerEntry])?
     private var comparison: (at: Date, cwd: String, value: [TokenSaver: OutputComparison])?
-    private var valueCache: [String: (ledgerAt: Date, value: [TokenSaver: SaverValue])] = [:]
+    private var detailCache: [String: (ledgerAt: Date, value: [TokenSaver: SaverDetail])] = [:]
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         let board = SaverSwitchboard(environment: environment)
@@ -45,16 +45,17 @@ public final class SaverControl {
 
     // MARK: - Reading
 
-    /// Each tool's cost and benefit in one session. It reads up to 30 days
-    /// of sessions for the comparisons, so it is kept per session for as long
-    /// as the ledger it was built from — the same one `panel` shows, so a
-    /// row's metric and its figures can't drift apart.
-    public func values(store: Store, sessionId: String?, now: Date = Date()) throws -> [TokenSaver: SaverValue] {
+    /// Each tool's last 7 days, anchored on the session shown, for the
+    /// phone's charts. It reads a week of sessions and up to 30 days for the
+    /// comparisons, so it is kept per session for as long as the ledger it
+    /// was built from — the same one `panel` shows, so a row's metric and
+    /// its charts can't drift apart.
+    public func details(store: Store, sessionId: String?, now: Date = Date()) throws -> [TokenSaver: SaverDetail] {
         guard let sessionId else { return [:] }
         lock.lock()
         let snapshot = cached.map { ($0.at, $0.ledger) }
-        valueCache = valueCache.filter { $0.value.ledgerAt == snapshot?.0 }
-        if let hit = valueCache[sessionId], snapshot != nil {
+        detailCache = detailCache.filter { $0.value.ledgerAt == snapshot?.0 }
+        if let hit = detailCache[sessionId], snapshot != nil {
             lock.unlock()
             return hit.value
         }
@@ -62,11 +63,11 @@ public final class SaverControl {
         // Outside the lock: reading a ledger can take a moment, and switches
         // and Undo shouldn't wait on it.
         let ledger = snapshot?.1 ?? store.ledger(since: now.addingTimeInterval(-31 * 86_400))
-        let details = try store.saverDetails(range: .session, sessionId: sessionId, ledger: ledger, now: now)
-        let value = Dictionary(uniqueKeysWithValues: details.map { ($0.saver, $0.value) })
+        let details = try store.saverDetails(range: .week, sessionId: sessionId, ledger: ledger, now: now)
+        let value = Dictionary(uniqueKeysWithValues: details.map { ($0.saver, $0) })
         if let at = snapshot?.0 {
             lock.lock()
-            valueCache[sessionId] = (at, value)
+            detailCache[sessionId] = (at, value)
             lock.unlock()
         }
         return value

@@ -107,114 +107,202 @@ struct SaversPage: View {
     }
 }
 
-// MARK: - Cost and benefit, shared by the overview and each tool's page
+// MARK: - Cards: what a tool took in next to what it passed on
 
-/// One graded figure: the label, the value, a badge saying how it is known.
-private struct FigureView: View {
-    let figure: ValueFigure
-    var large = true
+extension Color {
+    /// A palette slot from Core, stepped for the current appearance.
+    static func saverSlot(_ slot: Int) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return NSColor(hex: (dark ? SaverChart.darkPalette : SaverChart.lightPalette)[slot])
+        })
+    }
+}
+
+private extension NSColor {
+    convenience init(hex: String) {
+        let value = UInt32(hex.dropFirst(), radix: 16) ?? 0
+        self.init(srgbRed: CGFloat((value >> 16) & 0xff) / 255, green: CGFloat((value >> 8) & 0xff) / 255,
+                  blue: CGFloat(value & 0xff) / 255, alpha: 1)
+    }
+}
+
+/// One card: a short title, one line, an info button for the rest, and
+/// paired bars. Hovering a day puts that day's numbers in the total line.
+private struct ChartCard: View {
+    let chart: SaverChart
+    let saver: TokenSaver
+    var height: CGFloat = 170
+    @State private var showMore = false
+    @State private var hovered: SaverChart.Bar?
+
+    private var after: Color { .saverSlot(SaverChart.colorSlot(saver)) }
+    private var before: Color { after.opacity(0.35) }
+    private var mark: String { chart.approximate ? "≈" : "" }
 
     var body: some View {
-        let big = large && !figure.secondary
-        VStack(alignment: .leading, spacing: 3) {
-            Text(figure.label).font(.callout).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(chart.title).font(.headline)
+                    Text(chart.what).font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { showMore.toggle() } label: {
+                    Image(systemName: showMore ? "info.circle.fill" : "info.circle").imageScale(.large)
+                }
+                .buttonStyle(.borderless)
+                .help(showMore ? "Hide the details" : "What am I looking at?")
+                .accessibilityLabel("About \(chart.title)")
+            }
+            if showMore {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(chart.more, id: \.self) { Text($0) }
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(figure.value)
-                    .font(big ? .system(size: 22, weight: .semibold) : .body.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(figure.warning ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.primary))
-                EvidenceBadge(evidence: figure.evidence)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08)))
             }
-            Text(figure.detail)
-                .font(.caption)
-                .foregroundStyle(figure.warning ? AnyShapeStyle(Color.orange) : AnyShapeStyle(.secondary))
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                summary
+                Spacer()
+                legendItem(chart.beforeLabel, before)
+                legendItem(chart.afterLabel, after)
+            }
+            .font(.callout)
+            plot.frame(height: chart.kind == .comparison ? min(height, 120) : height)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.2)))
     }
+
+    @ViewBuilder
+    private var summary: some View {
+        if let bar = hovered {
+            Text("\(bar.label)  \(mark)\(bar.before.formatted()) → \(mark)\(bar.after.formatted())")
+                .monospacedDigit()
+            Text(SaverChart.changeText(bar.change)
+                 + (bar.count.map { " · \($0) \(chart.countUnit ?? "")" } ?? ""))
+                .foregroundStyle(.secondary)
+        } else {
+            Text(chart.totalText).monospacedDigit()
+            Text(chart.changeText).foregroundStyle(.secondary)
+        }
+    }
+
+    private func legendItem(_ label: String, _ color: Color) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 10, height: 10)
+            Text(label).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var plot: some View {
+        if chart.kind == .comparison, let bar = chart.bars.first {
+            Chart {
+                BarMark(x: .value("Side", chart.beforeLabel), y: .value("Tokens", bar.before), width: .ratio(0.5))
+                    .foregroundStyle(before).cornerRadius(4)
+                BarMark(x: .value("Side", chart.afterLabel), y: .value("Tokens", bar.after), width: .ratio(0.5))
+                    .foregroundStyle(after).cornerRadius(4)
+            }
+            .chartYAxis { tokenAxis }
+        } else {
+            Chart(chart.bars) { bar in
+                if let day = Self.date(bar.key) {
+                    BarMark(x: .value("Day", day, unit: .day), y: .value("Tokens", bar.before))
+                        .foregroundStyle(by: .value("Side", chart.beforeLabel))
+                        .position(by: .value("Side", chart.beforeLabel))
+                        .cornerRadius(3)
+                    BarMark(x: .value("Day", day, unit: .day), y: .value("Tokens", bar.after))
+                        .foregroundStyle(by: .value("Side", chart.afterLabel))
+                        .position(by: .value("Side", chart.afterLabel))
+                        .cornerRadius(3)
+                }
+            }
+            .chartForegroundStyleScale([chart.beforeLabel: before, chart.afterLabel: after])
+            .chartLegend(.hidden)
+            .chartXScale(domain: domain)
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 6)) { _ in
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                }
+            }
+            .chartYAxis { tokenAxis }
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location):
+                                guard let frame = proxy.plotFrame,
+                                      let day: Date = proxy.value(atX: location.x - geometry[frame].origin.x) else { return }
+                                hovered = chart.bars.min {
+                                    abs((Self.date($0.key) ?? .distantPast).timeIntervalSince(day))
+                                        < abs((Self.date($1.key) ?? .distantPast).timeIntervalSince(day))
+                                }
+                            case .ended:
+                                hovered = nil
+                            }
+                        }
+                }
+            }
+        }
+    }
+
+    private var tokenAxis: some AxisContent {
+        AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+            AxisGridLine().foregroundStyle(.quaternary)
+            AxisValueLabel {
+                if let tokens = value.as(Int.self) { Text(TokenFormat.compact(tokens)).font(.caption2) }
+            }
+        }
+    }
+
+    /// The axis spans the range, a day either side of noon so end bars fit.
+    private var domain: ClosedRange<Date> {
+        let first = chart.firstDay.flatMap(Self.date) ?? chart.bars.first.flatMap { Self.date($0.key) } ?? Date()
+        let last = chart.lastDay.flatMap(Self.date) ?? chart.bars.last.flatMap { Self.date($0.key) } ?? first
+        return first.addingTimeInterval(-12 * 3600)...last.addingTimeInterval(36 * 3600)
+    }
+
+    private static let dayFormat: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+
+    static func date(_ key: String) -> Date? { dayFormat.date(from: key) }
 }
 
-/// How a figure is known, as a small outlined capsule. Outlined, not filled:
-/// the grade qualifies the number, it isn't a status to notice. A claim, or
-/// anything built on one, gets a dashed outline: weaker, not louder.
-struct EvidenceBadge: View {
-    let evidence: Evidence
-
-    private var dashed: Bool { evidence == .claimed || evidence == .derived }
+/// What a tool adds to the context, as plain warnings above its cards.
+private struct CostLines: View {
+    let costs: [ValueFigure]
 
     var body: some View {
-        Text(evidence.badge)
-            .font(.caption2.weight(.medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.6),
-                                            style: StrokeStyle(lineWidth: 0.75, dash: dashed ? [2, 2] : [])))
-            .help(evidence.explanation)
-    }
-}
-
-/// What each badge means, folded away: the tooltips say it too.
-private struct EvidenceLegend: View {
-    let figures: [ValueFigure]
-
-    var body: some View {
-        let legend = Evidence.legend(for: figures)
-        if !legend.isEmpty {
-            DisclosureGroup("How each figure is known") {
-                VStack(alignment: .leading, spacing: 3) { ForEach(legend, id: \.self) { Text($0) } }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 4)
+        if !costs.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(costs) { cost in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: cost.warning ? "exclamationmark.triangle.fill" : "minus.circle")
+                            .foregroundStyle(cost.warning ? Color.orange : Color.secondary)
+                        Text("\(cost.label): ").fontWeight(.medium) + Text(cost.value)
+                        Text(cost.detail).foregroundStyle(.secondary)
+                    }
+                    .font(.callout)
+                }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
     }
 }
 
-/// Keeps out on the left, costs on the right, with vs without beneath: all
-/// context tokens, but of different grades, so they sit side by side and are
-/// never netted.
-private struct CostBenefit: View {
-    let value: SaverValue
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 28) {
-                column("Keeps out", value.benefits, empty: emptyBenefit)
-                column("Costs", value.costs, empty: "No cost seen in this range.")
-            }
-            if !value.comparisons.isEmpty {
-                column("With vs without", value.comparisons, empty: "")
-            }
-            EvidenceLegend(figures: value.all)
-        }
-    }
-
-    private var emptyBenefit: String {
-        let saver = value.saver
-        if saver.descriptor.claims == nil, saver.kind == .outputFilter || saver.kind == .onDemand {
-            return "\(saver.displayName) keeps no count of what it saves, and Ullage can't see what the output would have been."
-        }
-        return "Nothing it kept out shows in this range."
-    }
-
-    private func column(_ title: String, _ figures: [ValueFigure], empty: String) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-            if figures.isEmpty {
-                Text(empty).font(.callout).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
-            }
-            ForEach(figures) { FigureView(figure: $0) }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-}
-
-/// Every tool's figures, in the registry's order. Not ranked: a claim, a
-/// comparison and an estimate aren't one scale.
+/// Every tool's main card, in the registry's order: never ranked, because a
+/// claim and a comparison aren't one scale.
 private struct OverviewPage: View {
     let details: [SaverDetail]
     /// The range `details` were read for, which lags the picker while loading.
@@ -223,64 +311,38 @@ private struct OverviewPage: View {
     let onOpen: (TokenSaver) -> Void
 
     var body: some View {
-        let overview = SaverValue.overview(details)
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Keeps out and costs, by tool").font(.title2.weight(.semibold))
-            if let range {
-                Text("Over \(range == .session ? "this session" : "the last \(range.days ?? 30) days"). Each figure says how it is known; figures of different kinds are never added together.")
+        let shown = details.filter { !SaverChart.charts(for: $0).isEmpty || !$0.value.costs.isEmpty }
+        let quiet = details.filter { SaverChart.charts(for: $0).isEmpty && $0.value.costs.isEmpty }.map(\.saver)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Token savings").font(.title2.weight(.semibold))
+                Text("What each tool took in, and what it passed on" + (range.map { $0 == .session ? ", this session." : ", last \($0.days ?? 30) days." } ?? "."))
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             if details.isEmpty, loading {
                 Text("Reading sessions…").foregroundStyle(.secondary)
-            } else if overview.shown.isEmpty, !loading {
+            } else if shown.isEmpty, !loading {
                 Text("No context tool left a trace in this range.").foregroundStyle(.secondary)
             }
-            Grid(alignment: .topLeading, horizontalSpacing: 20, verticalSpacing: 16) {
-                if !overview.shown.isEmpty {
-                    GridRow {
-                        Text("")
-                        heading("Keeps out")
-                        heading("Costs")
-                        heading("With vs without")
+            ForEach(shown, id: \.saver) { detail in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(detail.saver.displayName).font(.headline)
+                        Spacer()
+                        Button("Details") { onOpen(detail.saver) }.buttonStyle(.link)
                     }
-                }
-                ForEach(overview.shown) { value in
-                    GridRow {
-                        Button(value.saver.displayName) { onOpen(value.saver) }
-                            .buttonStyle(.link)
-                            .font(.body.weight(.semibold))
-                        cell(value.benefits.filter { !$0.secondary })
-                        cell(value.costs)
-                        cell(value.comparisons)
+                    CostLines(costs: detail.value.costs)
+                    if let chart = SaverChart.charts(for: detail).first {
+                        ChartCard(chart: chart, saver: detail.saver, height: 140)
                     }
-                    Divider().gridCellColumns(4)
                 }
             }
             .opacity(loading ? 0.4 : 1)
-            if !overview.quiet.isEmpty {
-                Text("No trace in this range: " + overview.quiet.map(\.displayName).joined(separator: ", "))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            EvidenceLegend(figures: overview.shown.flatMap(\.all))
-        }
-    }
-
-    private func heading(_ text: String) -> some View {
-        Text(text).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-    }
-
-    /// The first two figures; the tool's page has the rest.
-    private func cell(_ figures: [ValueFigure]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if figures.isEmpty { Text("—").foregroundStyle(.tertiary) }
-            ForEach(figures.prefix(2)) { FigureView(figure: $0, large: false) }
-            if figures.count > 2 {
-                Text("+\(figures.count - 2) more").font(.caption).foregroundStyle(.tertiary)
+            if !quiet.isEmpty {
+                Text("No trace in this range: " + quiet.map(\.displayName).joined(separator: ", "))
+                    .font(.callout).foregroundStyle(.secondary)
             }
         }
-        .frame(minWidth: 150, maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -298,10 +360,12 @@ private struct DetailPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             header
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Cost and benefit").font(.headline)
-                CostBenefit(value: detail.value)
+            CostLines(costs: detail.value.costs)
+            let charts = SaverChart.charts(for: detail)
+            if charts.isEmpty {
+                Text(noChartLine).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+            ForEach(charts) { ChartCard(chart: $0, saver: saver) }
             facts
             switch saver.kind {
             case .outputFilter: ledger
@@ -312,6 +376,14 @@ private struct DetailPage: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// Why there is nothing to chart, in this tool's terms.
+    private var noChartLine: String {
+        if saver.descriptor.claims == nil, saver.kind == .outputFilter || saver.kind == .onDemand {
+            return "\(saver.displayName) keeps no count of what it takes in and passes on, so there is nothing to chart."
+        }
+        return "Nothing to chart in this range yet."
     }
 
     // MARK: Header
