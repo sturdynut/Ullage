@@ -124,6 +124,30 @@ public struct SaverInstaller {
 
     // MARK: - What is installed
 
+    /// A plugin's cached version, else what its binary's `--version` says.
+    /// Bounded: a tool that hangs on `--version` costs five seconds, not the CLI.
+    public func version(of saver: TokenSaver) -> String? {
+        if let plugin = (switchboard.wiring(of: saver)["plugins"] as? [String])?.first {
+            return URL(fileURLWithPath: plugin).lastPathComponent
+        }
+        guard let name = saver.descriptor.install?.binary, let path = which(name) else { return nil }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["--version"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        process.standardInput = FileHandle.nullDevice
+        let done = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in done.signal() }
+        guard (try? process.run()) != nil else { return nil }
+        if done.wait(timeout: .now() + 5) == .timedOut {
+            process.terminate()
+            return nil
+        }
+        return BenchResults.version(in: String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+    }
+
     public func installation(of saver: TokenSaver) -> SaverInstallation {
         let wired = switchboard.state(of: saver) != .notInstalled || pluginInstalled(saver)
         guard let name = saver.descriptor.install?.binary, let path = which(name) else {

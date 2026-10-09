@@ -35,7 +35,7 @@ USAGE
   ullage savers enable|disable <name> [--dry-run]
                              Switch one in Claude Code's user config (applies to new sessions)
   ullage savers config <name>
-                             Print the hooks, MCP servers and plugins it adds (on or parked), as JSON
+                             Print the hooks, MCP servers and plugins it adds (on or parked) and its version, as JSON
   ullage savers install|uninstall <name> [--dry-run] [--yes]
                              Run the saver's own install or uninstall commands, after asking
   ullage info                Resolved paths and row counts
@@ -551,6 +551,18 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     for saver in TokenSaver.allCases {
         print("  " + pad(saver.displayName, 16) + pad(states[saver]?.rawValue ?? "—", 15) + "shrinks " + saver.shrinks)
     }
+    let benchRows = BenchResults.load(from: BenchResults.url())
+    if !benchRows.isEmpty {
+        let installer = SaverInstaller(switchboard: switchboard)
+        var installed: [String: String] = [:]
+        for saver in TokenSaver.allCases { installed[saver.id] = installer.version(of: saver) }
+        print("")
+        print("MEASURED AGAINST PLAIN SESSIONS (scripts/bench-savers; whole-session cost, same tasks)")
+        for verdict in BenchResults.verdicts(rows: benchRows, installed: installed) {
+            let name = TokenSaver.allCases.first(where: { $0.id == verdict.tool })?.displayName ?? verdict.tool
+            print("  " + pad(name, 16) + BenchResults.line(verdict))
+        }
+    }
 
     let sessionId: String?
     if let sessionPrefix {
@@ -1008,7 +1020,9 @@ do {
                 print("usage: ullage savers config <\(TokenSaver.allCases.map(\.rawValue).joined(separator: "|"))>")
                 break
             }
-            let data = try JSONSerialization.data(withJSONObject: switchboard.wiring(of: saver), options: [.prettyPrinted, .sortedKeys])
+            var wiring = switchboard.wiring(of: saver)
+            wiring["version"] = SaverInstaller(switchboard: switchboard).version(of: saver)
+            let data = try JSONSerialization.data(withJSONObject: wiring, options: [.prettyPrinted, .sortedKeys])
             print(String(decoding: data, as: UTF8.self))
             break
         }

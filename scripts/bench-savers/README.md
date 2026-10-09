@@ -47,8 +47,11 @@ needs a model with a large window: not Haiku.
 
 `results/<date>-<model>.jsonl`, one row per run, with Ullage's four counters
 for the whole session (subagents included), the grade, and Claude Code's
-list-price cost (quota on a subscription, not money). They are checked in, so
-a tool's result can be compared across its versions.
+list-price cost (quota on a subscription, not money), and the version of each
+tool in the setup. They are checked in, so a tool's result can be compared
+across its versions, and a copy goes to `bench-results.jsonl` next to Ullage's
+database, where `ullage savers` reads it: each tool's latest measurement, and
+"re-run" once the installed version is not the one measured.
 
 Read them with care:
 

@@ -69,7 +69,8 @@ fi
 
 jq -c --arg id "$id" --arg setup "$setup" --arg task "$task" --argjson rep "$rep" --arg model "$model" \
   --arg commit "$(git -C "$WORK/base" rev-parse --short HEAD~1)" --argjson score "$score" --argjson secs "$secs" --argjson tokens "${measured:-{\}}" \
+  --argjson versions "$(jq -n '[inputs | {(input_filename | split("/")[-1] | rtrimstr(".tool.json")): .version}] | add // {} | with_entries(select(.value != null))' $(for t in ${tools[@]}; do echo "$WORK/cfg/$t.tool.json"; done) </dev/null)" \
   '{id:$id, setup:$setup, task:$task, rep:$rep, model:$model, commit:$commit, score:$score, secs:$secs,
-    session:.session_id, cost:.total_cost_usd, turns:.num_turns, is_error:.is_error, at:(now|todate), tokens:$tokens}' \
-  <<< "${result:-{\}}" >> "$results"
+    session:.session_id, cost:.total_cost_usd, turns:.num_turns, is_error:.is_error, at:(now|todate), versions:$versions, tokens:$tokens}' \
+  <<< "${result:-{\}}" | tee -a "$results" >> "$BENCH_RESULTS"
 echo "$id score=$score secs=$secs"

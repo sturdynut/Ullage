@@ -110,3 +110,8 @@ The ledgers say what a tool claims; `scripts/bench-savers/` measures what a
 session costs with it. `ullage savers config <tool>` prints the hooks, MCP
 servers and plugins a tool adds, on or parked, and the bench loads exactly
 that into otherwise bare headless sessions. See its README.
+
+Each result records the versions it ran. `ullage savers` shows every tool's
+latest measurement (cost against plain sessions, model, date, version) and
+says "re-run" when the installed version is not the one measured
+(`BenchResults`).

@@ -82,6 +82,11 @@ fi
 export WORK HERE ULLAGE model
 results="$HERE/results/$(date +%Y-%m-%d)-$model.jsonl"
 export results
+# A copy where `ullage savers` reads it, to show each tool's last measurement.
+BENCH_RESULTS="$HOME/Library/Application Support/com.sturdynut.ullage/bench-results.jsonl"
+[ -n "$ULLAGE_DB" ] && BENCH_RESULTS="$(dirname "$ULLAGE_DB")/bench-results.jsonl"
+mkdir -p "$(dirname "$BENCH_RESULTS")"
+export BENCH_RESULTS
 for setup in "${setups[@]}"; do
   for task in ${tasks//,/ }; do
     for rep in $(seq 1 "$reps"); do echo "$setup $task $rep"; done
