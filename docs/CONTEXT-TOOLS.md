@@ -99,3 +99,14 @@ request, which is already one prompt, so it is never carried forward.
   time, or by time alone.
 
 Commands run in Terminal, after Ullage shows them, and only when you ask.
+Afterwards Ullage reads Claude Code's config again and reports what changed,
+not what the command's exit status said: an installer can succeed and wire
+nothing (rtk's `init -g` with nobody to answer its prompt), and an uninstaller
+can leave its hook behind.
+
+## Measuring a tool
+
+The ledgers say what a tool claims; `scripts/bench-savers/` measures what a
+session costs with it. `ullage savers config <tool>` prints the hooks, MCP
+servers and plugins a tool adds, on or parked, and the bench loads exactly
+that into otherwise bare headless sessions. See its README.

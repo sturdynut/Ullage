@@ -1,0 +1,3 @@
+Add a `--json` flag to four `ullage` CLI commands: `sessions`, `latest`, `history`, and `composition <session>`. With the flag, each prints the same data as its table as valid JSON (an array of row objects for tables, an object for single records), using snake_case keys. Without the flag, output must not change. Add a unit test for each.
+
+Work one command at a time. After each command, run `swift build` and the full `swift test`, and read their complete output — do not pipe it through head, tail or grep — to check for warnings and failures. Fix any warnings your change introduces. When all four are done, review your work with `git diff` and `git status`.

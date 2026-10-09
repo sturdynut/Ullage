@@ -34,6 +34,8 @@ USAGE
   ullage tools               Every context tool Ullage knows, built in or from ~/.config/ullage/tools
   ullage savers enable|disable <name> [--dry-run]
                              Switch one in Claude Code's user config (applies to new sessions)
+  ullage savers config <name>
+                             Print the hooks, MCP servers and plugins it adds (on or parked), as JSON
   ullage savers install|uninstall <name> [--dry-run] [--yes]
                              Run the saver's own install or uninstall commands, after asking
   ullage info                Resolved paths and row counts
@@ -613,7 +615,7 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
 /// Prints the plan, asks, then runs each step in the user's shell with this
 /// terminal attached, so prompts and browser sign-ins work. Stops at the
 /// first step that fails.
-func runInstallPlan(_ plan: InstallPlan, dryRun: Bool, assumeYes: Bool) throws {
+func runInstallPlan(_ plan: InstallPlan, switchboard: SaverSwitchboard, dryRun: Bool, assumeYes: Bool) throws {
     let verb = plan.action == .install ? "install" : "uninstall"
     if !plan.missing.isEmpty {
         print("can't \(verb) \(plan.saver.displayName): needs \(plan.missing.joined(separator: " and "))")
@@ -644,7 +646,9 @@ func runInstallPlan(_ plan: InstallPlan, dryRun: Bool, assumeYes: Bool) throws {
             exit(process.terminationStatus)
         }
     }
-    print("\ndone · applies to Claude Code sessions started from now")
+    let after = switchboard.state(of: plan.saver)
+    print("\n" + SaverInstaller.outcome(of: plan, status: 0, after: after))
+    if !SaverInstaller.tookEffect(plan.action, after: after) { exit(1) }
 }
 
 func printLimits(_ store: Store, now: Date = Date(), fetched: Bool) throws {
@@ -995,7 +999,17 @@ do {
                 break
             }
             let plan = SaverInstaller(switchboard: switchboard).plan(saver, action)
-            try runInstallPlan(plan, dryRun: options.dryRun, assumeYes: options.yes)
+            try runInstallPlan(plan, switchboard: switchboard, dryRun: options.dryRun, assumeYes: options.yes)
+            break
+        }
+        if options.paths.first == "config" {
+            guard let name = options.paths.dropFirst().first,
+                  let saver = TokenSaver.allCases.first(where: { $0.rawValue == name.lowercased() }) else {
+                print("usage: ullage savers config <\(TokenSaver.allCases.map(\.rawValue).joined(separator: "|"))>")
+                break
+            }
+            let data = try JSONSerialization.data(withJSONObject: switchboard.wiring(of: saver), options: [.prettyPrinted, .sortedKeys])
+            print(String(decoding: data, as: UTF8.self))
             break
         }
         if let verb = options.paths.first, verb == "enable" || verb == "disable" {

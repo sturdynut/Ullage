@@ -1,0 +1,1 @@
+In this repository, which Swift type and function decide that a turn is a cache rebuild? Give the file path, the type and function name, and every numeric threshold it uses (with units). Do not modify any files.
