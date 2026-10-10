@@ -524,6 +524,9 @@ itself produced count toward the `re-cached N×` warning in the collapsed line.
 The turn straight after a compaction or `/clear` re-caches its new, smaller
 context on purpose and is never counted.
 
+Habits that avoid the orange ones, and when to use a skill or a subagent, are
+in [`docs/AGENT-PRACTICES.md`](docs/AGENT-PRACTICES.md).
+
 ## How the number is computed
 
 The context window is the size of the prompt sent each turn:
@@ -613,7 +616,8 @@ scripts/recon.sh       inspect the on-disk transcript format
 scripts/install-app.sh build, bundle, and install the app
 scripts/model-windows.py  regenerate model windows from models.dev
 scripts/test-plan.py   rebuild the test checklist (docs/TESTING.csv)
-docs/                  transcript formats (harnesses/), context tools, OTLP, phone
+docs/                  transcript formats (harnesses/), context tools, OTLP, phone,
+                       and habits for context, skills and agents
 ```
 
 ## License
