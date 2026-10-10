@@ -1,0 +1,1 @@
+For every harness parser in this repository, state how that harness's reported token usage is mapped into Ullage's four counters (input, output, cache_read, cache_write) — in particular whether the harness's own input figure includes cached tokens. Cite the source file for each harness. Do not modify any files.

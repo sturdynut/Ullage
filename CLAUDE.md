@@ -79,7 +79,7 @@ CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
 `composition <session>`, `agents <session>`, `env <session>`, `serve`,
 `push [--test]`, `otlp`, `limits [--fetch]`, `savers [session]`,
 `rebuilds [session]`, `rebuilds --days N`, `savers --days N`, `savers enable|disable <name> [--dry-run]`,
-`savers install|uninstall <name> [--dry-run] [--yes]`, `info`.
+`savers install|uninstall <name> [--dry-run] [--yes]`, `savers config <name>`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
   have no macOS-only imports, with one guarded exception: `WebPush.swift` is
@@ -372,6 +372,8 @@ Shield isn't in Homebrew's SPDX list.
   plan, screenshots.
 - `scripts/recon.sh` — transcript reconnaissance and fixture scrubbing.
 - `scripts/install-app.sh` — build, bundle, sign, install the app.
+- `scripts/bench-savers/` — runs context tools against plain Claude Code on
+  fixed tasks and records what each session cost; results are checked in.
 
 ## Gotchas
 

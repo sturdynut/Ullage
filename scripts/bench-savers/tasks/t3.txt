@@ -1,0 +1,1 @@
+Explain the path a new line takes from being appended to a Claude Code transcript file on disk until the macOS menu bar percentage updates. Name every type and function involved, in order, with file paths. Do not modify any files.

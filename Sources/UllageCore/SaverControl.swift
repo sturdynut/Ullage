@@ -158,7 +158,7 @@ public final class SaverControl {
         for (saver, run) in runs {
             if let status = SaverInstaller.finishedStatus(marker: run.marker) {
                 try? FileManager.default.removeItem(at: run.marker)
-                notes[saver] = (SaverInstaller.outcome(of: run.plan, status: status), now)
+                notes[saver] = (SaverInstaller.outcome(of: run.plan, status: status, after: switchboard.state(of: saver)), now)
                 runs[saver] = nil
                 cached = nil
             } else if now.timeIntervalSince(run.started) > 30 * 60 {

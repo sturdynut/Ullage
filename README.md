@@ -390,7 +390,13 @@ tool's own documented commands first, and nothing runs until you confirm. The
 app runs them in Terminal, so you can watch, and so a browser sign-in
 (Tokenade) or a Homebrew prompt works. Uninstalling uses whichever package
 manager installed the tool (Homebrew, npm, pipx, uv, cargo), found from where
-its binary really lives.
+its binary really lives. When the commands finish, Ullage checks Claude Code's
+config itself and says so if the tool's command reported success but changed
+nothing.
+
+To find out whether a tool is worth its place, `scripts/bench-savers/` runs
+it against plain Claude Code on fixed tasks and compares what the sessions
+cost (see its README).
 
 | Tool | Install | Uninstall |
 |---|---|---|

@@ -268,7 +268,7 @@ final class MenuBarModel: ObservableObject {
         for (saver, watch) in installWatches {
             if let status = SaverInstaller.finishedStatus(marker: watch.marker) {
                 try? FileManager.default.removeItem(at: watch.marker)
-                saverResults[saver] = SaverInstaller.outcome(of: watch.plan, status: status)
+                saverResults[saver] = SaverInstaller.outcome(of: watch.plan, status: status, after: switchboard.state(of: saver))
                 resultsShown.remove(saver)
                 saverPending[saver] = nil
                 installWatches[saver] = nil

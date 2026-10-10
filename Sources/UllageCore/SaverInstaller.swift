@@ -124,6 +124,30 @@ public struct SaverInstaller {
 
     // MARK: - What is installed
 
+    /// A plugin's cached version, else what its binary's `--version` says.
+    /// Bounded: a tool that hangs on `--version` costs five seconds, not the CLI.
+    public func version(of saver: TokenSaver) -> String? {
+        if let plugin = (switchboard.wiring(of: saver)["plugins"] as? [String])?.first {
+            return URL(fileURLWithPath: plugin).lastPathComponent
+        }
+        guard let name = saver.descriptor.install?.binary, let path = which(name) else { return nil }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["--version"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        process.standardInput = FileHandle.nullDevice
+        let done = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in done.signal() }
+        guard (try? process.run()) != nil else { return nil }
+        if done.wait(timeout: .now() + 5) == .timedOut {
+            process.terminate()
+            return nil
+        }
+        return BenchResults.version(in: String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+    }
+
     public func installation(of saver: TokenSaver) -> SaverInstallation {
         let wired = switchboard.state(of: saver) != .notInstalled || pluginInstalled(saver)
         guard let name = saver.descriptor.install?.binary, let path = which(name) else {
@@ -292,14 +316,36 @@ public struct SaverInstaller {
     }
 
     /// What a row says once a run has finished.
-    public static func outcome(of plan: InstallPlan, status: Int32) -> String {
+    /// `after` is the saver's state re-read from Claude Code's config once the
+    /// commands finished. An exit status of 0 only says the tool's own command
+    /// was happy: rtk's `init -g` declines to patch settings.json when nobody
+    /// answers its prompt, and an uninstaller can leave its hook behind. The
+    /// config says what actually changed, so it has the last word.
+    public static func outcome(of plan: InstallPlan, status: Int32, after: SaverSwitchState? = nil) -> String {
         let name = plan.saver.displayName
         guard status == 0 else {
             return "\(plan.action == .install ? "Install" : "Uninstall") of \(name) stopped (exit \(status)) · see Terminal"
         }
-        return plan.action == .install
-            ? "\(name) installed · on from the next session"
-            : "\(name) uninstalled · gone from the next session"
+        if let after, !tookEffect(plan.action, after: after) {
+            return plan.action == .install
+                ? "\(name)'s installer finished, but nothing was added to Claude Code · see Terminal"
+                : "\(name)'s uninstaller finished, but it is still on in Claude Code"
+        }
+        switch (plan.action, after) {
+        case (.install, .off?):
+            return "\(name) installed · switched off"
+        case (.install, _):
+            return "\(name) installed · on from the next session"
+        case (.uninstall, _):
+            return "\(name) uninstalled · gone from the next session"
+        }
+    }
+
+    /// An install leaves the saver in Claude Code's config; an uninstall
+    /// leaves it not switched on. A copy Ullage parked while it was switched
+    /// off is Ullage's own, so `off` counts as gone.
+    public static func tookEffect(_ action: SaverAction, after: SaverSwitchState) -> Bool {
+        action == .install ? after != .notInstalled : after != .on
     }
 
     static func shellQuote(_ text: String) -> String {
