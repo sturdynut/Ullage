@@ -26,12 +26,22 @@ public final class SQLiteDatabase {
 
     /// `readOnly` is for other programs' databases (rtk's ledger): never
     /// created, never written, never left with a journal of ours.
-    public init(path: String, readOnly: Bool = false) throws {
+    /// `immutable` additionally takes no locks and ignores any WAL: only
+    /// correct when the database has no `-wal` file, which is exactly when a
+    /// read-only connection to a WAL database can't open it (no `-shm` to
+    /// read the WAL index from, and no right to create one).
+    public init(path: String, readOnly: Bool = false, immutable: Bool = false) throws {
         var handle: OpaquePointer?
-        let flags = readOnly
+        var flags = readOnly || immutable
             ? SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX
             : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
-        guard sqlite3_open_v2(path, &handle, flags, nil) == SQLITE_OK, let handle else {
+        var target = path
+        if immutable {
+            flags |= SQLITE_OPEN_URI
+            let escaped = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+            target = "file:" + escaped + "?immutable=1"
+        }
+        guard sqlite3_open_v2(target, &handle, flags, nil) == SQLITE_OK, let handle else {
             let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown error"
             if let handle { sqlite3_close_v2(handle) }
             throw SQLiteError.open(message)

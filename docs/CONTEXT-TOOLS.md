@@ -24,6 +24,34 @@ The kind decides what Ullage can honestly say about a tool:
 | `codeSearch` | Serena, codegraph, claude-context | Lookups (MCP calls or Bash runs) and ≈ size of what they returned |
 | `memory` | claude-mem | ≈ size of what its hooks injected at session start (a length estimate) |
 
+## Before and after
+
+Every tool's page, the Overview, the phone page and `ullage savers` draw
+`SaverChart` cards: paired bars of what a tool took in next to what it passed
+on, per day, from its ledger (output, then the same over later prompts), and
+without vs with for each comparison. A tool whose ledger has before and after
+gets charts with no Swift of its own. What a tool adds to the context comes
+from `SaverValue`'s costs. Underneath, each figure carries an `Evidence`
+grade:
+
+| Grade | Badge | Example |
+|---|---|---|
+| `measured` | measured | sessions it was loaded and never used in |
+| `estimated` | estimate | what code search lookups returned (~4 bytes/token) |
+| `claimed` | its claim | rtk's "kept out of Bash output" |
+| `compared` | with vs without | first prompt, output per reply, reads per session |
+| `derived` | claim × prompts | rtk's claim counted again in each prompt its result stayed in |
+
+Figures fall in three groups — keeps out, costs, and with vs without (a
+comparison is neither) — and figures of different grades are never added or
+netted. Comparisons keep both
+sides to one harness and to the period both have sessions in, use the shown
+session's folder, and fall back to all folders (and say so) when it has fewer
+than five sessions a side.
+
+A claim with `"perRequest": true` (Headroom's proxy) is about one API
+request, which is already one prompt, so it is never carried forward.
+
 ## Descriptor
 
 ```json
@@ -64,6 +92,10 @@ The kind decides what Ullage can honestly say about a tool:
   with `"when": "binary"` runs only when the binary is present.
 - **`claims`** (built-ins only for now) names a ledger reader in
   `SaverLedgers.readers`, for tools that keep their own record of savings.
-  Reading a new ledger format is the one thing that needs Swift.
+  Reading a new ledger format is the one thing that needs Swift. A reader that
+  can name the session and tool call (rtk's `hook_decisions`) sets
+  `sessionId`/`toolUseId` on each entry, which places the claim on that call
+  and lets it be carried forward; otherwise entries are matched by folder and
+  time, or by time alone.
 
 Commands run in Terminal, after Ullage shows them, and only when you ask.

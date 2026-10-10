@@ -282,14 +282,15 @@ final class TokenSaverTests: XCTestCase {
         var rtk = SaverUsage(saver: .rtk)
         rtk.hookRuns = 5
         rtk.rewrites = 4
+        rtk.bashCallsSeen = 9
         rtk.ledger = LedgerMatch(entries: 4, savedTokens: 18_400, beforeTokens: 23_000, afterTokens: 4_600, groups: [])
         let report = SaverSessionReport(sessionId: "s1", cwd: "/repo", bashCalls: 9, usages: [rtk], doubleHookedCalls: 2)
         let panel = SaverPanel.build(report: report, states: [.rtk: .on, .tokenade: .on])
         XCTAssertEqual(panel.rows.first?.metric, "≈18k")
         XCTAssertEqual(panel.rows.first?.line, "4 of 9 Bash calls rewritten · ≈80% smaller")
         XCTAssertNil(panel.rows.first?.note, "the source is said once, in the legend")
-        XCTAssertEqual(panel.rows.first?.metricCaption, "saved")
-        XCTAssertEqual(panel.legend, ["≈ saved is the tool's own count, which Ullage can't check (rtk counts bytes ÷ 4)."])
+        XCTAssertEqual(panel.rows.first?.metricCaption, "claimed")
+        XCTAssertEqual(panel.legend, ["≈ is the tool's own estimate."])
         XCTAssertTrue(panel.warning?.contains("2 Bash calls") == true)
     }
 
@@ -457,6 +458,7 @@ final class TokenSaverTests: XCTestCase {
             var rtk = SaverUsage(saver: .rtk)
             rtk.hookRuns = runs
             rtk.rewrites = rewrites
+            rtk.bashCallsSeen = runs > 0 ? 10 : 0
             if saved > 0 {
                 rtk.ledger = LedgerMatch(entries: 1, savedTokens: saved, beforeTokens: saved * 2, afterTokens: saved,
                                          groups: [.init(command: command, entries: 1, beforeTokens: saved * 2, afterTokens: saved, savedTokens: saved)])
@@ -473,7 +475,7 @@ final class TokenSaverTests: XCTestCase {
         XCTAssertEqual(rtk.sessionsUsed, 2)
         XCTAssertEqual(rtk.hookRuns, 4)
         XCTAssertEqual(rtk.rewrites, 3)
-        XCTAssertEqual(rtk.bashCalls, 30)
+        XCTAssertEqual(rtk.bashCalls, 20, "session c never ran its hook")
         XCTAssertEqual(rtk.ledger?.savedTokens, 150)
         XCTAssertEqual(rtk.ledger?.groups.map(\.entries), [2], "same command adds up")
         XCTAssertEqual(rtk.ledger?.beforeTokens, 300)

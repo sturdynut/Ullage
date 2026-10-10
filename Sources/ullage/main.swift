@@ -470,12 +470,15 @@ func printRebuildRange(_ store: Store, days: Int) throws {
 }
 
 func printSaverRange(_ store: Store, days: Int) throws {
-    let range: SaverRange = days <= 7 ? .week : .month
-    let ledger = SaverLedgers.load(since: Date().addingTimeInterval(-Double(days + 1) * 86_400))
+    let range = SaverRange.covering(days: days)
+    let ledger = store.ledger(since: Date().addingTimeInterval(-Double(days + 1) * 86_400))
     let anchor = try store.latestCall()?.sessionId
+    let details = try store.saverDetails(range: range, sessionId: anchor, ledger: ledger)
+    printSavings(try store.savingsSummary(details, range: range))
+    print("")
     print("TOKEN SAVERS, last \(range.days ?? days) days (counts from transcripts; ≈ is the tool's own claim)")
-    for saver in TokenSaver.allCases {
-        let detail = try store.saverDetail(saver, range: range, sessionId: anchor, ledger: ledger)
+    for detail in details {
+        let saver = detail.saver
         var facts = ["ran in \(detail.sessionsUsed) of \(detail.sessions) sessions"]
         if detail.hookRuns > 0 { facts.append("hook ran \(detail.hookRuns)×") }
         if detail.rewrites > 0 { facts.append("rewrote \(detail.rewrites) of \(detail.bashCalls) Bash calls") }
@@ -483,9 +486,46 @@ func printSaverRange(_ store: Store, days: Int) throws {
         if detail.mcpCalls > 0 { facts.append("\(detail.mcpCalls) MCP calls") }
         if detail.sessionsIdle > 0 { facts.append("loaded but unused in \(detail.sessionsIdle)") }
         print("  " + pad(saver.displayName, 16) + facts.joined(separator: " · "))
-        if let ledger = detail.ledger {
-            print("  " + pad("", 10) + "≈\(thousands(ledger.savedTokens)) saved by its own count over \(ledger.entries) commands")
+        printCards(detail)
+    }
+}
+
+/// The total, each tool's share and the sessions that saved most.
+func printSavings(_ summary: SavingsSummary) {
+    guard !summary.isEmpty else { print("SAVED  nothing claimed in this range"); return }
+    let period = summary.range.days.map { $0 == 1 ? "last 24 hours" : "last \($0) days" } ?? "this session"
+    print("SAVED, \(period): ≈\(thousands(summary.saved)) tokens  (≈\(thousands(summary.before)) would have been sent, ≈\(thousands(summary.after)) was"
+          + (summary.cut.map { ", −\($0)%" } ?? "") + ")")
+    for tool in summary.tools {
+        print("  " + pad(tool.saver.displayName, 16) + padLeft("≈" + thousands(tool.counted), 16)
+              + (summary.share(tool).map { padLeft("\($0)%", 6) } ?? ""))
+    }
+    if summary.overlap > 0 { print("  ≈\(thousands(summary.overlap)) claimed by two tools for the same calls, counted once") }
+    if !summary.compared.isEmpty {
+        print("  not in the total (compared, not claimed): " + summary.compared.map(\.displayName).joined(separator: ", "))
+    }
+    if !summary.sessions.isEmpty {
+        print("  top sessions:")
+        for session in summary.sessions.prefix(5) {
+            print("    " + pad(String(session.sessionId.prefix(8)) + "  " + (session.project ?? ""), 34)
+                  + padLeft("≈" + thousands(session.total), 16) + padLeft("\(session.turns) turns", 12))
         }
+    }
+}
+
+/// Each card's before and after, per day or without vs with, then costs.
+func printCards(_ detail: SaverDetail) {
+    for chart in SaverChart.charts(for: detail) {
+        print("    " + pad(chart.title, 34) + chart.totalText + "  " + chart.changeText)
+        guard chart.kind == .daily else { continue }
+        for bar in chart.bars {
+            let mark = chart.approximate ? "≈" : ""
+            print("      " + pad(bar.label, 10) + padLeft(mark + thousands(bar.before), 14) + " → "
+                  + pad(mark + thousands(bar.after), 14) + SaverChart.changeText(bar.change))
+        }
+    }
+    for cost in detail.value.costs {
+        print("    ! " + cost.label + ": " + cost.value + (cost.detail.isEmpty ? "" : " (" + cost.detail + ")"))
     }
 }
 
@@ -519,7 +559,8 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
         sessionId = try store.latestCall()?.sessionId
     }
     guard let sessionId else { return }
-    let report = try store.saverReport(sessionId: sessionId, ledger: SaverLedgers.load())
+    let ledger = store.ledger()
+    let report = try store.saverReport(sessionId: sessionId, ledger: ledger)
     print("")
     print("SESSION \(sessionId.prefix(8))  \(report.cwd ?? "")  ·  \(report.bashCalls) Bash calls")
     if report.visible.isEmpty {
@@ -544,6 +585,15 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
             for group in ledger.groups.prefix(5) {
                 print("  " + pad("", 12) + pad(group.command, 18) + padLeft("\(group.entries)×", 5) + padLeft("≈" + thousands(group.savedTokens), 10))
             }
+        }
+    }
+    let details = try store.saverDetails(report.visible.map(\.saver), range: .session, sessionId: sessionId, ledger: ledger)
+    if details.contains(where: { !$0.value.isEmpty }) {
+        print("")
+        print("BEFORE AND AFTER, this session (≈ is the tool's own figure; without vs with compares sessions)")
+        for detail in details where !detail.value.isEmpty {
+            print("  " + detail.saver.displayName)
+            printCards(detail)
         }
     }
     if report.doubleHookedCalls > 0 {

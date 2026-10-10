@@ -81,7 +81,7 @@ final class ContextToolTests: XCTestCase {
         let row = try? XCTUnwrap(panel.rows.first { $0.saver == mem })
         XCTAssertEqual(row?.metric, "≈2.0k")
         XCTAssertEqual(row?.metricCaption, "injected")
-        XCTAssertTrue(panel.legend.contains { $0.contains("estimated from its length") })
+        XCTAssertEqual(panel.legend, [SaverPanel.claimsLegendLead + "."], "one line says what ≈ means")
     }
 
     // MARK: - Code search
