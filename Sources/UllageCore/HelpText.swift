@@ -182,10 +182,35 @@ public enum HelpText {
         ]
     )
 
+    public static let dashboard = HelpTopic(
+        title: "Usage dashboard",
+        intro: "Averages and rates over a range of days, for one harness and one kind of token at a time.",
+        entries: [
+            HelpEntry("What's active time?",
+                      answer: "The time between a session's calls, counting only pauses no longer than the idle gap. A session you come back to two days later isn't credited with the two days.",
+                      why: "Every per-hour figure divides by it. Elapsed time would make a resumed session look idle.",
+                      tip: "Pick a longer idle gap if you often read for a while between turns."),
+            HelpEntry("Why is the typical session a median?",
+                      answer: "Half your sessions used less than it and half used more. The average is shown beside it.",
+                      why: "A few very long sessions pull the average far above what most sessions use."),
+            HelpEntry("What's peak window fill?",
+                      answer: "For each session, the fullest its context window got on the main thread. The tile shows the median across sessions, and how many reached 85%.",
+                      why: "It tells you how close you usually run to compaction."),
+            HelpEntry("Why can't I add the counters together?",
+                      answer: "Output, cache write, cache read and input mean different things. Almost all of a long session is cache reads, so a total would really be a cache-read number.",
+                      tip: "Output is the model's own work and the best default. Switch to cache write to see what rebuilt the cache."),
+            HelpEntry("Why are some sessions missing from the rankings?",
+                      answer: "Sessions with under 10 active minutes are left out of rankings and per-hour rates. Their rate is mostly the first turn."),
+            HelpEntry("Why does the change from last period look so big?",
+                      answer: "The previous period can only include what Ullage has stored. Claude Code deletes transcripts after 30 days by default, so the earlier period may be mostly missing.",
+                      tip: "Set cleanupPeriodDays in Claude Code's settings so history is kept, then run ullage backfill."),
+        ]
+    )
+
     /// The help sheet, in the order the page shows them: the chart first,
     /// then each section top to bottom. Each is a collapsible section of the
     /// one sheet the Explain button opens.
-    public static let sections: [HelpTopic] = [chart, composition, session, agents, savers, limits]
+    public static let sections: [HelpTopic] = [chart, composition, session, agents, savers, limits, dashboard]
 
     /// For the page, which reads the same text.
     public static var json: String {

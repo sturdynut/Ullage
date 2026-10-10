@@ -20,6 +20,8 @@ USAGE
   ullage latest              The single row that drives the menu bar
   ullage env <session>       The configuration snapshot for a session
   ullage history [--days N]  Activity per day and project (default: 30 days)
+  ullage dashboard [--days N] [--vendor V] [--counter C] [--gap MIN]
+                             Averages, rates and ranked sessions in one counter
   ullage composition <sess>  What a session's context window is made of
   ullage serve [--port N]    Serve the gauge to a browser on 127.0.0.1
   ullage push [--test]       Devices subscribed to alerts; --test buzzes them
@@ -42,7 +44,10 @@ USAGE
 
 OPTIONS
   --db <path>       Database file (default: $ULLAGE_DB or the app support path)
-  --days <n>        Window for `history`, and for `otlp` spans
+  --days <n>        Window for `history`, `dashboard`, and `otlp` spans
+  --vendor <v>      `dashboard`: claude-code (default), codex or cursor
+  --counter <c>     `dashboard`: output (default), cache_write, cache_read or input
+  --gap <minutes>   `dashboard`: longest pause still counted as active (default: 30)
   --port <n>        Port for `serve` (default: 7878)
   --no-watch        `serve` reads the database without tailing transcripts
   --test            Send a test notification to every subscribed device
@@ -84,6 +89,9 @@ struct Options {
     var csv = false
     /// `--days` was given explicitly, so it wins over the export cursor.
     var daysWasSet = false
+    var vendor = Vendor.claudeCode
+    var counter = UsageCounter.output
+    var idleGapMinutes = 30
 }
 
 func parseArguments(_ arguments: [String]) -> Options {
@@ -123,6 +131,15 @@ func parseArguments(_ arguments: [String]) -> Options {
             options.everything = true
         case "--fetch":
             options.fetch = true
+        case "--vendor":
+            if let value = rest.first { options.vendor = value; rest.removeFirst() }
+        case "--counter":
+            if let value = rest.first, let counter = UsageCounter(rawValue: value.replacingOccurrences(of: "-", with: "_")) {
+                options.counter = counter
+                rest.removeFirst()
+            }
+        case "--gap":
+            if let value = rest.first, let minutes = Int(value), minutes > 0 { options.idleGapMinutes = minutes; rest.removeFirst() }
         case "--yes", "-y":
             options.yes = true
         case "-h", "--help", "help":
@@ -278,6 +295,56 @@ func printHistory(_ store: Store, days: Int) throws {
 
     Days are local time. The four token counters stay separate on purpose:
     CACHE R dwarfs the others and a single total would just be a cache-read number.
+    """)
+}
+
+func printDashboard(_ store: Store, options: UsageDashboard.Options) throws {
+    let d = try store.usageDashboard(options)
+    let gap = UsageDashboard.idleGapLabel(options.idleGap)
+    print("\(UsageDashboard.vendorLabel(options.vendor)) · \(options.counter.noun) · \(UsageDashboard.rangeLabel(options.days).lowercased()) · \(gap) idle gap")
+    guard !d.sessions.isEmpty else {
+        print("No sessions in this range.")
+        return
+    }
+    func tile(_ t: DashboardTile) -> String {
+        pad(t.title, 30) + padLeft(t.value, 10) + "   " + t.detail
+            + (t.change.map { "   \($0.text) \($0.caption)" } ?? "")
+    }
+    print("")
+    d.keyTiles.forEach { print(tile($0)) }
+    print("")
+    d.moreTiles.forEach { print(tile($0)) }
+
+    if d.summary.measured {
+        let counter = options.counter
+        let (highest, lowest) = d.extremes(by: .total, limit: 5)
+        func row(_ s: UsageSession) -> String {
+            pad(String(s.id.prefix(8)), 10) + pad(s.project ?? "—", 22)
+                + padLeft(UsageDashboard.tokens(Double(s.value(counter))), 9)
+                + padLeft(UsageDashboard.tokens(d.rankValue(s, by: .perActiveHour)), 9)
+                + padLeft(UsageDashboard.hours(s.activeHours(idleGap: options.idleGap)), 9)
+                + padLeft(String(s.turns), 7) + padLeft(UsageDashboard.percent(s.peakOccupancy), 6)
+        }
+        let header = pad("SESSION", 10) + pad("PROJECT", 22) + padLeft(counter.noun.uppercased(), 9)
+            + padLeft("PER H", 9) + padLeft("ACTIVE", 9) + padLeft("TURNS", 7) + padLeft("PEAK", 6)
+        print("\nHIGHEST \(counter.noun.uppercased())\n" + header)
+        highest.forEach { print(row($0)) }
+        print("\nLOWEST \(counter.noun.uppercased())\n" + header)
+        lowest.forEach { print(row($0)) }
+
+        print("\n" + pad("PROJECT", 24) + padLeft("SESSIONS", 9) + padLeft(counter.noun.uppercased(), 10)
+            + padLeft("PER SESS", 10) + padLeft("PER H", 9) + padLeft("AVG PEAK", 9))
+        for g in d.projects {
+            print(pad(g.name, 24) + padLeft(String(g.sessions), 9) + padLeft(UsageDashboard.tokens(Double(g.total)), 10)
+                + padLeft(UsageDashboard.tokens(g.perSession), 10) + padLeft(UsageDashboard.tokens(g.perActiveHour), 9)
+                + padLeft(UsageDashboard.percent(g.meanPeakOccupancy), 9))
+        }
+    }
+    print("""
+
+    Active time counts gaps between calls of \(gap) or less. Rates and rankings
+    leave out sessions with under 10 active minutes. Peak is the main thread's
+    fullest turn. Each figure is one counter; none are summed.
     """)
 }
 
@@ -780,6 +847,12 @@ do {
 
     case "history":
         try printHistory(Store(path: options.databasePath), days: options.days)
+
+    case "dashboard":
+        try printDashboard(Store(path: options.databasePath), options: UsageDashboard.Options(
+            vendor: options.vendor, counter: options.counter, days: options.days > 0 ? options.days : nil,
+            idleGap: Double(options.idleGapMinutes) * 60
+        ))
 
     case "composition":
         guard let needle = options.paths.first else {

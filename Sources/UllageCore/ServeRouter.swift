@@ -44,6 +44,14 @@ public struct ServeRouter {
                 return .text(500, "state unavailable: \(error)")
             }
 
+        case ("GET", "/dashboard.json"):
+            do {
+                let dashboard = try store.usageDashboard(ServeDashboard.options(from: request.query), now: now())
+                return .json(try ServeDashboard(dashboard).json())
+            } catch {
+                return .text(500, "dashboard unavailable: \(error)")
+            }
+
         case ("GET", "/manifest.webmanifest"):
             return HTTPServer.Response(
                 contentType: "application/manifest+json; charset=utf-8",

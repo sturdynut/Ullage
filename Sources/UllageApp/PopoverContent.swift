@@ -440,6 +440,10 @@ struct PopoverContent: View {
             Button("Open Ullage") { open(.overview) }
                 .buttonStyle(.borderedProminent)
                 .help("Everything here at full size: composition, session, agents, context tools, history and limits")
+            Button("Dashboard…") {
+                openWindow(id: DashboardWindow.id)
+                NSApp.activate(ignoringOtherApps: true)
+            }
             Spacer()
             // One way in to every explanation, opposite the main action.
             HelpButton()

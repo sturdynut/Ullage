@@ -286,6 +286,19 @@ public enum WebPage {
   #help .ans p { margin: 0 0 6px; color: var(--ink); }
   #help .ans .why { color: var(--dim); }
   footer { margin-top: 26px; color: var(--quiet); font-size: 12px; text-align: center; }
+  .dashlink { display: flex; width: 100%; align-items: center; gap: 8px; margin-top: 14px; padding: 12px;
+    text-align: left; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; }
+  .dashlink span { color: var(--dim); font-size: 13px; }
+  #dash-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0 14px; }
+  #dash-controls label { display: grid; gap: 3px; color: var(--dim); font-size: 12px; }
+  #dash-controls select { min-width: 0; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 7px; padding: 7px; }
+  .dashtiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .dashtile { min-width: 0; padding: 10px; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }
+  .dashtile b, .dashtile small { display: block; } .dashtile b { font-size: 20px; } .dashtile small { color: var(--dim); font-size: 12px; }
+  #dash-tabs { display: flex; overflow-x: auto; gap: 4px; margin-top: 14px; border-bottom: 1px solid var(--rule); }
+  #dash-tabs button { flex: none; font: inherit; color: var(--dim); background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px; }
+  #dash-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  #dash-list { margin: 10px 0 0; } #dash-list .row { cursor: default; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -326,6 +339,7 @@ public enum WebPage {
     <button id="alerts-button" hidden></button>
   </div>
 
+  <button class="dashlink" id="open-dash" aria-haspopup="dialog"><b>Usage dashboard</b><span>Rates, sessions and context health</span></button>
 
   <footer id="foot"></footer>
 </main>
@@ -336,6 +350,11 @@ public enum WebPage {
     <h3 id="page-title"></h3>
   </header>
   <div class="sheetbody" id="page-body"></div>
+</section>
+
+<section id="dash" class="sheet" role="dialog" aria-modal="true" aria-labelledby="dash-title" aria-hidden="true">
+  <header class="sheethead"><h3 id="dash-title">Usage dashboard</h3><button class="done" id="dash-close">Done</button></header>
+  <div class="sheetbody"><div><div id="dash-controls"></div><div id="dash-body"><p>Loading…</p></div></div></div>
 </section>
 
 <section id="help" class="sheet" role="dialog" aria-modal="true" aria-labelledby="help-title" aria-hidden="true">
@@ -827,7 +846,7 @@ public enum WebPage {
   el('help-close').addEventListener('click', hideHelp);
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    if (el('help').classList.contains('open')) hideHelp(); else if (openPageId) hidePage();
+    if (el('help').classList.contains('open')) hideHelp(); else if (dashOpen()) hideDash(); else if (openPageId) hidePage();
   });
 
   el('sections').addEventListener('click', function (e) {
@@ -864,6 +883,50 @@ public enum WebPage {
     if (b.dataset.plan) { confirmPlan(b.dataset.plan, b.dataset.kind); return; }
     if (b.dataset.saver) { act(b.dataset.saver, b.dataset.action); }
   });
+
+  // ---- Usage dashboard --------------------------------------------------
+  // The Mac window and this sheet receive the same already-formatted model
+  // from Core. The page only chooses the view and renders its rows.
+  var DASH = { vendor: 'claude-code', counter: 'output', days: '30', gap: '30', tab: 'weekly' }, dashData = null;
+  var DASH_TABS = [['weekly', 'Weekly'], ['sessions', 'Sessions'], ['context', 'Context'], ['projects', 'Projects'], ['tools', 'Tools']];
+  try { var rememberedDash = JSON.parse(localStorage.getItem('ullage.dashboard') || '{}'); Object.keys(DASH).forEach(function (k) { if (rememberedDash[k]) DASH[k] = rememberedDash[k]; }); } catch (e) {}
+  function saveDash() { try { localStorage.setItem('ullage.dashboard', JSON.stringify(DASH)); } catch (e) {} }
+  function dashSelect(name, label, choices, value, disabled) {
+    return '<label>' + esc(label) + '<select data-dash="' + name + '"' + (disabled ? ' disabled' : '') + '>' + choices.map(function (c) {
+      return '<option value="' + esc(c.id) + '"' + (c.id === value ? ' selected' : '') + '>' + esc(c.label) + '</option>';
+    }).join('') + '</select></label>';
+  }
+  function dashTile(t) { return '<div class="dashtile"><small>' + esc(t.title) + '</small><b>' + esc(t.value) + '</b><small>' + esc(t.detail) + '</small>' + (t.change ? '<small>' + esc(t.change + ' ' + t.caption) + '</small>' : '') + '</div>'; }
+  function dashRow(r) { return '<div class="row"><span class="l">' + esc(r.name || r.label) + '</span><span class="v">' + esc(r.value || r.total || '') + '</span><span class="d">' + esc(r.line || r.active || '') + '</span></div>'; }
+  function dashPane(d) {
+    if (DASH.tab === 'weekly') return d.weeks.length ? d.weeks.map(function (w) { return dashRow({ name: w.label, value: String(w.total), active: w.sessions + ' sessions · ' + w.active }); }).join('') : '<p>No sessions in this range.</p>';
+    if (DASH.tab === 'sessions') {
+      if (!d.measured) return '<p>This harness reports no tokens to rank by.</p>';
+      var ranking = d.rankings.total;
+      return '<h4>Highest total</h4>' + ranking.highest.map(dashRow).join('') + '<h4>Lowest total</h4>' + ranking.lowest.map(dashRow).join('');
+    }
+    if (DASH.tab === 'context') return d.health ? d.health.facts.map(dashRow).join('') + (d.health.hotText ? '<p>' + esc(d.health.hotText) + '</p>' : '') : '<p>No measured windows in this range.</p>';
+    if (DASH.tab === 'projects') return '<h4>Projects</h4>' + d.projects.map(dashRow).join('') + '<h4>Models</h4>' + d.models.map(dashRow).join('');
+    return d.tools.length ? d.tools.map(dashRow).join('') : '<p>No tool results in this range.</p>';
+  }
+  function renderDash() {
+    if (!dashData) return;
+    var d = dashData, o = d.options;
+    el('dash-controls').innerHTML = dashSelect('vendor', 'Harness', o.vendors, o.vendor) + dashSelect('days', 'Range', o.ranges, o.days) + dashSelect('counter', 'Counter', o.counters, o.counter, !d.measured) + dashSelect('gap', 'Idle gap', o.gaps, o.gap);
+    el('dash-body').innerHTML = '<div class="dashtiles">' + d.keyTiles.map(dashTile).join('') + '</div>' + (d.moreTiles.length ? '<details><summary>More metrics</summary><div class="dashtiles">' + d.moreTiles.map(dashTile).join('') + '</div></details>' : '') + '<div id="dash-tabs" role="tablist">' + DASH_TABS.map(function (t) { return '<button data-tab="' + t[0] + '" role="tab" aria-selected="' + (DASH.tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div><div id="dash-list">' + dashPane(d) + '</div><p>' + esc(d.footnote) + '</p>';
+  }
+  function loadDash() {
+    var q = 'dashboard.json?vendor=' + encodeURIComponent(DASH.vendor) + '&counter=' + encodeURIComponent(DASH.counter) + '&days=' + encodeURIComponent(DASH.days) + '&gap=' + encodeURIComponent(DASH.gap);
+    fetch(q, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(); return r.json(); }).then(function (d) { dashData = d; renderDash(); }).catch(function () { if (!dashData) el('dash-body').innerHTML = '<p>Dashboard unavailable. Is the Mac awake?</p>'; });
+  }
+  function dashOpen() { return el('dash').classList.contains('open'); }
+  function showDash() { el('dash').classList.add('open'); el('dash').setAttribute('aria-hidden', 'false'); document.body.classList.add('sheet-open'); loadDash(); el('dash-close').focus(); }
+  function hideDash() { el('dash').classList.remove('open'); el('dash').setAttribute('aria-hidden', 'true'); if (!openPageId && !el('help').classList.contains('open')) document.body.classList.remove('sheet-open'); el('open-dash').focus(); }
+  el('open-dash').addEventListener('click', showDash);
+  el('dash-close').addEventListener('click', hideDash);
+  el('dash-controls').addEventListener('change', function (e) { if (e.target.dataset.dash) { DASH[e.target.dataset.dash] = e.target.value; saveDash(); loadDash(); } });
+  el('dash-body').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) { DASH.tab = b.dataset.tab; saveDash(); renderDash(); } });
+  if (location.hash === '#dashboard') showDash();
 
   // ---- Polling -----------------------------------------------------------
   function setStale(message) {

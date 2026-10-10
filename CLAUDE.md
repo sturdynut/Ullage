@@ -70,7 +70,7 @@ they need it offline; subscription-metered IDEs keep usage on their servers.
 
 ```bash
 swift build
-swift test                 # 398 tests on macOS; on Linux all but the CryptoKit and AppKit ones
+swift test                 # 427 tests on macOS; on Linux all but the CryptoKit and AppKit ones
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
@@ -209,6 +209,10 @@ plausible and are wrong.
   would ask, collapsed until opened, each with what it is and why it matters;
   a question about a chart mark draws that mark exactly as the chart does. A
   new section or mark gets its question there, in plain words.
+- **The usage dashboard uses active time.** `UsageDashboard` counts only gaps
+  between a session's calls no longer than the idle gap. Its Mac window, CLI
+  and phone `dashboard.json` draw the same Core model; counters are selected,
+  never summed.
 - **Fixed order for anything colour-coded.** Composition segments and history
   projects keep a stable order so a colour follows an entity, never its rank.
   The composition treemap is *ordered*, not squarified, for the same reason —

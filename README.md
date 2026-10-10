@@ -112,6 +112,9 @@ claude-mem.
     30, 90 or 365 days, switchable between turns, output tokens and cache
     reads; every session in range with its path and agent count; and the
     selected session's agent tree, chart and full Context breakdown.
+  - **Usage dashboard**: active-hour rates, median sessions, peak fill and
+    period changes for one harness and counter at a time, with views for
+    weekly activity, ranked sessions, context health, projects and tools.
   - **Plan limits**: every limit with its bar, when it resets, and what Ullage
     itself saw in that window, with the *Check Claude plan limits* switch. See
     [Plan limits](#plan-limits).
@@ -238,6 +241,7 @@ ullage sessions              # per-session totals, grouped by project
 ullage agents <session>      # the subagent tree, each agent's own window
 ullage latest                # the single row driving the menu bar
 ullage history [--days N]    # activity per day and project (default 30)
+ullage dashboard [--days N]  # rates, typical sessions and context health
 ullage composition <session> # what a session's context is made of
 ullage serve [--port N]      # serve the gauge to a browser on 127.0.0.1
 ullage push [--test]         # devices subscribed to alerts; --test buzzes them
@@ -468,11 +472,14 @@ Session information, Agents, Context tools, Plan limits, and Sessions) that
 slides its page in. A page closes with "‹ Overview" or the phone's back
 gesture, and has its own address (`#page=savers`) you can bookmark. Sessions
 lists every recent session with its path; pick one to look at it instead of
-the latest. Below the rows, **Open in Claude** (for a session on Remote
+following the latest. Below the rows, **Open in Claude** (for a session on Remote
 Control) takes you to it on claude.ai or the Claude app, and **Open in Codex**
 opens a Codex session's thread in the Codex app — the places to `/clear`,
 `/compact` or run a skill in it. The Codex link is the app's own
 `codex://threads/<id>`, so it works wherever the Codex app is installed.
+
+The Overview also opens the Usage dashboard; it uses the same Core model as the
+Mac window and `ullage dashboard`, and `#dashboard` opens it directly.
 
 The context tools section works here too: switches with Undo, and install or
 uninstall, after the page shows the tool's exact commands. Installs run in a

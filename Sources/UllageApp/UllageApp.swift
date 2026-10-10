@@ -31,6 +31,11 @@ struct UllageApp: App {
             MainWindow(model: model)
         }
         .defaultSize(width: 1180, height: 760)
+
+        Window("Ullage Dashboard", id: DashboardWindow.id) {
+            DashboardWindow()
+        }
+        .defaultSize(width: 1000, height: 760)
     }
 }
 
