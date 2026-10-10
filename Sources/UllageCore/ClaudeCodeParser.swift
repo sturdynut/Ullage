@@ -100,7 +100,7 @@ public enum ParsedLine: Equatable {
 public enum ClaudeCodeParser {
     /// Bump on every parser change. Tells you which rows to distrust after an
     /// upstream format shift.
-    public static let version = 7
+    public static let version = 9
 
     public static func parse(line: Data, context: LineContext) -> ParsedLine? {
         guard !line.isEmpty else { return nil }
@@ -198,6 +198,8 @@ public enum ClaudeCodeParser {
             // Observed from 2.1.2xx (2026-07-26): `effort` is the session's
             // setting, `perTurnEffort` a per-turn override when not null.
             effort: JSONAccess.string(entry, "perTurnEffort") ?? JSONAccess.string(entry, "effort"),
+            cacheTTL: cacheTTL(usage),
+            harnessVersion: JSONAccess.string(entry, "version"),
             contextTokens: contextTokens,
             windowLimit: WindowLimits.limit(for: model),
             serviceTier: JSONAccess.string(usage, "service_tier"),
@@ -221,6 +223,19 @@ public enum ClaudeCodeParser {
             toolCalls: toolCalls,
             claudeVersion: JSONAccess.string(entry, "version")
         )
+    }
+
+    /// Which lifetime this turn's cache write was given, from the split the
+    /// API reports. Claude Code writes the main conversation with a one-hour
+    /// lifetime on a subscription and five minutes otherwise (API key, usage
+    /// credits, a cloud provider, every subagent), so the split is what says
+    /// how long a break the cache survives. Any one-hour write means the
+    /// conversation is held for the hour.
+    static func cacheTTL(_ usage: [String: Any]?) -> String? {
+        guard let split = JSONAccess.dict(usage, "cache_creation") else { return nil }
+        if JSONAccess.intOrZero(split, "ephemeral_1h_input_tokens") > 0 { return "1h" }
+        if JSONAccess.intOrZero(split, "ephemeral_5m_input_tokens") > 0 { return "5m" }
+        return nil
     }
 
     static func parseToolUses(
@@ -357,7 +372,8 @@ public enum ClaudeCodeParser {
             toolUseId: JSONAccess.string(attachment, "toolUseID"),
             exitCode: JSONAccess.int(attachment, "exitCode"),
             rewrittenCommand: rewrittenCommand(stdout: JSONAccess.string(attachment, "stdout")),
-            stderr: stderr
+            stderr: stderr,
+            injectedBytes: injectedBytes(event: hookEvent, stdout: JSONAccess.string(attachment, "stdout"))
         )
         return EventRow(
             id: eventID(kind: .hook, entry: entry, rawLine: rawLine, context: context),
@@ -376,6 +392,21 @@ public enum ClaudeCodeParser {
               let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
         let specific = JSONAccess.dict(root, "hookSpecificOutput")
         return JSONAccess.string(JSONAccess.dict(specific, "updatedInput"), "command")
+    }
+
+    /// What a hook put into the context, as a size: `additionalContext` in
+    /// its JSON answer, or — for SessionStart and UserPromptSubmit, whose
+    /// plain stdout Claude Code adds to the context — that stdout. A JSON
+    /// answer without `additionalContext` (a `systemMessage` shown to the
+    /// user, a rewrite) injects nothing.
+    static func injectedBytes(event: String, stdout: String?) -> Int? {
+        guard let stdout, !stdout.isEmpty else { return nil }
+        if let data = stdout.data(using: .utf8),
+           let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            let context = JSONAccess.string(JSONAccess.dict(root, "hookSpecificOutput"), "additionalContext")
+            return context.map { $0.utf8.count }
+        }
+        return ["SessionStart", "UserPromptSubmit"].contains(event) ? stdout.utf8.count : nil
     }
 
     /// `<command-name>/caveman</command-name> … <command-args>ultra</command-args>`

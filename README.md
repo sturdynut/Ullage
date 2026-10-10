@@ -4,32 +4,24 @@
 
 # Ullage
 
-**See how full your Claude Code context window is, live, from the menu bar.**
+**One place to see, and shrink, the context window of every coding agent you use.**
 
 </div>
 
-Ullage watches your Claude Code and OpenAI Codex CLI session transcripts, keeps
-every API call in a local SQLite database, and shows the context window's fill
-level as a percentage in the macOS menu bar. It also lists Cursor agent activity,
-though Cursor records no token counts locally so it has no fill percentage. Click it to break the current session down turn by turn
-and see what is actually taking up the window. A separate history window charts
-your activity across days and projects.
+Claude Code, Codex and the rest each show context differently, or not at all.
+Ullage reads them all the same way and shows, in your Mac's menu bar, how full
+each session's context window is and what's filling it. It also lets you
+install, switch on and measure popular context-saving tools like rtk, Serena and
+claude-mem.
 
-Everything stays on your machine. Nothing is uploaded, and nothing is sent
-anywhere unless you ask for it. Three things can: `ullage otlp` exports for
-aggregating across machines, runs only when you run it, and `--dry-run` prints
-exactly what would leave first; once you subscribe a phone to alerts, a
-notification goes to that phone — encrypted to it, via its push service — when
-a window fills up; and if you switch on Claude plan limits, Ullage asks
-Anthropic for them the way Claude Code's `/usage` does, sending Claude Code's
-own sign-in to api.anthropic.com and nothing else. None of these happens until
-you set it up.
+**Limitations**
 
-Ullage only reads Claude Code's config, with one exception: when you flip a
-[token saver](#token-savers) switch, it edits Claude Code's user settings to
-switch that one tool on or off. It backs the file up first and never throws
-anything away. Installing or uninstalling a token saver runs that tool's own
-commands, in Terminal, after showing them to you.
+- **Local sessions only.** Ullage reads the files agents write on your Mac, so
+  cloud and web sessions (Claude Code on the web, Codex cloud, Copilot's coding
+  agent) aren't included.
+- **Some agents don't write token counts Ullage can read.** Cursor, Copilot CLI,
+  Factory Droid and Zed show activity but no gauge.
+- **macOS** for the menu bar app; the `ullage` command line also runs on Linux.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
 > room still left in the context window.
@@ -38,7 +30,13 @@ commands, in Terminal, after showing them to you.
 
 <div align="center">
 
-<img src="docs/screenshots/popover.png" alt="The Ullage popover: the Ullage session with its path and claude-opus-5-5 · medium, 227k left in a 1M window over a bar at 77% used with Open in Claude beside it; the context-per-turn chart with grey and orange cache-rebuild triangles; then Context composition (Baseline 52k, Tools ≈122k, Output 467k, Other ≈129k), Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits, each collapsed to one line; History and Explain at the bottom" width="360">
+<img src="docs/screenshots/popover.png" alt="The Ullage popover: a session with 360k left of a 1M window, 63% used, Open in Claude, the context-per-turn chart with a compaction and cache-rebuild triangles, then one line each for Context, Session information, Agents, Context tools and Plan limits, with Open Ullage and Explain at the bottom" width="360">
+
+</div>
+
+<div align="center">
+
+<img src="docs/screenshots/main-window.png" alt="The main window: a sidebar of Overview, Context, Session, Agents, Context tools, History and Plan limits; the Overview shows the session headline and bar, a large context-per-turn chart, and cards for each section" width="760">
 
 </div>
 
@@ -55,7 +53,9 @@ commands, in Terminal, after showing them to you.
     model and its effort (`claude-opus-5-5 · high`), and **Open in Claude** or
     **Open in Codex** to continue it where you can type into it;
   - **the room left in the window**, in tokens, over a bar marked at 85% and at
-    the session's own peak, with the exact `used / window` beneath it;
+    the session's own peak, with the exact `used / window` beneath it. For an
+    agent that doesn't record token counts (Cursor, Zed), a line says so in
+    place of the gauge;
   - directly under that, **context tokens per turn**, where the band above the
     line is the room left, captioned with what each turn now re-sends against
     the first (`591k left · each turn re-sends 409k, 38× the first`), with the
@@ -65,76 +65,65 @@ commands, in Terminal, after showing them to you.
     simply expired (hover for the exact turn, tokens, and cause; see
     [Cache rebuilds](#cache-rebuilds)).
 
-  Below it, every section collapses to **one row of its key figures** and
-  expands to the full view (click the section's rule; each remembers how you
-  left it). **Explain**, at the bottom right, opens one sheet with a section for
-  the chart and for each part of the popover: the questions you might have, each
-  answered with what it is, why it matters and what to do. The phone page shows
-  the same sheet:
-  - **Context composition**: what the used part of the window is made of,
-    always in the same order and colours. Collapsed, the four totals in one
-    row (`● Baseline 48k · ● Tools ≈41k · ● Output 85k · ● Other ≈55k`), with `≈` on
-    every estimate. Expanded, a treemap (tool results split by the tool that
-    produced them, the baseline into CLAUDE.md and the rest), the four totals,
-    the baseline's parts (CLAUDE.md, MCP servers, skills), every tool in the
-    window, and the targets **called most** (`Bash git status ×12`), and what is **along for
-    the ride**: tool results from 50+ turns ago that are still re-sent every turn,
-    and files read more than once, with the tokens in their earlier copies (all
-    `≈`; 50 is a rule of thumb, not a measurement). The ⤢
-    button, or a click on the row or treemap, opens the
-    [composition explorer](#composition-explorer).
-  - **Session information**: collapsed, the last turn's change, turn count and
-    last-active time (`last turn +951 · turns 112 · idle 5:27 PM`), led by
-    `re-cached 2×` when something the session did made it cache its context
-    again. Expanded, a table that adds the session id and every cache rebuild
-    by cause.
-  - **Agents**: collapsed, how many there are, how many haven't finished, and
-    whose window is fullest. Expanded, the tree of **subagents the session
-    spawned**, each named by the description the agent above it wrote and each
-    with **its own window and occupancy**. Click one and the chart, the
-    composition and the session information switch to its context, and say
-    so. The tree stays open while an agent is selected.
-  - **Token savers**: collapsed, problems first, then how many are on and off
+  Below it, each section is **one row of its key figures**; clicking a row
+  opens that section's page in the main window. **Open Ullage** opens the
+  window on its Overview, and **Explain**, at the bottom right, opens one sheet
+  with a section for the chart and for each part of the popover: the questions
+  you might have, each answered with what it is, why it matters and what to do.
+  - **Context**: the four totals, always in the same order and
+    colours (`● Baseline 48k · ● Tools ≈41k · ● Output 85k · ● Other ≈55k`),
+    `≈` on every estimate, with the section's rule drawn as their proportions.
+  - **Session information**: the last turn's change and the turn count
+    (`last turn +951 · turns 112`), led by `re-cached 2×` when something the
+    session did made it cache its context again.
+  - **Agents**: how many there are, how many haven't finished, and whose window
+    is fullest.
+  - **Context tools**: problems first, then how many are on and off
     (`rtk not running · Headroom idle · 1 on`).
-    Expanded, each tool's on/off switch, where its figure comes from, and an
-    Install… option for the ones you don't have; ⤢ opens the Token savers
-    window. See [Token savers](#token-savers).
-  - **Plan limits**: collapsed, each harness's tightest limit in one row
-    (`Claude 5h 88% left · Codex week 100% left`). Expanded, every limit with its
-    bar, when it resets, and what Ullage itself saw in that window. See
-    [Plan limits](#plan-limits).
+  - **Plan limits**: each harness's tightest limit (`Claude 5h 88% left · Codex
+    week 100% left`).
 
   It follows the most recently active session and holds still on it while the
   popover is open. The chevron at the top switches session — grouped by
   project, since a session id is not a name, with each entry's path — and
   stays accented while one is pinned.
-- **Composition explorer** — the composition treemap at window size, one level
-  at a time. See [below](#composition-explorer).
-- **History window** — the History button opens activity per day stacked by
-  project, model or effort over 7, 30, 90, or 365 days, switchable between turns, output tokens,
-  and cache reads; a table of every session in range with its path and agent
-  count; and
-  the selected session's agent tree, chart and full composition.
-- **Dashboard window** — the Dashboard button opens averages and rates over 7,
-  30 or 90 days or all time, for one harness and one counter at a time (output,
-  cache write, cache read or input; never a sum). Four key figures up front:
-  that counter per *active* hour, the typical (median) session, the median peak
-  window fill with how many sessions reached 85%, and active time. "Show all
-  metrics" adds sessions, the average and total, cache hit ratio, compactions
-  and subagent share. Each key figure is compared with the period before it.
-  Tabs below: weekly totals and rates, the highest and lowest sessions (by total
-  or per active hour) with a size distribution, context health, projects and
-  models, and tools by the estimated size of what they returned. Active time
-  counts the gaps between calls no longer than the idle gap (15, 30 or 60
-  minutes), so a session resumed days later is not credited with the days
-  between; rates leave out sessions with under 10 active minutes. Cursor gets
-  sessions and active time only.
+- **Main window** — everything the popover summarizes, at full size. A
+  sidebar of pages, the session picker and Open in Claude in the toolbar, and
+  Explain at the foot of the sidebar:
+  - **Overview**: the headline, a large chart with a key to its triangles, and
+    a card per section that opens its page, plus **Along for the ride**.
+  - **Context**: the [explorer](#context-explorer) treemap,
+    then the four totals, the baseline's parts (CLAUDE.md, MCP servers,
+    skills), every tool in the window, the targets **called most** (`Bash git
+    status ×12`), and what is **along for the ride**: tool results from 50+
+    turns ago still re-sent every turn, and files read more than once (all
+    `≈`; 50 is a rule of thumb, not a measurement).
+  - **Session**: the chart at full size, every figure, and each cache rebuild
+    with its turn, size and cause. For an agent other than Claude Code, **What
+    it records** lists what that agent doesn't write down (no cache split, no
+    subagents, no gauge) so a missing figure never looks like a zero.
+  - **Agents**: the tree of **subagents the session spawned**, each named by
+    the description the agent above it wrote and each with **its own window and
+    occupancy**. Click one and the chart, Context and Session figures switch
+    to its context, here and in the popover.
+  - **Context tools**: each tool's switch, install and uninstall, and its
+    figures over this session, 7 or 30 days. See [Context tools](#context-tools).
+  - **History**: activity per day stacked by project, model or effort over 7,
+    30, 90 or 365 days, switchable between turns, output tokens and cache
+    reads; every session in range with its path and agent count; and the
+    selected session's agent tree, chart and full Context breakdown.
+  - **Usage dashboard**: active-hour rates, median sessions, peak fill and
+    period changes for one harness and counter at a time, with views for
+    weekly activity, ranked sessions, context health, projects and tools.
+  - **Plan limits**: every limit with its bar, when it resets, and what Ullage
+    itself saw in that window, with the *Check Claude plan limits* switch. See
+    [Plan limits](#plan-limits).
 
-### Composition explorer
+### Context explorer
 
 <div align="center">
 
-<img src="docs/screenshots/composition-explorer.png" alt="The composition explorer opened to Tool results, then Bash, sized by calls: python3 23 calls, sed 18, grep 13, then install-app.sh, cat, sqlite3 and smaller commands, with a table of calls, estimated tokens and share of the window beside the treemap" width="760">
+<img src="docs/screenshots/composition-explorer.png" alt="The Context explorer opened to Tool results, then Bash, sized by calls: python3 23 calls, sed 18, grep 13, then install-app.sh, cat, sqlite3 and smaller commands, with a table of calls, estimated tokens and share of the window beside the treemap" width="760">
 
 </div>
 
@@ -153,13 +142,54 @@ segments; click one to open it, and the breadcrumb or Escape goes back up:
   not always what fills the window.
 
 The table beside the treemap lists every tile, including ones too small to
-label. The explorer is live: it follows the session (or agent) the popover
-shows and keeps its place as turns arrive. Token figures here are the same
+label. The explorer sits at the top of the main window's Context
+page. It is live: it follows the session (or agent) shown and keeps its place
+as turns arrive. Token figures here are the same
 length estimates as the popover's, never counted tokens.
+
+## Privacy
+
+Everything stays on your machine. Nothing is uploaded, and nothing is sent
+anywhere unless you ask for it. Three things can: `ullage otlp` exports for
+aggregating across machines, runs only when you run it, and `--dry-run` prints
+exactly what would leave first; once you subscribe a phone to alerts, a
+notification goes to that phone — encrypted to it, via its push service — when
+a window fills up; and if you switch on Claude plan limits, Ullage asks
+Anthropic for them the way Claude Code's `/usage` does, sending Claude Code's
+own sign-in to api.anthropic.com and nothing else. None of these happens until
+you set it up.
+
+Ullage only reads Claude Code's config, with one exception: when you flip a
+[context tool](#context-tools) switch, it edits Claude Code's user settings to
+switch that one tool on or off. It backs the file up first and never throws
+anything away. Installing or uninstalling a context tool runs that tool's own
+commands, in Terminal, after showing them to you.
 
 ## Install
 
 Requires macOS 14 or later, and Swift 6 (Xcode 16) to build.
+
+### With Homebrew
+
+```bash
+brew install sturdynut/tap/ullage
+ln -sf "$(brew --prefix)/opt/ullage/Ullage.app" /Applications/Ullage.app
+open /Applications/Ullage.app
+```
+
+Homebrew builds Ullage from source on your Mac, so there's no Gatekeeper
+warning. It installs the `ullage` command and `Ullage.app`; the `ln` puts the
+app in Applications. To serve the [phone page](#reading-it-from-a-phone) in the
+background, and again at every login:
+
+```bash
+brew services start ullage      # runs `ullage serve --no-watch` on 127.0.0.1:7878
+```
+
+`--no-watch` because the app already ingests; use `ullage serve` on its own if
+the app isn't running. Update with `brew upgrade ullage`.
+
+### From source
 
 ```bash
 git clone https://github.com/sturdynut/Ullage.git
@@ -170,7 +200,8 @@ open /Applications/Ullage.app
 
 Pass a directory to install elsewhere, e.g. `scripts/install-app.sh ~/Applications`.
 
-Because the app is ad-hoc signed rather than notarized, the first launch may draw
+Because the app is ad-hoc signed rather than notarized, a copy you didn't build
+yourself may draw
 a Gatekeeper warning; right-click the app and choose **Open**, or approve it once
 under System Settings → Privacy & Security. To start it at login, add Ullage
 under System Settings → General → Login Items.
@@ -189,15 +220,14 @@ Ullage for history:
 Then pull your existing sessions into the database so the charts have history:
 
 ```bash
-swift build
-.build/debug/ullage backfill
+ullage backfill        # from source: swift build && .build/debug/ullage backfill
 ```
 
 ## Using it
 
 Ullage runs quietly in the menu bar and updates within a couple of seconds of
-each turn. There is nothing to configure. Open the popover for the live session,
-or the History window for the longer view.
+each turn. There is nothing to configure. Open the popover for a glance at the
+live session, or the main window (**Open Ullage**) for everything at full size.
 
 ### Command line
 
@@ -211,16 +241,17 @@ ullage sessions              # per-session totals, grouped by project
 ullage agents <session>      # the subagent tree, each agent's own window
 ullage latest                # the single row driving the menu bar
 ullage history [--days N]    # activity per day and project (default 30)
-ullage dashboard [--days N] [--vendor codex] [--counter cache_write] [--gap 60]
-                             # the Dashboard window's figures, ranked sessions, projects
-ullage composition <session> # what a session's window is made of
+ullage dashboard [--days N]  # rates, typical sessions and context health
+ullage composition <session> # what a session's context is made of
 ullage serve [--port N]      # serve the gauge to a browser on 127.0.0.1
 ullage push [--test]         # devices subscribed to alerts; --test buzzes them
 ullage otlp --endpoint URL    # export everything measured to an OTLP collector
 ullage env <session>         # a session's configuration snapshot
 ullage limits [--fetch]      # plan limits left; --fetch asks Anthropic for Claude's
-ullage savers [session]      # token savers: switched on, and what each did
-ullage savers --days 30      # each saver across every session in the range
+ullage savers [session]      # context tools: switched on, and what each did
+ullage savers --days 30      # each tool across every session in the range
+ullage tools                 # every context tool Ullage knows, built in or your own
+ullage harnesses             # every coding agent Ullage reads, and what each records
 ullage rebuilds [session]    # turns that re-cached most of their context, and why
 ullage rebuilds --days 30    # the same across sessions, by cause
 ullage savers disable rtk --dry-run   # what switching one off would change
@@ -262,14 +293,23 @@ machines).
   public API and may change; if it does, the limits disappear rather than show
   a wrong number.
 
-### Token savers
+### Context tools
 
 [rtk](https://github.com/rtk-ai/rtk), [Tokenade](https://github.com/pi-infected/tokenade-npm),
 [caveman](https://github.com/juliusbrussee/caveman) and
-[Headroom](https://github.com/headroomlabs-ai/headroom) all exist to spend fewer
-tokens. Ullage shows what each one actually did and lets you switch it on or off.
-It never adds up a single "tokens saved" number, because nothing on disk records
-what a session would have cost without the tool.
+[Headroom](https://github.com/headroomlabs-ai/headroom) shrink what goes into
+the window; [Serena](https://github.com/oraios/serena),
+[codegraph](https://github.com/colbymchenry/codegraph) and
+[claude-context](https://github.com/zilliztech/claude-context) let the model look
+code up instead of reading whole files; and
+[claude-mem](https://github.com/thedotmack/claude-mem) carries notes between
+sessions. Ullage shows what each one actually did and lets you switch it on or off.
+Each tool is a description, not code: add your own as a JSON file in
+`~/.config/ullage/tools/` ([docs/CONTEXT-TOOLS.md](docs/CONTEXT-TOOLS.md)), and
+`ullage tools` lists what loaded.
+Its savings figures are each tool's own claim, marked `≈`. They add up into
+one total, per tool, per session and per period, with a call two tools both
+shortened counted once; with/without comparisons are shown but never added in.
 
 - **Did it run?** Claude Code logs every hook it runs in the transcript: the
   command, the tool call it ran for, the command it was rewritten to, and any
@@ -278,31 +318,63 @@ what a session would have cost without the tool.
   is gone, and prints "rtk is not installed" every time.
 - **rtk and Tokenade** filter tool output before the model sees it, so Ullage
   only ever sees the smaller version. Their savings come from their own logs
-  (rtk's `history.db`, Tokenade's `~/.tokenade/gain.jsonl`), matched to a
-  session by directory and time. They are shown with `≈` as that tool's own
-  claim: rtk counts bytes ÷ 4, and Tokenade doesn't say how it counts. When
-  both rewrite the same Bash call, the popover warns that their figures
-  overlap and can't be added together.
+  (rtk's `history.db`, Tokenade's `~/.tokenade/gain.jsonl`). rtk's log names
+  the Claude Code session and Bash call each rewrite was for, so its claims
+  land on the exact call; other logs are matched by directory and time. They
+  are shown with `≈` as that tool's own claim: rtk counts bytes ÷ 4, and
+  Tokenade doesn't say how it counts. Where a call ran a single rtk command,
+  Ullage checks rtk's "after" against what reached the model. When both
+  rewrite the same Bash call, the popover warns that their figures overlap
+  and can't be added together.
 - **caveman** shortens the model's replies, and Ullage measures output tokens
   exactly. It compares the median output per turn with caveman on and with it
   off, over the same directory's last 30 days of main-thread turns. That is a
   comparison of different work, not a saving, and it is labelled as one. It
   needs 20 turns on each side.
-- **Headroom** is an MCP server. Ullage shows whether it was loaded and
-  whether it was ever called; a loaded server that is never called still puts
-  its tool definitions in every prompt.
+- **Headroom** is an MCP server or a proxy. Ullage shows whether the server was
+  loaded and whether it was ever called; a loaded server that is never called
+  still puts its tool definitions in every prompt. The proxy's own log
+  (`~/.headroom/proxy_savings.json`) is matched to turns by time and shown as
+  its claim, per request.
+- **Serena, codegraph and claude-context** are code search. Ullage counts their
+  lookups (MCP calls, and `codegraph` commands run in Bash) and roughly how much
+  they returned, instead of whole files. claude-context sends your code to
+  OpenAI and Zilliz Cloud by default; its install says so before anything runs.
+- **claude-mem** carries notes between sessions. Ullage shows roughly how much
+  it added to the context at session start, which is then sent with every turn.
 
-The ⤢ button on the section opens the **Token savers window**. It shows each
-tool over this session, 7 days or 30 days:
+The main window's **Context tools** page shows this session, 1, 7, 21 or 30
+days. **Savings** answers how much you're saving: the total kept from being
+sent, what would have been sent next to what was per day (per hour for 1
+day), each tool's share, and each session's saving split by tool. Each tool's
+page leads with its own charts. Each chart is a card with a short title,
+one line of what it is, and an ⓘ for the details, and pairs two bars: what
+the tool took in (faded) next to what it passed on to the model (solid), so
+the gap is the reduction:
+- **output per day**, from the tool's own log (rtk's Bash output, Headroom's
+  proxied requests), every value marked `≈` as its claim;
+- **later prompts per day**: the same before and after, counted in every
+  prompt the result stayed in until a compaction. Tokens sent, mostly cache
+  reads, not room in the window;
+- **without vs with**, for a figure compared across sessions (the first
+  prompt; reply length; file reads; exploring before the first edit), within
+  one harness and the days both sides had sessions, in this folder or, when
+  it has too few, all folders. Different work, so a hint, not a measurement.
+
+What a tool adds to the context (loaded and never used, failed hooks, what a
+memory tool injects) sits above its charts as plain warnings. Below them:
 - what the transcripts prove: sessions it ran in, hook runs, rewrites, failures
   with the last error message, and MCP calls;
-- for rtk and Tokenade, their own count per command (before, after and saved,
-  all marked `≈`);
+- for rtk and Tokenade, where the claim comes from: their own count per command
+  (before, after and saved, all marked `≈`);
 - for caveman, the two medians with their sample sizes, plus this session's
   output per reply, coloured by whether caveman was on;
-- for Headroom, the sessions where it was loaded but never used.
+- for Headroom, the sessions where it was loaded but never used;
+- for code search tools, their lookups and what they returned;
+- for claude-mem, what it injected per session and its memory searches.
 
-`ullage savers --days 30` prints the same summary.
+`ullage savers --days 30` prints the same before and after per day, and the
+phone page draws each tool's charts for the last 7 days under its switch.
 
 **The switches** change Claude Code's user config (`~/.claude/settings.json`,
 `~/.claude.json`), and only when you click one or run `ullage savers
@@ -312,7 +384,8 @@ enable|disable`:
 |---|---|---|
 | caveman | sets its `enabledPlugins` flag to false | sets the flag back to true |
 | rtk, Tokenade | moves its hooks, unchanged, into `parked-savers.json` next to Ullage's database | puts the hooks back from there |
-| Headroom (and Tokenade's MCP server) | moves its `mcpServers` entry into the same file | puts the entry back |
+| claude-mem | sets its `enabledPlugins` flag to false | sets the flag back to true |
+| Headroom, Serena, codegraph, claude-context (and Tokenade's MCP server) | moves its `mcpServers` entry into the same file | puts the entry back |
 
 **Installing and uninstalling** is always your call. Tools that are already
 installed get a row. The others are listed under **Install…** in the section,
@@ -321,7 +394,13 @@ tool's own documented commands first, and nothing runs until you confirm. The
 app runs them in Terminal, so you can watch, and so a browser sign-in
 (Tokenade) or a Homebrew prompt works. Uninstalling uses whichever package
 manager installed the tool (Homebrew, npm, pipx, uv, cargo), found from where
-its binary really lives.
+its binary really lives. When the commands finish, Ullage checks Claude Code's
+config itself and says so if the tool's command reported success but changed
+nothing.
+
+To find out whether a tool is worth its place, `scripts/bench-savers/` runs
+it against plain Claude Code on fixed tasks and compares what the sessions
+cost (see its README).
 
 | Tool | Install | Uninstall |
 |---|---|---|
@@ -329,6 +408,10 @@ its binary really lives.
 | Tokenade | `npm install -g @tokenade/cli`, `tokenade install`, `tokenade login` | `tokenade uninstall`, `npm uninstall -g @tokenade/cli` |
 | caveman | `claude plugin marketplace add JuliusBrussee/caveman`, `claude plugin install caveman@caveman` | `claude plugin uninstall caveman@caveman`, then remove the marketplace |
 | Headroom | `uv tool install "headroom-ai[mcp]"` (or pipx), `claude mcp add --scope user headroom -- headroom mcp serve` | `claude mcp remove --scope user headroom`, then its package manager |
+| Serena | `uv tool install -p 3.13 serena-agent`, `claude mcp add --scope user serena -- serena start-mcp-server --context claude-code --project-from-cwd` | `claude mcp remove --scope user serena`, then its package manager |
+| codegraph | `npm install -g @colbymchenry/codegraph` (or its install script), `codegraph install --target=claude --yes` | `codegraph uninstall --keep-cli`, then its package manager |
+| claude-context | `claude mcp add --scope user claude-context … -- npx @zilliz/claude-context-mcp@latest`, with your OpenAI and Zilliz keys | `claude mcp remove --scope user claude-context` |
+| claude-mem | `claude plugin marketplace add thedotmack/claude-mem`, `claude plugin install claude-mem@thedotmack` | `npx claude-mem uninstall` |
 
 A step is skipped if what it sets up is already there. When the run in Terminal
 finishes, the tool's row says whether it worked ("caveman installed · on from
@@ -368,39 +451,37 @@ reports no tokens exports activity only rather than a misleading zero.
 
 The database is at
 `~/Library/Application Support/com.sturdynut.ullage/telemetry.db` (WAL mode).
-`--db <path>` or `$ULLAGE_DB` moves it; `$CLAUDE_CONFIG_DIR` moves the transcript
-source. Ingestion is incremental and idempotent: re-running it over the same
+`--db <path>` or `$ULLAGE_DB` moves it; `$CLAUDE_CONFIG_DIR`, `$CODEX_HOME` and
+`$CURSOR_HOME` move those agents' transcripts. Ingestion is incremental and idempotent: re-running it over the same
 transcripts changes nothing.
 
 ### Reading it from a phone
 
 <div align="center">
 
-<img src="docs/screenshots/phone.png" alt="The phone page: the Ullage session with 258k left of a 1M window, a bar at 74% used, the context chart with grey and orange cache-rebuild triangles, then Context composition, Session information (re-cached 2×), Agents, Token savers (Headroom idle) and Plan limits each collapsed to one line, and Open in Claude and Explain at the bottom" width="300">
+<img src="docs/screenshots/phone.png" alt="The phone page: the Ullage session with 602k left of a 1M window, 39% used, the context chart with grey and orange cache-rebuild triangles and a compaction, then Context, Session information (re-cached 2×), Agents, Context tools (Headroom idle), Plan limits and Sessions each collapsed to one line, Open in Claude and Explain, and Alerts on for this device" width="300">
 &nbsp;&nbsp;
 <img src="docs/screenshots/phone-help.png" alt="The phone page's help: How to read Ullage, with The chart open and its questions listed, each beside the mark it explains; What's an orange triangle? is open, saying it is a cache rebuild you caused and why it costs full price or more" width="300">
 
 </div>
 
-A menu bar is only useful in front of the Mac. `ullage serve` puts the whole
-popover on a web page: the room left, the context chart with its compaction and
-cache-rebuild markers, every section (composition, session information, agents,
-token savers, plan limits) collapsed to one row and expanding to the full view,
-and every recent session with its path, any of which you can pick to look at instead of the
-latest. Below Plan limits, **Open in Claude** (for a session on Remote
+A menu bar is only useful in front of the Mac. `ullage serve` puts Ullage on a
+web page laid out like the main window, one page at a time: an Overview with
+the room left and the context chart, then a row per section (Context,
+Session information, Agents, Context tools, Plan limits, and Sessions) that
+slides its page in. A page closes with "‹ Overview" or the phone's back
+gesture, and has its own address (`#page=savers`) you can bookmark. Sessions
+lists every recent session with its path; pick one to look at it instead of
+following the latest. Below the rows, **Open in Claude** (for a session on Remote
 Control) takes you to it on claude.ai or the Claude app, and **Open in Codex**
 opens a Codex session's thread in the Codex app — the places to `/clear`,
 `/compact` or run a skill in it. The Codex link is the app's own
 `codex://threads/<id>`, so it works wherever the Codex app is installed.
 
-**Usage dashboard**, below the gauge, slides in the Dashboard window's figures
-at phone width: the same four key tiles and "Show all metrics", controls for
-harness, range, counter and idle gap, and tabs for weekly, sessions, context,
-projects and tools. It comes from `dashboard.json`, built from the same Core
-model as the Mac window, so the two cannot disagree. Add `#dashboard` to the
-page's address to open straight to it, which suits a home-screen bookmark.
+The Overview also opens the Usage dashboard; it uses the same Core model as the
+Mac window and `ullage dashboard`, and `#dashboard` opens it directly.
 
-The token savers section works here too: switches with Undo, and install or
+The context tools section works here too: switches with Undo, and install or
 uninstall, after the page shows the tool's exact commands. Installs run in a
 Terminal window on the Mac, and the page reports how they went; a plan that
 needs someone at the Mac (Tokenade's browser sign-in) says so instead of
@@ -468,10 +549,11 @@ the cause from what changed since the turn before:
 
 | Cause | What changed | Marker |
 |---|---|---|
-| expired | more than an hour since the previous turn: the cache timed out | grey |
+| expired | the break outlasted the cache: an hour, or five minutes when the turn's write says it was cached for five (an API key, usage credits, a cloud provider, every subagent) | grey |
 | model changed | a different model answered, e.g. `claude-opus-5-5 → claude-fable-5-1` | orange |
+| upgraded | Claude Code's version changed between the turns, e.g. `2.1.250 → 2.1.280` | grey |
 | effort changed | the recorded effort changed, e.g. `high → max` | orange |
-| command | `/model`, `/effort`, `/fast`, `/config` or similar was typed in between | orange |
+| command | `/model`, `/effort`, `/fast`, `/config` or similar was typed in between (`/output-style` only before Claude Code 2.1.251, which sends a new style as a message) | orange |
 | unknown | nothing on disk explains it | grey |
 
 The size shown is that turn's own measured cache write. Nothing is converted to
@@ -480,6 +562,9 @@ unexplained one is not pinned on you, so only the three causes the session
 itself produced count toward the `re-cached N×` warning in the collapsed line.
 The turn straight after a compaction or `/clear` re-caches its new, smaller
 context on purpose and is never counted.
+
+Habits that avoid the orange ones, and when to use a skill or a subagent, are
+in [`docs/AGENT-PRACTICES.md`](docs/AGENT-PRACTICES.md).
 
 ## How the number is computed
 
@@ -505,23 +590,27 @@ tokens included, and it states the model's context window on every turn. Ullage
 splits that prompt back into the same four counters and reads the window from the
 transcript, so no lookup table is needed for Codex and the rows stay exact.
 
-Cursor reports none of this on disk, so its rows carry activity but no tokens and
-no window; there is no percentage to compute for a Cursor session.
+The other agents are read the same way: each one's counters are split into the
+same four, whichever way it reports them. Where an agent writes its window
+(Codex, Qwen Code, Copilot) that is used; otherwise the window comes from the
+model, from a table generated from [models.dev](https://models.dev)
+(`scripts/model-windows.py`). A model that isn't in it gets no gauge rather
+than a guessed window.
+
+Cursor, Zed, Copilot CLI and Factory Droid record no per-turn token counts
+Ullage can read, so their rows carry activity but no tokens and no window;
+there is no percentage to compute for those sessions.
 
 ## Current limitations
 
-- **Full support for two harnesses: Claude Code and the OpenAI Codex CLI.**
-  Ullage reads Claude Code's `~/.claude/projects` transcripts and Codex's
-  `~/.codex/sessions` rollouts, both with exact occupancy. The `vendor` and
-  `confidence` columns keep each harness's numbers distinct.
-- **Cursor is activity-only.** Cursor is a server-backed IDE: its token and
-  context accounting lives on Cursor's servers, and the local agent transcripts
-  (`~/.cursor/**/agent-transcripts`) hold conversation content but no token
-  counts, model, window, or timestamps. Ullage lists Cursor sessions with their
-  turn and tool counts (timed by the file, `confidence = unmeasured`) but shows
-  no occupancy, and a Cursor session never drives the menu bar gauge. GitHub
-  Copilot, Aider, and the rest are not read at all.
-- **Cloud and web sessions are invisible.** Both harnesses can run in the cloud
+- **Eighteen harnesses.** Claude Code and Codex are exact; Cursor is activity
+  only (its token accounting lives on Cursor's servers). OpenCode, Pi, Amp, Gemini CLI, Qwen Code, Goose and Cline,
+  Roo Code and Kilo Code record every call; Copilot in VS Code one reading per
+  request; Crush the latest turn; Aider rounded figures (shown as estimates, no
+  gauge); Factory Droid, Copilot CLI and Zed activity only. Each session
+  says what its harness doesn't record. `ullage harnesses` lists them all. Kiro, Continue, Windsurf, Warp and cloud
+  sessions are not read (`docs/harnesses/unsupported.md`).
+- **Cloud and web sessions are invisible.** Agents can run in the cloud
   (Claude Code on the web, Codex cloud tasks); those transcripts stay on the
   server with no public per-session usage API, so only sessions that write to
   local disk are seen. `claude --teleport <id>` pulls a cloud Claude session
@@ -531,14 +620,14 @@ no window; there is no percentage to compute for a Cursor session.
   CLI 0.145–0.146; after an upgrade a window size or field location can shift.
   `scripts/recon.sh` re-checks the Claude format against your disk, and
   [`docs/OBSERVED-FORMAT.md`](docs/OBSERVED-FORMAT.md) records what was seen.
-- **Claude window sizes are a lookup table** (Codex reports its window exactly on
-  every turn). A Claude model Ullage does not recognize falls back to 200k and is
-  flagged as assumed, so its percentage may be wrong until the table is updated.
-- **macOS 14+ only**, and the app is unsigned and un-notarized — a local build,
-  not a distributed release.
+- **Window sizes are a lookup table** for agents that don't write theirs down.
+  A Claude model Ullage doesn't recognize falls back to 200k and is flagged as
+  assumed; any other unknown model gets no gauge until the table is updated.
+- **macOS 14+ only** for the app. It's ad-hoc signed, not notarized: Homebrew
+  builds it from source on your Mac, so there's no Gatekeeper warning.
 - **The menu bar item can be hidden.** On Macs with a notch and many menu bar
   apps, macOS may tuck Ullage's item out of sight; a menu bar manager can pin it.
-- Composition figures other than the window total are **length-based estimates**,
+- Context figures other than the window total are **length-based estimates**,
   not exact token counts, and subagent (`Task`) usage rolls into its parent
   session.
 
@@ -556,12 +645,26 @@ swift test        # runs on Linux or macOS
 Layout:
 
 ```
-Sources/UllageCore/    parsers (Claude Code, Codex, Cursor), ingestor, SQLite
-                       store, and all analysis/display logic (kept UI-free)
+Sources/UllageCore/    harness adapters and parsers (Harnesses/), context tool
+                       descriptors, ingestor, SQLite store, and all
+                       analysis/display logic (kept UI-free)
 Sources/ullage/        the command-line tool
-Sources/UllageApp/     the SwiftUI menu bar popover and history window (macOS)
+Sources/UllageApp/     the SwiftUI menu bar popover and main window (macOS)
 Tests/                 unit tests for the collector and every display rule
 scripts/recon.sh       inspect the on-disk transcript format
 scripts/install-app.sh build, bundle, and install the app
-docs/                  the observed transcript format
+scripts/model-windows.py  regenerate model windows from models.dev
+scripts/test-plan.py   rebuild the test checklist (docs/TESTING.csv)
+docs/                  transcript formats (harnesses/), context tools, OTLP, phone,
+                       and habits for context, skills and agents
 ```
+
+## License
+
+Ullage is source-available under the [PolyForm Shield License 1.0.0](LICENSE.md).
+In short: you can use it for anything, including at work, and change it for
+your own use, but you can't sell it, offer it as a service, or build a product
+that competes with it. The license text is what counts; this summary isn't
+legal advice.
+
+Copyright 2026 Matti Salokangas.

@@ -25,30 +25,17 @@ struct UllageApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        // M6/M7 — history across days and what the window is made of. A real
-        // window, because the popover is the wrong size for a table.
-        Window("Ullage History", id: HistoryWindow.id) {
-            HistoryWindow()
+        // One main window: the popover is the glance, this is everything at
+        // full size. Composition, History and Token savers are its pages.
+        Window("Ullage", id: MainWindow.id) {
+            MainWindow(model: model)
         }
-        .defaultSize(width: 980, height: 680)
+        .defaultSize(width: 1180, height: 760)
 
-        // Averages, rates and ranked sessions over a range of days.
         Window("Ullage Dashboard", id: DashboardWindow.id) {
             DashboardWindow()
         }
         .defaultSize(width: 1000, height: 760)
-
-        // The popover's treemap, big enough to open every tile.
-        Window("Context Composition", id: CompositionExplorer.id) {
-            CompositionExplorer(model: model)
-        }
-        .defaultSize(width: 1000, height: 640)
-
-        // Each token saver over a session, a week or a month.
-        Window("Token Savers", id: SaversWindow.id) {
-            SaversWindow(model: model)
-        }
-        .defaultSize(width: 960, height: 640)
     }
 }
 

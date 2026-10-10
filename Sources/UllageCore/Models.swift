@@ -49,6 +49,13 @@ public struct CallRow: Equatable {
     /// Reasoning effort the harness recorded for this turn (`low`…`max`).
     /// Nil when the line predates the field — never assumed.
     public var effort: String?
+    /// How long this turn's cache write lives, read off the split the API
+    /// reports (`cache_creation.ephemeral_1h/5m_input_tokens`): `"1h"` or
+    /// `"5m"`. Nil when the line has no split — never assumed.
+    public var cacheTTL: String?
+    /// The harness's own version on this line (Claude Code's `version`).
+    /// An upgrade between two turns rebuilds the cache.
+    public var harnessVersion: String?
     public var contextTokens: Int
     public var windowLimit: Int?
     public var turnIndex: Int?          // assigned at ingest, not present on disk
@@ -80,6 +87,8 @@ public struct CallRow: Equatable {
         reasoning: Int? = nil,
         webSearch: Int? = nil,
         effort: String? = nil,
+        cacheTTL: String? = nil,
+        harnessVersion: String? = nil,
         contextTokens: Int,
         windowLimit: Int? = nil,
         turnIndex: Int? = nil,
@@ -110,6 +119,8 @@ public struct CallRow: Equatable {
         self.reasoning = reasoning
         self.webSearch = webSearch
         self.effort = effort
+        self.cacheTTL = cacheTTL
+        self.harnessVersion = harnessVersion
         self.contextTokens = contextTokens
         self.windowLimit = windowLimit
         self.turnIndex = turnIndex

@@ -36,33 +36,50 @@ reimplements an installer.
 
 ### Harness support
 
-| Harness | Reads | Occupancy | Notes |
-|---|---|---|---|
-| Claude Code | `~/.claude/projects/**/*.jsonl` | exact | Window from `WindowLimits` lookup; subagents included, each its own window |
-| OpenAI Codex CLI | `~/.codex/sessions/**/*.jsonl` | exact | Window reported per turn, no lookup |
-| Cursor | `~/.cursor/**/agent-transcripts/**/*.jsonl` | **none** | Activity only; stores no tokens/window/model/timestamps |
+Eighteen harnesses, each a `Harness` adapter (`Harness.swift`, one file per
+harness in `Sources/UllageCore/Harnesses/`, a write-up in `docs/harnesses/`).
+`ullage harnesses` prints what each records. The exact ones, verified on disk:
 
-Not supported: GitHub Copilot, Zed, Aider, Gemini, and every cloud/web session
-of any harness. **The rule that predicts supportability:** local-first CLI
-agents write the API usage block and context window into their transcripts
-because they need them offline; subscription-metered IDEs compute usage
-server-side and keep only conversation content locally.
+| Harness | Reads | Occupancy |
+|---|---|---|
+| Claude Code | `~/.claude/projects/**/*.jsonl` | every call; window by model lookup |
+| OpenAI Codex CLI | `~/.codex/sessions/**/*.jsonl` | every call; window reported |
+| Cursor | `~/.cursor/**/agent-transcripts/**/*.jsonl` | **none**, activity only |
+
+Read from each tool's own source code, not yet seen on a real Mac: OpenCode,
+Pi, Amp, Gemini CLI, Qwen Code, Goose, Cline, Roo Code, Kilo Code (every call);
+Copilot in VS Code (per request); Crush (latest turn only); Aider (rounded, so
+estimated, no gauge); Factory Droid, Copilot CLI, Zed (activity only). Not read
+at all: Kiro, Continue, Windsurf, Warp and every cloud/web session
+(`docs/harnesses/unsupported.md`). **The rule that predicts supportability:**
+local-first CLI agents write the API usage block into their transcripts because
+they need it offline; subscription-metered IDEs keep usage on their servers.
+
+- **A harness says what it can't do.** `HarnessCapabilities` is honest per
+  harness, and `HarnessSupport` turns it into "What <harness> records" on the
+  Session page and the phone, and a notice in place of a gauge. Nothing
+  downstream checks which harness it is.
+- **Windows for non-Claude models come from models.dev**, generated into
+  `ModelWindows.swift` by `scripts/model-windows.py`: prompt capacity
+  (`limit.input`, else `limit.context`), matched exactly or by dated snapshot,
+  never by prefix. An unknown model gets no window, never the fallback.
+- **Claude doesn't claim a `.jsonl` inside another harness's folder**
+  (OpenCode's data folder holds git checkouts and trace logs).
 
 ## Quick start
 
 ```bash
 swift build
-swift test                 # 269 tests on macOS; 258 on Linux (six need CryptoKit, five AppKit)
+swift test                 # 427 tests on macOS; on Linux all but the CryptoKit and AppKit ones
 scripts/install-app.sh     # build, bundle Ullage.app, install to /Applications
 .build/debug/ullage backfill   # ingest everything on disk
 ```
 
 CLI: `ingest`, `backfill`, `watch`, `sessions`, `latest`, `history [--days N]`,
-`dashboard [--days N] [--vendor V] [--counter C] [--gap MIN]`,
 `composition <session>`, `agents <session>`, `env <session>`, `serve`,
 `push [--test]`, `otlp`, `limits [--fetch]`, `savers [session]`,
 `rebuilds [session]`, `rebuilds --days N`, `savers --days N`, `savers enable|disable <name> [--dry-run]`,
-`savers install|uninstall <name> [--dry-run] [--yes]`, `info`.
+`savers install|uninstall <name> [--dry-run] [--yes]`, `savers config <name>`, `info`.
 
 - **Core builds and tests on Linux.** `Sources/UllageCore` and `Sources/ullage`
   have no macOS-only imports, with one guarded exception: `WebPush.swift` is
@@ -135,13 +152,15 @@ plausible and are wrong.
    only beside plan-wide limits (a per-model limit's window would count every
    model). Claude's come from the undocumented `/api/oauth/usage` — parse it
    like a transcript, and never refresh Claude Code's token.
-10. **A token saver's saving is its own claim.** rtk and Tokenade shrink tool
-    output before Ullage sees it, so a saving can't be measured here. It comes
-    from their own ledgers, is shown with `≈` and labelled with where it came
-    from (`TokenSaver.savingSource`), and never enters a counter, occupancy or
-    composition. Two savers' claims about the same call overlap and are never
-    summed. caveman's with/without comparison uses measured output, but it
-    compares different turns and is labelled as a comparison.
+10. **A token saver's saving is its own claim, kept out of the gauge.** rtk,
+    Tokenade and Headroom shrink what the model sees before Ullage sees it, so
+    their saving comes from their own ledgers and is shown with `≈`. It never
+    enters a counter, occupancy or composition. Savings *may* be totalled —
+    across tools, per session, per period (`SavingsSummary`) — on one basis
+    (tokens not sent, over every prompt a result stayed in) with a call two
+    tools both shortened counted once. With/without comparisons (caveman, code
+    search, memory) are never added to a total: they compare different work.
+    Say it once, behind the ⓘ; don't repeat caveats on the page.
 
 ## Architecture and conventions
 
@@ -159,6 +178,12 @@ plausible and are wrong.
 - **Window-less rows never drive the gauge.** `latestCall()` filters
   `window_limit IS NOT NULL` so a Cursor session cannot hijack the menu bar
   percentage, while still appearing in `sessions` and history.
+- **The popover is a glance; the main window is everything.** The popover is
+  the headline, bar, chart and one row per section; a row opens that section's
+  page in `MainWindow` (Overview, Context, Session, Agents, Token
+  savers, History, Plan limits). Nothing expands inline in the popover. The
+  phone page has the same structure: an Overview of rows, each sliding its page
+  in, with `#page=<id>` in the address so Back closes it.
 - **Logic in Core, not in views.** A rule that decides what to show is written
   and tested in `UllageCore`; SwiftUI only renders it. Hence `MenuBarState`,
   `SessionHistory`, `Composition` as plain structs — and `CompositionTreemap`,
@@ -184,6 +209,10 @@ plausible and are wrong.
   would ask, collapsed until opened, each with what it is and why it matters;
   a question about a chart mark draws that mark exactly as the chart does. A
   new section or mark gets its question there, in plain words.
+- **The usage dashboard uses active time.** `UsageDashboard` counts only gaps
+  between a session's calls no longer than the idle gap. Its Mac window, CLI
+  and phone `dashboard.json` draw the same Core model; counters are selected,
+  never summed.
 - **Fixed order for anything colour-coded.** Composition segments and history
   projects keep a stable order so a colour follows an entity, never its rank.
   The composition treemap is *ordered*, not squarified, for the same reason —
@@ -194,20 +223,14 @@ plausible and are wrong.
 - **A cache rebuild is measured, and named by its cause.** `CacheRebuilds`
   flags a turn whose `cache_write` is over half its context (context 50k+,
   not right after a compaction), then names the cause in order: expired (a
-  gap over an hour: 267 of 275 such turns rebuilt on real data), model
-  changed, effort changed, a slash command, unknown. The figure shown is that
+  gap over the cache's lifetime: an hour, where 267 of 275 such turns rebuilt
+  on real data, or five minutes when the turn's own write says so), model
+  changed, upgraded (Claude Code's version changed), effort changed, a slash
+  command, unknown. The figure shown is that
   turn's own `cache_write`; nothing is priced or called wasted. Only the three
-  causes the session produced (`isAvoidable`) reach the collapsed line; expired
-  and unknown are shown but not put on the user. The turn after a compaction
+  causes the session produced (`isAvoidable`) reach the collapsed line; expired,
+  upgraded and unknown are shown but not put on the user. The turn after a compaction
   boundary or a `/clear` command is skipped, not approximated by a ratio.
-- **A dashboard rate is per active hour.** `UsageDashboard` divides by the
-  gaps between a session's calls that are no longer than the idle gap, never
-  first-to-last time (a resumed session would otherwise be credited with the
-  days between). Sessions under 10 active minutes are left out of rates and
-  rankings. The typical session is the median; peak fill is per row, so a model
-  switch cannot divide one model's context by another's window. The app's
-  Dashboard window, `ullage dashboard` and the phone page's `dashboard.json`
-  (`ServeDashboard`) all draw `keyTiles`/`moreTiles`.
 - **Compaction is a first-class event.** Context falls off a cliff at a
   compaction boundary: `context_delta` is NULL across it, charts mark it, and
   composition restarts the window at the post-compaction summary.
@@ -269,13 +292,36 @@ plausible and are wrong.
   what can be switched now. Logic lives in `TokenSavers`, `SaverReport`,
   `SaverLedgers`, `SaverPanel`, `SaverDetail` (the window's ranges) and
   `SaverSwitchboard`.
+- **A context tool's value is drawn as before and after.** `SaverChart`
+  turns a `SaverDetail` into cards of paired bars (took in vs passed on, per
+  local day; without vs with for comparisons), drawn by the window (Swift
+  Charts), the phone (SVG in `WebPage`, the same palette) and the CLI.
+  `SavingsSummary` totals the claims across tools, per bucket and per session
+  for the Savings page (rule 10). `SaverValue` grades the figures behind them
+  and supplies the costs, each with an `Evidence` grade
+  (measured, estimated, claimed, compared, derived). A claim placed on the
+  Bash call it names (rtk's `hook_decisions`) is carried over the prompts the
+  result stayed in until a compaction — `derived`, labelled "claim × prompts":
+  a running total of tokens sent, never room in the window, never a counter.
+  With-vs-without comparisons are their own group (neither saving nor cost),
+  within one harness and the days both sides have sessions. rtk's `history.db` is WAL: a read-only
+  open fails when rtk isn't running (no `-shm`), so it is then read as
+  immutable, which is exact because there is no `-wal` either.
+- **Context tools are descriptors, not cases.** rtk, caveman, Serena,
+  claude-mem and the rest are `ToolDescriptor` values (`BuiltinTools.swift`,
+  or JSON in `~/.config/ullage/tools/`); see `docs/CONTEXT-TOOLS.md`. Rows,
+  installs, switches and help branch on the tool's `kind`, never on which tool
+  it is: a `switch` on a specific tool is the bug this design exists to
+  prevent. The only per-tool Swift is a ledger reader in `SaverLedgers.readers`.
 - **`session_env` is the one irreproducible table.** MCP servers, skills and
   CLAUDE.md are snapshotted at ingest because nothing on disk records what they
   were when a session ran. It is Claude-Code-only; other vendors skip it.
 
 ## Adding a new harness
 
-Done twice (Codex, Cursor); follow the same path.
+Follow the brief the eighteen were built from: read the harness's own writer
+code first and cite it, map to the four counters (rule 2), set capabilities
+honestly, and add one line to `HarnessRegistry.extra`.
 
 1. **Investigate before coding.** Find the harness's local data and answer one
    question: *does it record per-turn prompt tokens and the context window?*
@@ -303,6 +349,23 @@ branch is `claude/two-slices-link-empty-repo-51t02z`, but `main` is kept current
 — update both when they diverge. Reinstall with `scripts/install-app.sh` after
 any app change so what is running matches what is committed.
 
+## Releasing
+
+Homebrew installs from `sturdynut/homebrew-tap` (`Formula/ullage.rb`), which
+builds a tagged release from source. To release:
+
+1. Merge to `main`, then `git tag -a vX.Y.Z -m "Ullage X.Y.Z"`, push the tag,
+   and `gh release create vX.Y.Z`.
+2. `curl -sL https://github.com/sturdynut/Ullage/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256`.
+3. In the tap, set the formula's `url` and `sha256`, then
+   `brew audit --strict --online sturdynut/tap/ullage` and
+   `brew reinstall --build-from-source sturdynut/tap/ullage && brew test sturdynut/tap/ullage`.
+
+The formula builds with `--disable-sandbox` (SwiftPM's sandbox can't start
+inside Homebrew's) and bundles the app with `scripts/bundle-app.sh`, the same
+script `install-app.sh` uses. Its `license` is `:cannot_represent`: PolyForm
+Shield isn't in Homebrew's SPDX list.
+
 ## Layout
 
 - `Sources/UllageCore` — parsers, ingestor, SQLite store, all analysis/display logic.
@@ -313,6 +376,8 @@ any app change so what is running matches what is committed.
   plan, screenshots.
 - `scripts/recon.sh` — transcript reconnaissance and fixture scrubbing.
 - `scripts/install-app.sh` — build, bundle, sign, install the app.
+- `scripts/bench-savers/` — runs context tools against plain Claude Code on
+  fixed tasks and records what each session cost; results are checked in.
 
 ## Gotchas
 

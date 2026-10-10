@@ -74,6 +74,7 @@ public enum WebPage {
   .tick { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--bg); opacity: .9; }
   .tick.peak { background: var(--warn); opacity: .7; }
   .exact { display: flex; justify-content: space-between; color: var(--dim); font-size: 13px; }
+  .notice { margin: 6px 0 0; color: var(--dim); font-size: 13px; line-height: 1.4; }
   .exact span:last-child { color: var(--faint); }
   .cardfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
   /* Explain is a link, not a second button: Open in Claude stays the action. */
@@ -134,6 +135,37 @@ public enum WebPage {
   .saver .sub { padding-left: 54px; font-size: 13px; color: var(--dim); }
   .saver .note { padding-left: 54px; font-size: 12px; color: var(--faint); }
   .saver .pend { padding-left: 54px; font-size: 13px; color: var(--accent); font-weight: 600; }
+  .saver .costs { padding-left: 54px; margin-top: 4px; font-size: 13px; color: var(--dim); }
+  .saver .costs .w { color: var(--warn); }
+  .savings { padding: 4px 0 14px; border-bottom: 1px solid var(--rule); margin-bottom: 4px; display: grid; gap: 6px; }
+  .savings .sv-k { font-size: 13px; color: var(--dim); }
+  .savings .sv-big { font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .savings .sv-sub { font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+  .savings .sv-tool { display: grid; grid-template-columns: 90px 1fr auto; gap: 10px; align-items: center; }
+  .savings .sv-nm { font-weight: 650; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+  .savings .sv-nm i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .savings .sv-bars { display: grid; gap: 3px; }
+  .savings .sv-bars i { display: block; height: 7px; border-radius: 0 3px 3px 0; min-width: 2px; }
+  .savings .sv-v { text-align: right; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .savings .sv-v small { display: block; font-size: 11.5px; color: var(--dim); }
+  .savings .sv-note { font-size: 12px; color: var(--faint); }
+  .scard.sv-chart { margin-left: 0; }
+  .scard { margin: 10px 0 0 54px; border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
+  .scard .sh { display: flex; align-items: flex-start; gap: 8px; }
+  .scard .sh > div { flex: 1; }
+  .scard .st { font-weight: 650; font-size: 14px; }
+  .scard .sw { font-size: 12.5px; color: var(--dim); }
+  .scard .si { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--rule); background: none;
+    color: var(--dim); font: 600 12px/1 inherit; cursor: pointer; }
+  .scard .si[aria-expanded="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .scard .sm { font-size: 12.5px; color: var(--dim); background: var(--rule); border-radius: 8px; padding: 8px 10px; display: grid; gap: 4px; }
+  .scard .sm[hidden] { display: none; }
+  .scard .stot { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .scard .stot .chg { color: var(--dim); }
+  .scard .lg { margin-left: auto; display: flex; gap: 10px; color: var(--dim); font-size: 12px; }
+  .scard .lg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+  .scard svg { width: 100%; height: auto; display: block; }
+  .scard svg text { fill: var(--faint); font-size: 10px; font-variant-numeric: tabular-nums; }
   .switch {
     position: relative; width: 44px; height: 26px; border-radius: 13px; border: 0; padding: 0;
     background: var(--rule); flex: none; cursor: pointer; transition: background .15s;
@@ -145,7 +177,9 @@ public enum WebPage {
   .switch[aria-checked="true"] { background: #34c759; }
   .switch[aria-checked="true"]::after { transform: translateX(18px); }
   .linkbtn { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; padding: 6px 4px; cursor: pointer; }
-  .more { width: 44px; flex: none; }
+  /* "Set up" / "Install" where a switch would be: one line, at least a
+     switch's width so the names below still line up. */
+  .more { min-width: 44px; flex: none; white-space: nowrap; padding-left: 0; text-align: left; }
   .legend { font-size: 12px; color: var(--dim); margin-top: 8px; }
   h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); font-weight: 600; margin: 24px 0 8px; }
   ol { list-style: none; margin: 0; padding: 0; }
@@ -204,6 +238,21 @@ public enum WebPage {
     padding: max(10px, env(safe-area-inset-top)) 16px 6px; background: var(--bg);
   }
   .sheethead h3 { flex: 1; margin: 0; font-size: 17px; }
+  .sheethead .back {
+    font: inherit; font-size: 16px; color: var(--accent); background: none; border: 0;
+    min-height: 44px; padding: 0 8px 0 0; cursor: pointer; flex: none;
+  }
+  #page-body > div { padding-top: 12px; }
+  /* Overview: one row per section, opening its page. */
+  .navrow {
+    display: block; width: 100%; text-align: left; font: inherit; color: var(--ink);
+    background: none; border: 0; border-top: 1px solid var(--rule); padding: 11px 0; cursor: pointer;
+  }
+  .navrow:first-child { border-top: 0; }
+  .navrow .nt { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+  .navrow .nt .ln { flex: 1; }
+  .navrow .chev { color: var(--faint); font-size: 18px; line-height: 1; }
+  .navrow .readout { margin-top: 4px; }
   .sheethead .done {
     font: inherit; font-size: 16px; font-weight: 600; color: var(--accent); background: none; border: 0;
     min-height: 44px; padding: 0 0 0 12px; cursor: pointer;
@@ -212,7 +261,7 @@ public enum WebPage {
     flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
     padding: 4px 16px max(28px, env(safe-area-inset-bottom));
   }
-  .sheetbody > div { max-width: 640px; margin: 0 auto; min-width: 0; }
+  .sheetbody > div { max-width: 640px; margin: 0 auto; }
   body.sheet-open { overflow: hidden; }
   #help p { font-size: 14px; color: var(--dim); margin: 6px 0; line-height: 1.45; }
   #help ul { margin: 6px 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
@@ -236,64 +285,20 @@ public enum WebPage {
   #help .ans.indent { padding-left: 44px; }
   #help .ans p { margin: 0 0 6px; color: var(--ink); }
   #help .ans .why { color: var(--dim); }
-  footer { margin-top: 26px; color: var(--quiet); font-size: 12px; }
-  /* The usage dashboard: its own sheet, like help, so the gauge behind it
-     keeps its place. Everything in it is drawn from dashboard.json. */
-  .dashlink {
-    display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 14px; text-align: left;
-    font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule);
-    border-radius: 12px; padding: 12px 15px; cursor: pointer; min-height: 44px;
-  }
-  .dashlink b { font-weight: 650; }
-  .dashlink span { flex: 1; color: var(--dim); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .dashlink::after { content: '›'; color: var(--faint); font-size: 18px; }
-  #dash .ctls { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 14px; }
-  #dash .segs { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
-  .seg { display: inline-flex; flex: none; border: 1px solid var(--rule); border-radius: 9px; overflow: hidden; background: var(--panel); }
-  .seg button {
-    font: inherit; font-size: 13px; border: 0; border-left: 1px solid var(--rule); background: none;
-    color: var(--ink); padding: 0 11px; min-height: 34px; cursor: pointer; white-space: nowrap;
-  }
-  .seg button:first-child { border-left: 0; }
-  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
-  .seg button:disabled { opacity: .4; cursor: default; }
-  .seg .lbl { font-size: 11px; color: var(--faint); padding: 0 4px 0 9px; align-self: center; text-transform: uppercase; letter-spacing: .08em; }
-  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  @media (min-width: 620px) { .tiles.key { grid-template-columns: repeat(4, minmax(0, 1fr)); } .tiles.more { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  .tile { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 11px 12px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .tile .k { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); font-weight: 650; }
-  /* Two lines held for every key title, so the four values share a baseline
-     whether or not their title wraps. */
-  .tiles.key .tile .k { min-height: 2.7em; }
-  .tile .v { font-size: 24px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-  .tile .s { font-size: 12px; color: var(--dim); }
-  .tile .c { font-size: 12px; color: var(--faint); }
-  .tile .c b { font-weight: 650; }
-  .tile .c b.up { color: var(--warn); } .tile .c b.down { color: var(--fill); } .tile .c b.flat { color: var(--dim); }
-  .tile .why { font-size: 11.5px; color: var(--faint); border-top: 1px solid var(--rule); margin-top: 6px; padding-top: 6px; line-height: 1.35; }
-  #dash details.moretiles { border: 0; padding: 4px 0 0; }
-  #dash details.moretiles > summary { color: var(--accent); font-size: 14px; font-weight: 600; min-height: 40px; display: flex; align-items: center; gap: 6px; }
-  #dash details.moretiles > summary::before { content: '›'; transition: transform .15s; }
-  #dash details.moretiles[open] > summary::before { transform: rotate(90deg); }
-  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule); overflow-x: auto; margin-top: 10px; scrollbar-width: none; }
-  .tabs::-webkit-scrollbar { display: none; }
-  .tabs button {
-    font: inherit; font-size: 14px; font-weight: 600; color: var(--dim); background: none; border: 0;
-    border-bottom: 2px solid transparent; padding: 0 8px; min-height: 42px; white-space: nowrap; cursor: pointer;
-  }
-  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
-  .pane { padding-top: 12px; }
-  .pane h4 { font-size: 12px; font-weight: 600; color: var(--dim); margin: 16px 0 4px; }
-  .pane h4:first-child { margin-top: 0; }
-  .pane svg { display: block; width: 100%; }
-  .pane svg text { fill: var(--faint); font-size: 10px; font-family: inherit; font-variant-numeric: tabular-nums; }
-  .pane .note { font-size: 12px; color: var(--faint); margin: 6px 0 0; }
-  .pill { font-size: 11px; color: var(--dim); border: 1px solid var(--rule); border-radius: 99px; padding: 0 6px; margin-left: 6px; }
-  .pill.hot { color: var(--warn); border-color: var(--warn); }
-  .est { font-size: 10px; color: var(--c-other); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; margin-left: 6px; letter-spacing: .04em; }
-  .meter { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--rule); margin: 4px 0; }
-  .meter i { display: block; height: 100%; }
-  .empty { color: var(--faint); font-size: 14px; padding: 20px 0; text-align: center; }
+  footer { margin-top: 26px; color: var(--quiet); font-size: 12px; text-align: center; }
+  .dashlink { display: flex; width: 100%; align-items: center; gap: 8px; margin-top: 14px; padding: 12px;
+    text-align: left; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; }
+  .dashlink span { color: var(--dim); font-size: 13px; }
+  #dash-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 8px 0 14px; }
+  #dash-controls label { display: grid; gap: 3px; color: var(--dim); font-size: 12px; }
+  #dash-controls select { min-width: 0; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 7px; padding: 7px; }
+  .dashtiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .dashtile { min-width: 0; padding: 10px; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; }
+  .dashtile b, .dashtile small { display: block; } .dashtile b { font-size: 20px; } .dashtile small { color: var(--dim); font-size: 12px; }
+  #dash-tabs { display: flex; overflow-x: auto; gap: 4px; margin-top: 14px; border-bottom: 1px solid var(--rule); }
+  #dash-tabs button { flex: none; font: inherit; color: var(--dim); background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px; }
+  #dash-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  #dash-list { margin: 10px 0 0; } #dash-list .row { cursor: default; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -315,6 +320,7 @@ public enum WebPage {
     </div>
     <div class="track" id="track"><span class="fill" id="fill"></span></div>
     <div class="exact num"><span id="exact"></span><span id="used"></span></div>
+    <p id="notice" class="notice" hidden></p>
     <div class="chart" id="chartbox" hidden>
       <svg id="chart" viewBox="0 0 320 96" preserveAspectRatio="none" aria-label="Context per turn"></svg>
       <div class="caption num" id="caption"></div>
@@ -333,28 +339,22 @@ public enum WebPage {
     <button id="alerts-button" hidden></button>
   </div>
 
-  <button class="dashlink" id="open-dash" aria-haspopup="dialog"><b>Usage dashboard</b><span>Rates, the typical session, peak fill</span></button>
-
-  <h2>Sessions</h2>
-  <ol id="sessions"></ol>
+  <button class="dashlink" id="open-dash" aria-haspopup="dialog"><b>Usage dashboard</b><span>Rates, sessions and context health</span></button>
 
   <footer id="foot"></footer>
 </main>
 
-<section id="dash" class="sheet" role="dialog" aria-modal="true" aria-labelledby="dash-title" aria-hidden="true">
+<section id="page" class="sheet" role="dialog" aria-modal="true" aria-labelledby="page-title" aria-hidden="true">
   <header class="sheethead">
-    <h3 id="dash-title">Usage</h3>
-    <button class="done" id="dash-close">Done</button>
+    <button class="back" id="page-back" aria-label="Back to Overview">‹ Overview</button>
+    <h3 id="page-title"></h3>
   </header>
-  <div class="sheetbody" id="dash-scroll">
-    <div>
-      <div class="ctls">
-        <div class="segs"><div class="seg" id="d-vendor"></div><div class="seg" id="d-days"></div></div>
-        <div class="segs"><div class="seg" id="d-counter"></div><div class="seg" id="d-gap"></div></div>
-      </div>
-      <div id="dash-body"><p class="empty">Loading…</p></div>
-    </div>
-  </div>
+  <div class="sheetbody" id="page-body"></div>
+</section>
+
+<section id="dash" class="sheet" role="dialog" aria-modal="true" aria-labelledby="dash-title" aria-hidden="true">
+  <header class="sheethead"><h3 id="dash-title">Usage dashboard</h3><button class="done" id="dash-close">Done</button></header>
+  <div class="sheetbody"><div><div id="dash-controls"></div><div id="dash-body"><p>Loading…</p></div></div></div>
 </section>
 
 <section id="help" class="sheet" role="dialog" aria-modal="true" aria-labelledby="help-title" aria-hidden="true">
@@ -462,8 +462,6 @@ public enum WebPage {
   }
 
   // ---- Sections ----------------------------------------------------------
-  function isOpen(id) { try { return localStorage.getItem('ullage.open.' + id) === '1'; } catch (e) { return false; } }
-  function remember(id, open) { try { localStorage.setItem('ullage.open.' + id, open ? '1' : '0'); } catch (e) {} }
 
   function rows(list) {
     return list.map(function (r) {
@@ -498,14 +496,126 @@ public enum WebPage {
         (s.canUndo ? ' <button class="linkbtn" data-saver="' + s.id + '" data-action="undo">Undo</button>' : '') + '</div>' : '') +
       '<div class="sub">' + esc(s.line) + '</div>' +
       (s.note ? '<div class="note">' + esc(s.note) + '</div>' : '') +
+      (s.costs || []).map(function (c) {
+        return '<div class="costs"><span class="' + (c.warning ? 'w' : '') + '">' + esc(c.label) + ': ' + esc(c.value) + '</span>' +
+          (c.detail ? ' · ' + esc(c.detail) : '') + '</div>';
+      }).join('') +
+      (s.charts || []).map(chartCard).join('') +
       '</div>';
   }
 
-  function sectionHTML(sec) {
-    var collapsedRule = sec.shares ? sharesBar(sec.shares, 'ln shares') : '<span class="ln"></span>';
-    var body = '';
+  // ---- Before and after: one card per SaverChart ---------------------------
+  // The same palette as SaverChart.lightPalette / darkPalette, by slot.
+  var LIGHT = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+  var DARK = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
+  var openInfo = {};   // card titles whose details are open, kept across polls
+
+  function compact(v) {
+    return v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e4 ? Math.round(v / 1e3) + 'k' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : String(v);
+  }
+  function changeText(b, a) {
+    if (!(b > 0)) return '';
+    var c = Math.round((a - b) / b * 100);
+    return c === 0 ? 'no change' : (c < 0 ? '−' + (-c) : '+' + c) + '%';
+  }
+  function dayIndex(first, key) {
+    return Math.round((Date.parse(key + 'T12:00:00Z') - Date.parse(first + 'T12:00:00Z')) / 864e5);
+  }
+
+  // The tools' total saving: the figure, each tool's share, the overall chart.
+  function savingsBlock(v) {
+    var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+    var widest = Math.max.apply(null, v.tools.map(function (t) { return t.before; }).concat([1]));
+    return '<div class="savings"><div class="sv-k">Saved, ' + esc(v.period) + '</div>' +
+      '<div class="sv-big">' + esc(v.total) + '</div><div class="sv-sub">' + esc(v.sub) + '</div>' +
+      v.tools.map(function (t) {
+        var color = (dark ? DARK : LIGHT)[t.slot % 8];
+        return '<div class="sv-tool"><span class="sv-nm"><i style="background:' + color + '"></i>' + esc(t.name) + '</span>' +
+          '<span class="sv-bars"><i style="width:' + (t.before / widest * 100) + '%;background:' + color + ';opacity:.35"></i>' +
+          '<i style="width:' + (t.after / widest * 100) + '%;background:' + color + '"></i></span>' +
+          '<span class="sv-v">' + esc(t.saved) + '<small>' + esc(t.share) + '</small></span></div>';
+      }).join('') +
+      v.notes.map(function (n) { return '<div class="sv-note">' + esc(n) + '</div>'; }).join('') +
+      chartCard(v.overall).replace('class="scard"', 'class="scard sv-chart"') + '</div>';
+  }
+
+  function chartCard(c) {
+    var dark = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+    var after = c.slot < 0 ? (dark ? '#9aa8b6' : '#52606d') : (dark ? DARK : LIGHT)[c.slot % 8];
+    var open = !!openInfo[c.title];
+    var mark = c.approximate ? '≈' : '';
+    return '<div class="scard" data-card="' + esc(c.title) + '">' +
+      '<div class="sh"><div><div class="st">' + esc(c.title) + '</div><div class="sw">' + esc(c.what) + '</div></div>' +
+      '<button class="si" data-info="' + esc(c.title) + '" aria-expanded="' + open + '" aria-label="About ' + esc(c.title) + '">i</button></div>' +
+      '<div class="sm"' + (open ? '' : ' hidden') + '>' + c.more.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>' +
+      '<div class="stot"><span class="ctot" data-total="' + esc(c.total + '  ' + c.change) + '">' + esc(c.total) + ' <span class="chg">' + esc(c.change) + '</span></span>' +
+      '<span class="lg"><span><i style="background:' + after + ';opacity:.35"></i>' + esc(c.beforeLabel) + '</span>' +
+      '<span><i style="background:' + after + '"></i>' + esc(c.afterLabel) + '</span></span></div>' +
+      chartSVG(c, after, mark) + '</div>';
+  }
+
+  function chartSVG(c, color, mark) {
+    var W = 340, H = c.kind === 'comparison' ? 110 : 140, L = 40, R = 4, T = 6, B = 18;
+    var iw = W - L - R, ih = H - T - B;
+    var max = Math.max.apply(null, c.bars.map(function (b) { return Math.max(b.before, b.after); }).concat([1]));
+    var p = Math.pow(10, Math.floor(Math.log10(max / 3))), step = p;
+    [1, 2, 2.5, 5, 10].some(function (m) { step = m * p; return m * p * 3 >= max; });
+    var ticks = Math.ceil(max / step), top = step * ticks;
+    var y = function (v) { return T + ih - v / top * ih; };
+    var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(c.title) + '">';
+    for (var i = 0; i <= ticks; i++) {
+      var yy = y(step * i);
+      out += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--rule)" stroke-width="1"/>' +
+        '<text x="' + (L - 5) + '" y="' + (yy + 3) + '" text-anchor="end">' + (i ? compact(step * i).replace('.0', '') : '0') + '</text>';
+    }
+    var slots, slotOf;
+    if (c.kind === 'comparison') {
+      slots = 1; slotOf = function () { return 0; };
+    } else {
+      var first = c.firstDay || c.bars[0].key, last = c.lastDay || c.bars[c.bars.length - 1].key;
+      slots = dayIndex(first, last) + 1; slotOf = function (b) { return dayIndex(first, b.key); };
+    }
+    var sw = iw / slots, pair = Math.min(sw * 0.8, c.kind === 'comparison' ? 120 : 40), bw = (pair - 2) / 2;
+    function bar(x, v, fill, opacity) {
+      var y1 = y(v), y0 = y(0), h = Math.max(1, y0 - y1), r = Math.min(3, bw / 2, h);
+      return '<path d="M' + x + ',' + y0 + ' V' + (y1 + r) + ' Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 + ' H' + (x + bw - r) +
+        ' Q' + (x + bw) + ',' + y1 + ' ' + (x + bw) + ',' + (y1 + r) + ' V' + y0 + ' Z" fill="' + fill + '"' + (opacity ? ' fill-opacity="' + opacity + '"' : '') + '/>';
+    }
+    c.bars.forEach(function (b) {
+      var s = slotOf(b), cx = L + (s + 0.5) * sw, x = cx - pair / 2;
+      var detail = (b.label ? b.label + '  ' : '') + mark + b.before.toLocaleString() + ' → ' + mark + b.after.toLocaleString() +
+        '  ' + changeText(b.before, b.after) + (b.count ? ' · ' + b.count + ' ' + (c.countUnit || '') : '');
+      out += '<g data-bar="' + esc(detail) + '">' + bar(x, b.before, color, 0.35) + bar(x + bw + 2, b.after, color) +
+        '<rect x="' + (L + s * sw) + '" y="' + T + '" width="' + sw + '" height="' + ih + '" fill="transparent"/></g>';
+    });
+    if (c.kind === 'comparison') {
+      var cx0 = L + iw / 2;
+      out += '<text x="' + (cx0 - pair / 4) + '" y="' + (H - 4) + '" text-anchor="middle">' + esc(c.beforeLabel) + '</text>' +
+        '<text x="' + (cx0 + pair / 4) + '" y="' + (H - 4) + '" text-anchor="middle">' + esc(c.afterLabel) + '</text>';
+    } else {
+      var every = Math.max(1, Math.ceil(slots / 5));
+      for (var d = 0; d < slots; d += every) {
+        var key = new Date(Date.parse((c.firstDay || c.bars[0].key) + 'T12:00:00Z') + d * 864e5);
+        out += '<text x="' + (L + (d + 0.5) * sw) + '" y="' + (H - 4) + '" text-anchor="middle">' +
+          key.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) + '</text>';
+      }
+    }
+    return out + '</svg>';
+  }
+
+  // A section on the Overview: its name, its one line, a chevron. Tapping
+  // it slides that section's page in, as the window's sidebar opens a page.
+  function navRow(id, title, readout, shares) {
+    return '<button class="navrow" data-page="' + id + '"><span class="nt"><span>' + esc(title) + '</span>' +
+      (shares ? sharesBar(shares, 'ln shares') : '<span class="ln"></span>') + '<span class="chev">›</span></span>' +
+      '<div class="readout num">' + readout + '</div></button>';
+  }
+
+  function pageHTML(sec) {
+    var body = '<div>';
     if (sec.warning) body += '<p class="warning">' + esc(sec.warning) + '</p>';
     if (sec.shares) body += sharesBar(sec.shares, 'bigbar');
+    if (sec.savings) body += savingsBlock(sec.savings);
     if (sec.savers) body += sec.savers.map(saverBlock).join('');
     (sec.groups || []).forEach(function (g) {
       body += '<div class="grp">' + (g.heading ? '<h3>' + esc(g.heading) + '</h3>' : '') + rows(g.rows) + '</div>';
@@ -517,11 +627,65 @@ public enum WebPage {
       }).join('') + '</div>';
     }
     (sec.legend || []).forEach(function (line) { body += '<p class="legend">' + esc(line) + '</p>'; });
-    return '<details data-id="' + sec.id + '"' + (isOpen(sec.id) ? ' open' : '') + '>' +
-      '<summary><div class="rule"><span class="t">' + esc(sec.title) + '</span>' + collapsedRule +
-      '<span class="chev">›</span></div>' +
-      '<div class="readout num">' + readoutLine(sec.summary, sec.dots) + '</div></summary>' +
-      '<div class="body">' + body + '</div></details>';
+    return body + '</div>';
+  }
+
+  function sessionsHTML(snap) {
+    var warn = snap.warningThreshold || 0.85, current = snap.detail && snap.detail.sessionId;
+    return '<div><ol>' + snap.sessions.map(function (s) {
+      var p2 = share(s.occupancy);
+      return '<li data-session="' + esc(s.sessionId) + '"' + (s.sessionId === current ? ' class="on"' : '') + '>' +
+        '<span class="name">' + esc(s.project || '—') + '</span>' +
+        '<span class="share' + (p2 == null ? ' none' : (s.occupancy >= warn ? ' warn' : '')) + '">' + (p2 == null ? '—' : p2 + '%') + '</span>' +
+        (s.path ? '<span class="path">\u200E' + esc(s.path) + '\u200E</span>' : '') +
+        '<span class="sub2">' + esc(s.sessionId.slice(0, 8)) + ' · ' + s.calls + ' turns' +
+          (s.agents ? ' · ' + s.agents + ' agents' : '') + ' · ' + ago(s.ageSeconds) + '</span></li>';
+    }).join('') + '</ol></div>';
+  }
+
+  // The open page, if any: redrawn on every update so it stays live.
+  var openPageId = null;
+  function fillPage() {
+    if (!openPageId || !snapshot) return;
+    if (openPageId === 'sessions') {
+      el('page-title').textContent = 'Sessions';
+      el('page-body').innerHTML = sessionsHTML(snapshot);
+      return;
+    }
+    var sec = snapshot.detail && snapshot.detail.sections.filter(function (x) { return x.id === openPageId; })[0];
+    if (!sec) { hidePage(); return; }
+    el('page-title').textContent = sec.title;
+    el('page-body').innerHTML = pageHTML(sec);
+  }
+  // Each page has its own address (#page=savers) pushed onto the history,
+  // so the phone's back gesture and the browser's Back close it, and a page
+  // can be opened or bookmarked by link.
+  function showPage(id, fromHistory) {
+    if (!fromHistory && openPageId !== id) {
+      try { history.pushState({ page: id }, '', '#page=' + id); } catch (e) {}
+    }
+    openPageId = id;
+    fillPage();
+    el('page-body').scrollTop = 0;
+    var sheet = el('page');
+    sheet.classList.add('open');
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('sheet-open');
+    el('page-back').focus();
+  }
+  function hidePage(fromHistory) {
+    if (!fromHistory && openPageId && history.state && history.state.page) {
+      history.back();   // popstate below finishes the close
+      return;
+    }
+    if (!fromHistory && openPageId) {
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    }
+    openPageId = null;
+    var sheet = el('page');
+    sheet.classList.remove('open');
+    sheet.setAttribute('aria-hidden', 'true');
+    if (!el('help').classList.contains('open')) document.body.classList.remove('sheet-open');
   }
 
   function render(snap) {
@@ -564,6 +728,8 @@ public enum WebPage {
       }
       el('exact').textContent = d.exactLine;
       el('used').textContent = d.usedLine || '';
+      el('notice').hidden = !d.notice;
+      el('notice').textContent = d.notice || '';
       var remote = el('remote');
       remote.hidden = !d.link;
       if (d.link) {
@@ -573,27 +739,13 @@ public enum WebPage {
         if (/^https?:/.test(d.link.url)) remote.target = '_blank'; else remote.removeAttribute('target');
       }
       drawChart(d.chart, warn);
-      el('sections').innerHTML = d.sections.map(sectionHTML).join('');
-      el('sections').querySelectorAll('details').forEach(function (det) {
-        det.addEventListener('toggle', function () { remember(det.dataset.id, det.open); });
-      });
+      el('sections').innerHTML = d.sections.map(function (sec) {
+        return navRow(sec.id, sec.title, readoutLine(sec.summary, sec.dots), sec.shares);
+      }).join('') + navRow('sessions', 'Sessions',
+        esc(snap.sessions.length + ' recent · tap one to look at it'), null);
     }
 
-    var list = el('sessions');
-    list.innerHTML = '';
-    snap.sessions.forEach(function (s) {
-      var p2 = share(s.occupancy);
-      var li = document.createElement('li');
-      if (d && s.sessionId === d.sessionId) li.className = 'on';
-      li.innerHTML =
-        '<span class="name">' + esc(s.project || '—') + '</span>' +
-        '<span class="share' + (p2 == null ? ' none' : (s.occupancy >= warn ? ' warn' : '')) + '">' + (p2 == null ? '—' : p2 + '%') + '</span>' +
-        (s.path ? '<span class="path">\u200E' + esc(s.path) + '\u200E</span>' : '') +
-        '<span class="sub2">' + esc(s.sessionId.slice(0, 8)) + ' · ' + s.calls + ' turns' +
-          (s.agents ? ' · ' + s.agents + ' agents' : '') + ' · ' + ago(s.ageSeconds) + '</span>';
-      li.onclick = function () { choose(s.sessionId); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-      list.appendChild(li);
-    });
+    fillPage();
     el('foot').textContent = 'updated ' + new Date().toLocaleTimeString();
   }
 
@@ -687,16 +839,44 @@ public enum WebPage {
     var sheet = el('help');
     sheet.classList.remove('open');
     sheet.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('sheet-open');
+    if (!openPageId) document.body.classList.remove('sheet-open');
     el('explain').focus();
   }
   el('explain').addEventListener('click', showHelp);
   el('help-close').addEventListener('click', hideHelp);
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && el('help').classList.contains('open')) hideHelp();
+    if (e.key !== 'Escape') return;
+    if (el('help').classList.contains('open')) hideHelp(); else if (dashOpen()) hideDash(); else if (openPageId) hidePage();
   });
 
   el('sections').addEventListener('click', function (e) {
+    var row = e.target.closest('.navrow');
+    if (row) showPage(row.dataset.page);
+  });
+  el('page-back').addEventListener('click', function () { hidePage(); });
+  window.addEventListener('popstate', function (e) {
+    var id = e.state && e.state.page;
+    if (id) showPage(id, true); else if (openPageId) hidePage(true);
+  });
+  var deepLink = (location.hash.match(/^#page=([a-z]+)$/) || [])[1];
+  el('page-body').addEventListener('click', function (e) {
+    // Tap a day: its numbers replace the card's total until tapped again.
+    var g = e.target.closest('g[data-bar]');
+    if (g) {
+      var total = g.closest('.scard').querySelector('.ctot');
+      total.textContent = total.textContent.indexOf(g.dataset.bar) === 0 ? total.dataset.total : g.dataset.bar;
+      return;
+    }
+    var info = e.target.closest('button[data-info]');
+    if (info) {
+      var title = info.dataset.info, opening = info.getAttribute('aria-expanded') !== 'true';
+      if (opening) openInfo[title] = true; else delete openInfo[title];
+      info.setAttribute('aria-expanded', String(opening));
+      info.closest('.scard').querySelector('.sm').hidden = !opening;
+      return;
+    }
+    var li = e.target.closest('li[data-session]');
+    if (li) { choose(li.dataset.session); hidePage(); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     var b = e.target.closest('button');
     if (!b) return;
     e.preventDefault(); e.stopPropagation();
@@ -704,211 +884,48 @@ public enum WebPage {
     if (b.dataset.saver) { act(b.dataset.saver, b.dataset.action); }
   });
 
-  // ---- Usage dashboard ----------------------------------------------------
-  // Its own sheet over the gauge. Every figure, label and ranking arrives
-  // decided and formatted in dashboard.json (ServeDashboard, from the same
-  // UsageDashboard as the Mac window); this only lays them out and draws
-  // two charts from the numbers it was given.
-
-  var DASH = { vendor: 'claude-code', counter: 'output', days: '30', gap: '30', tab: 'weekly', rank: 'total', more: false };
-  try { var savedDash = JSON.parse(localStorage.getItem('ullage.dash') || '{}'); for (var k in savedDash) DASH[k] = savedDash[k]; } catch (e) {}
-  function saveDash() { try { localStorage.setItem('ullage.dash', JSON.stringify(DASH)); } catch (e) {} }
-  var dashData = null, dashSeq = 0, dashTimer = null;
-  var TABS = [['weekly', 'Weekly'], ['sessions', 'Sessions'], ['context', 'Context'], ['projects', 'Projects'], ['tools', 'Tools']];
-
-  function segHTML(choices, key, label, disabled) {
-    return (label ? '<span class="lbl">' + esc(label) + '</span>' : '') + choices.map(function (c) {
-      return '<button type="button" data-key="' + key + '" data-v="' + esc(c.id) + '" aria-pressed="' + (DASH[key] === c.id) + '"' +
-        (disabled ? ' disabled' : '') + '>' + esc(c.label) + '</button>';
-    }).join('');
+  // ---- Usage dashboard --------------------------------------------------
+  // The Mac window and this sheet receive the same already-formatted model
+  // from Core. The page only chooses the view and renders its rows.
+  var DASH = { vendor: 'claude-code', counter: 'output', days: '30', gap: '30', tab: 'weekly' }, dashData = null;
+  var DASH_TABS = [['weekly', 'Weekly'], ['sessions', 'Sessions'], ['context', 'Context'], ['projects', 'Projects'], ['tools', 'Tools']];
+  try { var rememberedDash = JSON.parse(localStorage.getItem('ullage.dashboard') || '{}'); Object.keys(DASH).forEach(function (k) { if (rememberedDash[k]) DASH[k] = rememberedDash[k]; }); } catch (e) {}
+  function saveDash() { try { localStorage.setItem('ullage.dashboard', JSON.stringify(DASH)); } catch (e) {} }
+  function dashSelect(name, label, choices, value, disabled) {
+    return '<label>' + esc(label) + '<select data-dash="' + name + '"' + (disabled ? ' disabled' : '') + '>' + choices.map(function (c) {
+      return '<option value="' + esc(c.id) + '"' + (c.id === value ? ' selected' : '') + '>' + esc(c.label) + '</option>';
+    }).join('') + '</select></label>';
   }
-
-  function tileHTML(t) {
-    return '<div class="tile"><span class="k">' + esc(t.title) + '</span><span class="v">' + esc(t.value) + '</span>' +
-      '<span class="s">' + esc(t.detail) + '</span>' +
-      (t.change ? '<span class="c"><b class="' + esc(t.direction) + '">' + esc(t.change) + '</b> ' + esc(t.caption) + '</span>' : '') +
-      (t.why ? '<span class="why">' + esc(t.why) + '</span>' : '') + '</div>';
-  }
-
-  function niceTop(v) {
-    if (!(v > 0)) return 1;
-    var e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e;
-    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e;
-  }
-
-  // Weekly bars, one scale; the rate gets a chart of its own rather than a
-  // second axis on this one.
-  function barsSVG(values, labels, color, fmt, height) {
-    var W = 340, H = height || 150, pl = 34, pb = 18, pt = 12, iw = W - pl - 4, ih = H - pt - pb;
-    var top = niceTop(Math.max.apply(null, values.concat([0])));
-    var bw = iw / Math.max(values.length, 1), g = '';
-    for (var i = 0; i <= 2; i++) {
-      var y = pt + ih - ih * i / 2;
-      g += '<line x1="' + pl + '" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--rule)"/>' +
-        '<text x="' + (pl - 4) + '" y="' + (y + 3) + '" text-anchor="end">' + fmt(top * i / 2) + '</text>';
+  function dashTile(t) { return '<div class="dashtile"><small>' + esc(t.title) + '</small><b>' + esc(t.value) + '</b><small>' + esc(t.detail) + '</small>' + (t.change ? '<small>' + esc(t.change + ' ' + t.caption) + '</small>' : '') + '</div>'; }
+  function dashRow(r) { return '<div class="row"><span class="l">' + esc(r.name || r.label) + '</span><span class="v">' + esc(r.value || r.total || '') + '</span><span class="d">' + esc(r.line || r.active || '') + '</span></div>'; }
+  function dashPane(d) {
+    if (DASH.tab === 'weekly') return d.weeks.length ? d.weeks.map(function (w) { return dashRow({ name: w.label, value: String(w.total), active: w.sessions + ' sessions · ' + w.active }); }).join('') : '<p>No sessions in this range.</p>';
+    if (DASH.tab === 'sessions') {
+      if (!d.measured) return '<p>This harness reports no tokens to rank by.</p>';
+      var ranking = d.rankings.total;
+      return '<h4>Highest total</h4>' + ranking.highest.map(dashRow).join('') + '<h4>Lowest total</h4>' + ranking.lowest.map(dashRow).join('');
     }
-    values.forEach(function (v, i) {
-      var h = ih * v / top;
-      g += '<rect x="' + (pl + i * bw + bw * .15).toFixed(1) + '" y="' + (pt + ih - h).toFixed(1) + '" width="' + Math.max(1, bw * .7).toFixed(1) +
-        '" height="' + h.toFixed(1) + '" rx="2" fill="' + color + '"' + (i === values.length - 1 ? '' : ' opacity=".6"') + '/>';
-    });
-    var step = Math.ceil(labels.length / 5);
-    labels.forEach(function (l, i) {
-      if (i % step === 0 || i === labels.length - 1) g += '<text x="' + (pl + i * bw + bw / 2).toFixed(1) + '" y="' + (H - 4) + '" text-anchor="middle">' + esc(l) + '</text>';
-    });
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' + g + '</svg>';
+    if (DASH.tab === 'context') return d.health ? d.health.facts.map(dashRow).join('') + (d.health.hotText ? '<p>' + esc(d.health.hotText) + '</p>' : '') : '<p>No measured windows in this range.</p>';
+    if (DASH.tab === 'projects') return '<h4>Projects</h4>' + d.projects.map(dashRow).join('') + '<h4>Models</h4>' + d.models.map(dashRow).join('');
+    return d.tools.length ? d.tools.map(dashRow).join('') : '<p>No tool results in this range.</p>';
   }
-
-  function lineSVG(values, labels, color, fmt) {
-    var W = 340, H = 120, pl = 34, pb = 18, pt = 10, iw = W - pl - 8, ih = H - pt - pb;
-    var real = values.filter(function (v) { return v != null; });
-    if (!real.length) return '<p class="note">No week had 10 active minutes.</p>';
-    var top = niceTop(Math.max.apply(null, real)), n = values.length, g = '', d = '', pen = false;
-    var x = function (i) { return pl + (n > 1 ? i * iw / (n - 1) : iw / 2); };
-    for (var i = 0; i <= 2; i++) {
-      var y = pt + ih - ih * i / 2;
-      g += '<line x1="' + pl + '" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--rule)"/>' +
-        '<text x="' + (pl - 4) + '" y="' + (y + 3) + '" text-anchor="end">' + fmt(top * i / 2) + '</text>';
-    }
-    values.forEach(function (v, i) {
-      if (v == null) { pen = false; return; }
-      d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + (pt + ih - ih * v / top).toFixed(1); pen = true;
-    });
-    g += '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="2"/>';
-    values.forEach(function (v, i) {
-      if (v != null) g += '<circle cx="' + x(i).toFixed(1) + '" cy="' + (pt + ih - ih * v / top).toFixed(1) + '" r="' + (i === n - 1 ? 3.5 : 2.2) + '" fill="' + color + '"/>';
-    });
-    var step = Math.ceil(labels.length / 5);
-    labels.forEach(function (l, i) {
-      // The ends sit on the plot's edges, so their labels hang inward.
-      var anchor = n > 1 && i === n - 1 ? 'end' : i === 0 && n > 1 ? 'start' : 'middle';
-      if (i % step === 0 || i === labels.length - 1) g += '<text x="' + x(i).toFixed(1) + '" y="' + (H - 4) + '" text-anchor="' + anchor + '">' + esc(l) + '</text>';
-    });
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' + g + '</svg>';
-  }
-
-  function rowHTML(r, extra) {
-    return '<div class="row"><span class="l">' + esc(r.name) + (extra || '') + '</span><span class="v">' + esc(r.value) + '</span>' +
-      '<span class="d">' + esc(r.line) + '</span><span class="bar"><i style="width:' + Math.max(1, Math.round(r.share * 100)) + '%"></i></span></div>';
-  }
-
-  function paneHTML(d) {
-    var counterFmt = function (v) { return compact(Math.round(v)); };
-    switch (DASH.tab) {
-      case 'weekly':
-        if (!d.weeks.length) return '<p class="empty">No sessions in this range.</p>';
-        var labels = d.weeks.map(function (w) { return w.label; });
-        return '<h4>' + esc(d.weeksTitle) + '</h4>' + barsSVG(d.weeks.map(function (w) { return w.total; }), labels, 'var(--accent)', counterFmt) +
-          (d.rateTitle ? '<h4>' + esc(d.rateTitle) + '</h4>' + lineSVG(d.weeks.map(function (w) { return w.perHour; }), labels, 'var(--c-output)', counterFmt) +
-            '<p class="note">A week with under 10 active minutes has no rate.</p>' : '');
-      case 'sessions':
-        if (!d.measured) return '<p class="empty">This harness reports no tokens to rank by.</p>';
-        var r = d.rankings[DASH.rank];
-        var list = function (rows) {
-          return rows.length ? rows.map(function (s) {
-            return rowHTML({ name: s.project, value: s.value, line: s.line + ' · ' + s.id.slice(0, 8), share: s.share },
-              '<span class="pill' + (s.hot ? ' hot' : '') + '">' + esc(s.peak) + '</span>');
-          }).join('') : '<p class="empty">No sessions in this range.</p>';
-        };
-        return '<div class="seg" style="margin-bottom:8px">' + segHTML([{ id: 'total', label: 'Total' }, { id: 'perHour', label: 'Per active hour' }], 'rank') + '</div>' +
-          '<p class="note" style="margin:0 0 4px">' + d.eligible + ' sessions with 10+ active minutes. The pill is the fullest the window got.</p>' +
-          '<h4>Highest ' + esc(r.title.toLowerCase()) + '</h4>' + list(r.highest) +
-          '<h4>Lowest</h4>' + list(r.lowest) +
-          '<h4>Session size · ' + esc(d.sizeTitle) + '</h4>' +
-          (d.sizeBands.length ? barsSVG(d.sizeBands.map(function (b) { return b.sessions; }), d.sizeBands.map(function (b) { return b.label; }), 'var(--c-tools)', function (v) { return String(Math.round(v)); }, 130) : '');
-      case 'context':
-        if (!d.health) return '<p class="empty">No measured windows in this range.</p>';
-        var h = d.health;
-        return '<h4>Main thread only</h4>' + h.facts.map(function (f) {
-          return '<div class="row"><span class="l">' + esc(f.label) + '</span><span class="v">' + esc(f.value) + '</span></div>';
-        }).join('') + (h.hotShare != null ? '<h4>Turns by how full the window was</h4><div class="meter"><i style="width:' + ((1 - h.hotShare) * 100).toFixed(1) +
-          '%;background:var(--fill);opacity:.5"></i><i style="width:' + (h.hotShare * 100).toFixed(1) + '%;background:var(--warn)"></i></div><p class="note">' + esc(h.hotText) + '</p>' : '');
-      case 'projects':
-        return '<h4>By project</h4>' + (d.projects.length ? d.projects.map(function (r) { return rowHTML(r); }).join('') : '<p class="empty">No sessions in this range.</p>') +
-          '<h4>By model</h4>' + (d.models.length ? d.models.map(function (r) { return rowHTML(r); }).join('') : '<p class="empty">No sessions in this range.</p>');
-      case 'tools':
-        return '<h4>Where context comes from<span class="est">≈ ESTIMATE</span></h4>' +
-          (d.tools.length ? d.tools.map(function (r) { return rowHTML(r); }).join('') : '<p class="empty">No tool results in this range.</p>') +
-          '<p class="note">Tool result size is a length estimate (about 4 bytes per token), not a token count.</p>';
-    }
-    return '';
-  }
-
   function renderDash() {
-    var d = dashData;
-    if (!d) return;
-    el('dash-body').style.opacity = '';
-    var o = d.options;
-    el('d-vendor').innerHTML = segHTML(o.vendors, 'vendor');
-    el('d-days').innerHTML = segHTML(o.ranges, 'days');
-    el('d-counter').innerHTML = segHTML(o.counters, 'counter', null, !d.measured);
-    el('d-gap').innerHTML = segHTML(o.gaps, 'gap', 'Idle');
-    var html = '<div class="tiles key">' + d.keyTiles.map(tileHTML).join('') + '</div>';
-    if (d.moreTiles.length) {
-      html += '<details class="moretiles"' + (DASH.more ? ' open' : '') + '><summary>Show all metrics (' + d.moreTiles.length + ' more)</summary>' +
-        '<div class="tiles more">' + d.moreTiles.map(tileHTML).join('') + '</div></details>';
-    }
-    html += '<div class="tabs" role="tablist">' + TABS.map(function (t) {
-      return '<button role="tab" data-tab="' + t[0] + '" aria-selected="' + (DASH.tab === t[0]) + '">' + t[1] + '</button>';
-    }).join('') + '</div><div class="pane" role="tabpanel">' + paneHTML(d) + '</div>' +
-      '<p class="legend">' + esc(d.footnote) + '</p>';
-    el('dash-body').innerHTML = html;
-    var more = el('dash-body').querySelector('details.moretiles');
-    if (more) more.addEventListener('toggle', function () { DASH.more = more.open; saveDash(); });
+    if (!dashData) return;
+    var d = dashData, o = d.options;
+    el('dash-controls').innerHTML = dashSelect('vendor', 'Harness', o.vendors, o.vendor) + dashSelect('days', 'Range', o.ranges, o.days) + dashSelect('counter', 'Counter', o.counters, o.counter, !d.measured) + dashSelect('gap', 'Idle gap', o.gaps, o.gap);
+    el('dash-body').innerHTML = '<div class="dashtiles">' + d.keyTiles.map(dashTile).join('') + '</div>' + (d.moreTiles.length ? '<details><summary>More metrics</summary><div class="dashtiles">' + d.moreTiles.map(dashTile).join('') + '</div></details>' : '') + '<div id="dash-tabs" role="tablist">' + DASH_TABS.map(function (t) { return '<button data-tab="' + t[0] + '" role="tab" aria-selected="' + (DASH.tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div><div id="dash-list">' + dashPane(d) + '</div><p>' + esc(d.footnote) + '</p>';
   }
-
   function loadDash() {
-    var seq = ++dashSeq;
-    var q = 'dashboard.json?vendor=' + encodeURIComponent(DASH.vendor) + '&counter=' + encodeURIComponent(DASH.counter) +
-      '&days=' + encodeURIComponent(DASH.days) + '&gap=' + encodeURIComponent(DASH.gap);
-    fetch(q, { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function (d) { if (seq !== dashSeq) return; dashData = d; renderDash(); })
-      .catch(function () {
-        if (seq !== dashSeq) return;
-        el('dash-body').style.opacity = '';
-        if (!dashData) el('dash-body').innerHTML = '<p class="empty">Not reachable. Is the Mac awake?</p>';
-      });
+    var q = 'dashboard.json?vendor=' + encodeURIComponent(DASH.vendor) + '&counter=' + encodeURIComponent(DASH.counter) + '&days=' + encodeURIComponent(DASH.days) + '&gap=' + encodeURIComponent(DASH.gap);
+    fetch(q, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error(); return r.json(); }).then(function (d) { dashData = d; renderDash(); }).catch(function () { if (!dashData) el('dash-body').innerHTML = '<p>Dashboard unavailable. Is the Mac awake?</p>'; });
   }
-
   function dashOpen() { return el('dash').classList.contains('open'); }
-  function showDash() {
-    var sheet = el('dash');
-    sheet.classList.add('open');
-    sheet.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('sheet-open');
-    try { history.replaceState(null, '', location.pathname + location.search + '#dashboard'); } catch (e) {}
-    loadDash();
-    clearInterval(dashTimer);
-    dashTimer = setInterval(function () { if (document.visibilityState === 'visible' && dashOpen()) loadDash(); }, 60000);
-    el('dash-close').focus();
-  }
-  function hideDash() {
-    var sheet = el('dash');
-    sheet.classList.remove('open');
-    sheet.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('sheet-open');
-    clearInterval(dashTimer);
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
-    el('open-dash').focus();
-  }
+  function showDash() { el('dash').classList.add('open'); el('dash').setAttribute('aria-hidden', 'false'); document.body.classList.add('sheet-open'); loadDash(); el('dash-close').focus(); }
+  function hideDash() { el('dash').classList.remove('open'); el('dash').setAttribute('aria-hidden', 'true'); if (!openPageId && !el('help').classList.contains('open')) document.body.classList.remove('sheet-open'); el('open-dash').focus(); }
   el('open-dash').addEventListener('click', showDash);
   el('dash-close').addEventListener('click', hideDash);
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && dashOpen()) hideDash(); });
-  el('dash').addEventListener('click', function (e) {
-    var b = e.target.closest('button');
-    if (!b || b.disabled) return;
-    if (b.dataset.tab) { DASH.tab = b.dataset.tab; saveDash(); renderDash(); return; }
-    if (b.dataset.key) {
-      var key = b.dataset.key;
-      if (DASH[key] === b.dataset.v) return;
-      DASH[key] = b.dataset.v; saveDash();
-      if (key === 'rank') { renderDash(); return; }
-      el('dash-body').style.opacity = '.5';
-      loadDash();
-    }
-  });
-  // Opened straight from a bookmark or the home screen: ullage…/#dashboard.
+  el('dash-controls').addEventListener('change', function (e) { if (e.target.dataset.dash) { DASH[e.target.dataset.dash] = e.target.value; saveDash(); loadDash(); } });
+  el('dash-body').addEventListener('click', function (e) { var b = e.target.closest('button[data-tab]'); if (b) { DASH.tab = b.dataset.tab; saveDash(); renderDash(); } });
   if (location.hash === '#dashboard') showDash();
 
   // ---- Polling -----------------------------------------------------------
@@ -938,6 +955,7 @@ public enum WebPage {
         var snap = JSON.parse(text);
         if (chosen && snap.detail && snap.detail.sessionId !== chosen) { chosen = null; }
         render(snap);
+        if (deepLink) { var id = deepLink; deepLink = null; showPage(id, true); }
       })
       .catch(function () {
         if (seq !== fetchSeq) return;

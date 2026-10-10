@@ -37,7 +37,11 @@ Also observed, no change needed:
   upsert collapses them: 41,437 parsed lines became 15,068 `call` rows.
 - `usage` also carries `cache_creation.ephemeral_1h_input_tokens` /
   `ephemeral_5m_input_tokens`, `iterations[]`, `speed`, `inference_geo`, and
-  `server_tool_use.web_fetch_requests`. None are stored yet.
+  `server_tool_use.web_fetch_requests`. **Parser v9** stores the cache split
+  as `cache_ttl` (`1h` when any one-hour write, else `5m`, else NULL) and the
+  line's `version` as `harness_version`, so a rebuild after a short break on a
+  five-minute cache, or across an update, is named rather than unknown. The
+  rest are not stored.
 - Line types seen that the parser skips: `attachment`, `permission-mode`,
   `mode`, `bridge-session`, `atis-latch`, `last-prompt`, `ai-title`,
   `custom-title`, `agent-name`, `pr-link`, `frame-link`, `queue-operation`,
@@ -329,6 +333,16 @@ written as its own line, `type: "attachment"`:
   "not in PATH" on stderr as a failure.
 - Stored as `event` rows of kind `hook`; the detail keeps the command, ids, exit
   code, rewrite and the first 300 bytes of stderr, never stdout.
+- **Parser v8:** what a hook *added to the context* is kept as a size,
+  `injected` (bytes): `hookSpecificOutput.additionalContext` when stdout is
+  JSON, or the whole stdout of a `SessionStart` / `UserPromptSubmit` hook, which
+  Claude Code adds to the context as is. Other events' plain stdout is not
+  context. This is how a memory tool (claude-mem's SessionStart `context` hook)
+  is measured. The text itself is never stored.
+- MCP servers a plugin ships are named `plugin_<plugin>_<server>`, so tools
+  appear as `mcp__plugin_claude-mem_mcp-search__search`. Inferred from Claude
+  Code's naming, not yet seen on this machine; descriptors match unanchored for
+  that reason.
 
 A slash command is a `type: "user"` line whose content *starts* with the tags:
 

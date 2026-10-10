@@ -137,7 +137,61 @@ public struct SaverSwitchboard {
         return change
     }
 
+    /// Everything this saver adds to Claude Code, switched on or parked, with
+    /// plugin keys resolved to their newest cached version. The benchmark
+    /// (`scripts/bench-savers`) loads exactly this into a session that
+    /// ignores the user's own config, so each tool is measured alone.
+    public func wiring(of saver: TokenSaver) -> [String: Any] {
+        let settings = (try? readObject(settingsURL)) ?? [:]
+        let claudeJSON = (try? readObject(claudeJSONURL)) ?? [:]
+        var result = Self.wiring(of: saver, settings: settings, claudeJSON: claudeJSON, parked: readParked()[saver])
+        let cache = settingsURL.deletingLastPathComponent().appendingPathComponent("plugins/cache")
+        result["plugins"] = (result["plugins"] as? [String] ?? []).compactMap { key -> String? in
+            let parts = key.split(separator: "@", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return nil }
+            let dir = cache.appendingPathComponent(parts[1]).appendingPathComponent(parts[0])
+            let versions = (try? fileManager.contentsOfDirectory(atPath: dir.path)) ?? []
+            return versions.max(by: { $0.compare($1, options: .numeric) == .orderedAscending })
+                .map { dir.appendingPathComponent($0).path }
+        }
+        return result
+    }
+
     // MARK: - Pure transforms (tested without touching disk)
+
+    /// `{"hooks": {event: [{matcher?, hooks: [hook]}]}, "mcp": {name: config},
+    /// "plugins": [key]}`. A tool switched off contributes its parked copy;
+    /// a plugin counts whether its flag is true or false.
+    static func wiring(of saver: TokenSaver, settings: [String: Any], claudeJSON: [String: Any], parked: ParkedSaver?) -> [String: Any] {
+        var hooks: [String: [Any]] = [:]
+        for (event, value) in settings["hooks"] as? [String: Any] ?? [:] {
+            for entry in (value as? [Any] ?? []).compactMap(JSONAccess.object) {
+                let mine = (entry["hooks"] as? [Any] ?? []).compactMap(JSONAccess.object)
+                    .filter { commandOf($0).map(saver.matches(hookCommand:)) ?? false }
+                guard !mine.isEmpty else { continue }
+                var group: [String: Any] = ["hooks": mine]
+                group["matcher"] = entry["matcher"]
+                hooks[event, default: []].append(group)
+            }
+        }
+        var mcp: [String: Any] = [:]
+        for object in [settings, claudeJSON] {
+            let servers = object["mcpServers"] as? [String: Any] ?? [:]
+            for name in mcpNames(saver, in: object) { mcp[name] = servers[name] }
+        }
+        if let parked {
+            for hook in parked.hooks {
+                var group: [String: Any] = ["hooks": [decode(hook.hookJSON) ?? [:]]]
+                group["matcher"] = hook.matcher
+                hooks[hook.event, default: []].append(group)
+            }
+            for (name, json) in parked.settingsMcp.merging(parked.claudeJSONMcp, uniquingKeysWith: { a, _ in a }) {
+                mcp[name] = decode(json) ?? [:]
+            }
+        }
+        let plugins = (settings["enabledPlugins"] as? [String: Any] ?? [:]).keys.filter(saver.matches(pluginKey:)).sorted()
+        return ["hooks": hooks, "mcp": mcp, "plugins": plugins]
+    }
 
     public static func state(
         of saver: TokenSaver, settings: [String: Any], claudeJSON: [String: Any], parked: ParkedSaver?

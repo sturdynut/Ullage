@@ -34,7 +34,8 @@ public final class SaverControl {
     private var undo: [TokenSaver: (previous: Bool, at: Date)] = [:]
     private var runs: [TokenSaver: (plan: InstallPlan, marker: URL, started: Date)] = [:]
     private var cached: (at: Date, states: [TokenSaver: SaverSwitchState], installed: Set<TokenSaver>, ledger: [LedgerEntry])?
-    private var comparison: (at: Date, cwd: String, value: OutputComparison?)?
+    private var comparison: (at: Date, cwd: String, value: [TokenSaver: OutputComparison])?
+    private var detailCache: [String: (ledgerAt: Date, value: [TokenSaver: SaverDetail])] = [:]
 
     public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         let board = SaverSwitchboard(environment: environment)
@@ -44,6 +45,34 @@ public final class SaverControl {
 
     // MARK: - Reading
 
+    /// Each tool's last 7 days, anchored on the session shown, for the
+    /// phone's charts. It reads a week of sessions and up to 30 days for the
+    /// comparisons, so it is kept per session for as long as the ledger it
+    /// was built from — the same one `panel` shows, so a row's metric and
+    /// its charts can't drift apart.
+    public func details(store: Store, sessionId: String?, now: Date = Date()) throws -> [TokenSaver: SaverDetail] {
+        guard let sessionId else { return [:] }
+        lock.lock()
+        let snapshot = cached.map { ($0.at, $0.ledger) }
+        detailCache = detailCache.filter { $0.value.ledgerAt == snapshot?.0 }
+        if let hit = detailCache[sessionId], snapshot != nil {
+            lock.unlock()
+            return hit.value
+        }
+        lock.unlock()
+        // Outside the lock: reading a ledger can take a moment, and switches
+        // and Undo shouldn't wait on it.
+        let ledger = snapshot?.1 ?? store.ledger(since: now.addingTimeInterval(-31 * 86_400))
+        let details = try store.saverDetails(range: .week, sessionId: sessionId, ledger: ledger, now: now)
+        let value = Dictionary(uniqueKeysWithValues: details.map { ($0.saver, $0) })
+        if let at = snapshot?.0 {
+            lock.lock()
+            detailCache[sessionId] = (at, value)
+            lock.unlock()
+        }
+        return value
+    }
+
     public func panel(store: Store, sessionId: String?, now: Date = Date()) throws -> SaverPanel {
         lock.lock()
         defer { lock.unlock() }
@@ -51,21 +80,21 @@ public final class SaverControl {
         if cached.map({ now.timeIntervalSince($0.at) > Self.cacheLifetime }) ?? true {
             cached = (now, switchboard.states(),
                       Set(TokenSaver.allCases.filter { installer.installation(of: $0).isInstalled }),
-                      SaverLedgers.load(since: now.addingTimeInterval(-31 * 86_400)))
+                      store.ledger(since: now.addingTimeInterval(-31 * 86_400)))
         }
         let report = try sessionId.map { try store.saverReport(sessionId: $0, ledger: cached?.ledger ?? []) }
-        var outputComparison: OutputComparison?
+        var outputComparisons: [TokenSaver: OutputComparison] = [:]
         if let cwd = report?.cwd {
             if let c = comparison, c.cwd == cwd, now.timeIntervalSince(c.at) < Self.cacheLifetime * 5 {
-                outputComparison = c.value
+                outputComparisons = c.value
             } else {
-                outputComparison = try store.outputComparison(cwd: cwd, since: Timestamps.string(from: now.addingTimeInterval(-30 * 86_400)))
-                comparison = (now, cwd, outputComparison)
+                outputComparisons = try store.outputComparisons(cwd: cwd, since: Timestamps.string(from: now.addingTimeInterval(-30 * 86_400)))
+                comparison = (now, cwd, outputComparisons)
             }
         }
         notes = notes.filter { now.timeIntervalSince($0.value.at) < Self.noteLifetime || runs[$0.key] != nil }
         undo = undo.filter { now.timeIntervalSince($0.value.at) < Self.noteLifetime }
-        return SaverPanel.build(report: report, states: cached?.states ?? [:], comparison: outputComparison,
+        return SaverPanel.build(report: report, states: cached?.states ?? [:], comparisons: outputComparisons,
                                 installed: cached?.installed ?? [],
                                 pending: notes.mapValues(\.text), undoable: Set(undo.keys))
     }
@@ -129,7 +158,7 @@ public final class SaverControl {
         for (saver, run) in runs {
             if let status = SaverInstaller.finishedStatus(marker: run.marker) {
                 try? FileManager.default.removeItem(at: run.marker)
-                notes[saver] = (SaverInstaller.outcome(of: run.plan, status: status), now)
+                notes[saver] = (SaverInstaller.outcome(of: run.plan, status: status, after: switchboard.state(of: saver)), now)
                 runs[saver] = nil
                 cached = nil
             } else if now.timeIntervalSince(run.started) > 30 * 60 {

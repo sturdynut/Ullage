@@ -18,14 +18,33 @@ public struct SaverUsage: Equatable {
     /// Named in the session's MCP config when Ullage snapshotted it.
     public var mcpConfigured = false
     public var mcpCalls = 0
+    /// Length estimate of what its MCP tools returned (~4 bytes/token, rule 6).
+    public var mcpResultTokens = 0
+    /// Bash calls that ran its command (`codegraph explore …`).
+    public var bashRuns = 0
+    /// Bash calls from its first hook run on: the ones it could have
+    /// rewritten. Claude Code records a hook only when it changed something,
+    /// so the calls it let through leave no trace of their own; counting from
+    /// its first run keeps a session it was installed partway into fair.
+    public var bashCallsSeen = 0
+    /// Bytes its hooks added to the context (claude-mem's SessionStart memory).
+    public var injectedBytes = 0
     /// Skill-tool calls and slash commands (caveman).
     public var invocations = 0
     public var ledger: LedgerMatch?
+    /// The ledger rows behind `ledger`, so a range can count each once and
+    /// place each on the Bash call it names.
+    public var ledgerEntries: [LedgerEntry] = []
 
     public init(saver: TokenSaver) { self.saver = saver }
 
-    /// Left any trace of running in this session.
-    public var ran: Bool { hookRuns > 0 || mcpCalls > 0 || invocations > 0 }
+    /// Left any trace of running in this session. A ledger row counts when
+    /// it names this session or was matched to one of its turns; a row
+    /// matched only by folder and time could be another session's.
+    public var ran: Bool {
+        hookRuns > 0 || mcpCalls > 0 || invocations > 0 || bashRuns > 0
+            || ledgerEntries.contains { $0.sessionId != nil || $0.cwd == nil }
+    }
     /// Loaded but never used: configured MCP server with no calls.
     public var idle: Bool { !ran && mcpConfigured }
     /// Every run failed — installed in config, missing on disk.
@@ -63,9 +82,11 @@ public struct SaverSessionReport: Equatable {
     public var bashCalls: Int
     /// One per saver, in `TokenSaver.allCases` order, so rows never swap.
     public var usages: [SaverUsage]
-    /// Bash calls that went through both rtk's and Tokenade's hooks. Each
-    /// tool claims the whole saving on those, so the two ledgers overlap.
+    /// Bash calls that went through two output filters' hooks. Each tool
+    /// claims the whole saving on those, so the two ledgers overlap.
     public var doubleHookedCalls: Int
+    /// The output filters those doubled calls went through.
+    public var overlapping: [TokenSaver] = []
 
     public func usage(_ saver: TokenSaver) -> SaverUsage {
         usages.first { $0.saver == saver } ?? SaverUsage(saver: saver)
@@ -79,6 +100,9 @@ public enum SaverReport {
     /// Slack either side of the session's turns when matching a ledger: a hook
     /// fires before the tool it rewrites, and the turn is stamped after.
     public static let ledgerSlack: TimeInterval = 120
+    /// A proxy's row is stamped when the request went through, a few seconds
+    /// either side of the turn Claude Code recorded for it.
+    public static let requestSlack: TimeInterval = 30
 
     public static func build(
         sessionId: String,
@@ -90,17 +114,22 @@ public enum SaverReport {
     ) -> SaverSessionReport {
         var usages = Dictionary(uniqueKeysWithValues: TokenSaver.allCases.map { ($0, SaverUsage(saver: $0)) })
         var hookedBy: [String: Set<TokenSaver>] = [:]
+        var firstRun: [TokenSaver: String] = [:]
 
         for event in events where event.kind == EventKind.hook.rawValue {
             guard let run = HookRun(detail: event.detail),
                   let saver = TokenSaver.saver(forHookCommand: run.command) else { continue }
             usages[saver]?.hookRuns += 1
+            if run.hookEvent == "PreToolUse", firstRun[saver].map({ event.ts < $0 }) ?? true { firstRun[saver] = event.ts }
             if let rewrite = run.rewrittenCommand, !rewrite.isEmpty {
                 usages[saver]?.rewrites += 1
             }
             if run.failed {
                 usages[saver]?.failedRuns += 1
                 usages[saver]?.failureMessage = run.stderr.map { String($0.prefix(160)) } ?? "exited \(run.exitCode ?? -1)"
+            }
+            if let injected = run.injectedBytes, !run.failed {
+                usages[saver]?.injectedBytes += injected
             }
             if let toolUseId = run.toolUseId, run.hookEvent == "PreToolUse" {
                 hookedBy[toolUseId, default: []].insert(saver)
@@ -121,6 +150,13 @@ public enum SaverReport {
             if let server = tool.mcpServer {
                 for saver in TokenSaver.allCases where saver.matches(mcpServer: server) {
                     usages[saver]?.mcpCalls += 1
+                    usages[saver]?.mcpResultTokens += tool.resultTokens ?? 0
+                }
+            }
+            if tool.name == "Bash", let command = tool.target {
+                for saver in TokenSaver.allCases where saver.matches(bashCommand: command) {
+                    usages[saver]?.bashRuns += 1
+                    usages[saver]?.mcpResultTokens += tool.resultTokens ?? 0
                 }
             }
         }
@@ -131,32 +167,63 @@ public enum SaverReport {
         }
 
         let cwd = calls.first { $0.agentId == nil && $0.cwd != nil }?.cwd ?? calls.first { $0.cwd != nil }?.cwd
-        // `ts` is normalised and sorts as text, so only the two ends are
-        // parsed — and only when there is a ledger to match against.
-        let span = ledger.isEmpty ? nil : calls.lazy.map(\.ts).min().flatMap { first in
-            calls.lazy.map(\.ts).max().map { (first, $0) }
-        }
-        if let cwd, let span, let start = Timestamps.date(from: span.0), let end = Timestamps.date(from: span.1) {
-            let from = start.addingTimeInterval(-ledgerSlack)
-            let to = end.addingTimeInterval(ledgerSlack)
-            for saver in [TokenSaver.rtk, .tokenade] {
-                let matched = ledger.filter {
-                    $0.saver == saver && $0.ts >= from && $0.ts <= to && samePlace($0.cwd, cwd)
-                }
-                if !matched.isEmpty { usages[saver]?.ledger = summarize(matched) }
+        for saver in TokenSaver.allCases where saver.descriptor.claims != nil {
+            let matched = match(ledger.filter { $0.saver == saver }, sessionId: sessionId, cwd: cwd, calls: calls)
+            if !matched.isEmpty {
+                usages[saver]?.ledger = summarize(matched)
+                usages[saver]?.ledgerEntries = matched
             }
         }
 
-        let bashIds = Set(toolCalls.filter { $0.name == "Bash" }.map(\.id))
-        let doubled = hookedBy.filter { bashIds.contains($0.key) && $0.value.isSuperset(of: [.rtk, .tokenade]) }.count
+        let bashCalls = toolCalls.filter { $0.name == "Bash" }
+        for (saver, since) in firstRun {
+            usages[saver]?.bashCallsSeen = bashCalls.filter { $0.ts >= since }.count
+        }
+        let bashIds = Set(bashCalls.map(\.id))
+        let doubledBy = hookedBy.filter { bashIds.contains($0.key) }
+            .mapValues { $0.filter { $0.kind == .outputFilter } }
+            .filter { $0.value.count >= 2 }
+        let overlapping = Set(doubledBy.values.flatMap { $0 })
 
         return SaverSessionReport(
             sessionId: sessionId,
             cwd: cwd,
             bashCalls: bashIds.count,
             usages: TokenSaver.allCases.compactMap { usages[$0] },
-            doubleHookedCalls: doubled
+            doubleHookedCalls: doubledBy.count,
+            overlapping: TokenSaver.allCases.filter(overlapping.contains)
         )
+    }
+
+    /// A ledger's rows that belong to this session, by the best evidence each
+    /// row carries: the session it names; else the session's folder and time
+    /// span; else, with neither (a proxy), a turn of this session within
+    /// `requestSlack` of it.
+    static func match(_ entries: [LedgerEntry], sessionId: String, cwd: String?, calls: [CallRow]) -> [LedgerEntry] {
+        guard !entries.isEmpty, let firstTs = calls.lazy.map(\.ts).min(), let lastTs = calls.lazy.map(\.ts).max(),
+              let start = Timestamps.date(from: firstTs), let end = Timestamps.date(from: lastTs) else {
+            return entries.filter { $0.sessionId == sessionId }
+        }
+        let from = start.addingTimeInterval(-ledgerSlack), to = end.addingTimeInterval(ledgerSlack)
+        var turnTimes: [Date]?
+        return entries.filter { entry in
+            if let named = entry.sessionId { return named == sessionId }
+            guard entry.ts >= from, entry.ts <= to else { return false }
+            if let path = entry.cwd { return cwd.map { samePlace(path, $0) } ?? false }
+            if turnTimes == nil { turnTimes = calls.compactMap { Timestamps.date(from: $0.ts) }.sorted() }
+            return nearest(entry.ts, in: turnTimes ?? []).map { abs($0.timeIntervalSince(entry.ts)) <= requestSlack } ?? false
+        }
+    }
+
+    /// The closest of sorted dates to `date`.
+    static func nearest(_ date: Date, in sorted: [Date]) -> Date? {
+        var low = 0, high = sorted.count
+        while low < high {
+            let mid = (low + high) / 2
+            if sorted[mid] < date { low = mid + 1 } else { high = mid }
+        }
+        let candidates = [low - 1, low].filter { sorted.indices.contains($0) }.map { sorted[$0] }
+        return candidates.min { abs($0.timeIntervalSince(date)) < abs($1.timeIntervalSince(date)) }
     }
 
     /// A ledger path matches the session's directory, or one is inside the
@@ -216,7 +283,7 @@ public enum SaverReport {
     }
 }
 
-// MARK: - caveman: output with and without
+// MARK: - Reply style: output with and without
 
 /// Median output tokens per main-thread turn, split by whether caveman was on.
 ///
@@ -289,23 +356,24 @@ public struct OutputComparison: Equatable {
         return sorted.count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
     }
 
-    /// caveman's on/off moments from hook runs, slash commands and skill calls.
-    public static func signals(events: [EventRow], toolCalls: [ToolCallRow]) -> [Signal] {
+    /// A reply-style tool's on/off moments from hook runs, slash commands
+    /// and skill calls.
+    public static func signals(for tool: TokenSaver, events: [EventRow], toolCalls: [ToolCallRow]) -> [Signal] {
         var signals: [Signal] = []
         for event in events {
             if event.kind == EventKind.hook.rawValue,
-               let run = HookRun(detail: event.detail), TokenSaver.caveman.matches(hookCommand: run.command), !run.failed {
+               let run = HookRun(detail: event.detail), tool.matches(hookCommand: run.command), !run.failed {
                 signals.append(Signal(sessionId: event.sessionId, ts: event.ts, on: true))
             } else if event.kind == EventKind.command.rawValue,
-                      let command = SlashCommand(detail: event.detail), TokenSaver.caveman.matches(skillOrCommand: command.name) {
+                      let command = SlashCommand(detail: event.detail), tool.matches(skillOrCommand: command.name) {
                 let args = command.args?.lowercased().trimmingCharacters(in: .whitespaces) ?? ""
                 let off = ["off", "stop", "normal", "disable"].contains(args)
                 signals.append(Signal(sessionId: event.sessionId, ts: event.ts, on: !off))
             }
         }
-        for tool in toolCalls where tool.kind == ToolKind.skill.rawValue {
-            if let target = tool.target, TokenSaver.caveman.matches(skillOrCommand: target) {
-                signals.append(Signal(sessionId: tool.sessionId, ts: tool.ts, on: true))
+        for call in toolCalls where call.kind == ToolKind.skill.rawValue {
+            if let target = call.target, tool.matches(skillOrCommand: target) {
+                signals.append(Signal(sessionId: call.sessionId, ts: call.ts, on: true))
             }
         }
         return signals
@@ -315,6 +383,32 @@ public struct OutputComparison: Equatable {
 // MARK: - Store reads
 
 extension Store {
+    /// Every tool's ledger, with each row that names neither a session nor a
+    /// folder (a proxy's) given to the one session whose turn is nearest to
+    /// it, across all sessions, within `SaverReport.requestSlack`. Matched per
+    /// session instead, one request would count in every session that had a
+    /// turn in those seconds.
+    public func ledger(since: Date? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) -> [LedgerEntry] {
+        place(SaverLedgers.load(since: since, environment: environment))
+    }
+
+    public func place(_ entries: [LedgerEntry]) -> [LedgerEntry] {
+        entries.map { entry in
+            guard entry.sessionId == nil, entry.cwd == nil else { return entry }
+            let slack = SaverReport.requestSlack
+            let rows = (try? database.query(
+                "SELECT session_id, ts FROM call WHERE ts >= ?1 AND ts <= ?2;",
+                [.text(Timestamps.string(from: entry.ts.addingTimeInterval(-slack))),
+                 .text(Timestamps.string(from: entry.ts.addingTimeInterval(slack)))]
+            ) { ($0.text(0), $0.text(1)) }) ?? []
+            let nearest = rows.compactMap { row in Timestamps.date(from: row.1).map { (row.0, abs($0.timeIntervalSince(entry.ts))) } }
+                .min { ($0.1, $0.0) < ($1.1, $1.0) }
+            var placed = entry
+            placed.sessionId = nearest?.0
+            return placed
+        }
+    }
+
     public func saverReport(sessionId: String, ledger: [LedgerEntry]) throws -> SaverSessionReport {
         let events = try self.events(sessionId: sessionId, kind: EventKind.hook.rawValue, scope: .all)
             + self.events(sessionId: sessionId, kind: EventKind.command.rawValue, scope: .all)
@@ -328,8 +422,19 @@ extension Store {
         )
     }
 
-    /// caveman on vs off across one directory's main-thread turns since a date.
-    public func outputComparison(cwd: String, since: String) throws -> OutputComparison? {
+    /// Every reply-style tool's on-vs-off comparison in one directory, for
+    /// those with enough turns each way.
+    public func outputComparisons(cwd: String, since: String) throws -> [TokenSaver: OutputComparison] {
+        var result: [TokenSaver: OutputComparison] = [:]
+        for tool in TokenSaver.allCases where tool.kind == .replyStyle {
+            result[tool] = try outputComparison(cwd: cwd, since: since, tool: tool)
+        }
+        return result
+    }
+
+    /// A reply-style tool on vs off across one directory's main-thread turns
+    /// since a date.
+    public func outputComparison(cwd: String, since: String, tool: TokenSaver) throws -> OutputComparison? {
         let turns = try database.query(
             """
             SELECT session_id, ts, output FROM call
@@ -355,6 +460,6 @@ extension Store {
             [.text(cwd), .text(since)]
         ) { ToolCallRow(id: $0.text(0), callId: $0.text(1), sessionId: $0.text(2), ts: $0.text(3),
                         name: $0.text(4), kind: $0.text(5), target: $0.optionalText(6)) }
-        return OutputComparison.build(turns: turns, signals: OutputComparison.signals(events: events, toolCalls: skills))
+        return OutputComparison.build(turns: turns, signals: OutputComparison.signals(for: tool, events: events, toolCalls: skills))
     }
 }

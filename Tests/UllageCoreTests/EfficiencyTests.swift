@@ -98,6 +98,48 @@ final class EfficiencyTests: XCTestCase {
         XCTAssertEqual(CacheRebuilds.causeSummary(rebuilds), "expired ×1, model changed ×1, effort changed ×1, command ×1")
     }
 
+    func testFiveMinuteCacheExpiresSooner() {
+        func calls(ttl: String?) -> [CallRow] {
+            var first = turn(0, minute: 0, context: 60_000, write: 60_000)
+            first.cacheTTL = ttl
+            var quiet = turn(1, minute: 1, context: 61_000, write: 1_000)   // wrote nothing new to say the lifetime
+            quiet.cacheTTL = nil
+            return [first, quiet, turn(2, minute: 12, context: 62_000, write: 62_000)]
+        }
+        let short = CacheRebuilds.detect(calls: calls(ttl: "5m"))
+        XCTAssertEqual(short.map(\.cause), [.expired], "eleven idle minutes outlast a five-minute cache")
+        XCTAssertEqual(short.first?.detail, "idle 11m")
+        XCTAssertEqual(CacheRebuilds.detect(calls: calls(ttl: "1h")).map(\.cause), [.unknown], "a one-hour cache survives it")
+        XCTAssertEqual(CacheRebuilds.detect(calls: calls(ttl: nil)).map(\.cause), [.unknown], "an unrecorded lifetime keeps the hour")
+    }
+
+    func testUpgradeIsNamedAndNotPutOnTheUser() {
+        var before = turn(0, minute: 0, context: 60_000, write: 1_000)
+        before.harnessVersion = "2.1.250"
+        var after = turn(1, minute: 1, context: 61_000, write: 61_000)
+        after.harnessVersion = "2.1.280"
+        let rebuild = CacheRebuilds.detect(calls: [before, after]).first
+        XCTAssertEqual(rebuild?.cause, .upgraded)
+        XCTAssertEqual(rebuild?.detail, "2.1.250 → 2.1.280")
+        XCTAssertFalse(CacheRebuild.Cause.upgraded.isAvoidable)
+    }
+
+    func testOutputStyleOnlyCountsWhereItStillRebuilds() {
+        let style = [EventRow(id: "c", sessionId: "s", ts: "2026-09-01T10:00:30.000Z", kind: EventKind.command.rawValue,
+                              detail: SlashCommand(name: "output-style", args: nil).detailJSON)]
+        func cause(on version: String?) -> CacheRebuild.Cause? {
+            var a = turn(0, minute: 0, context: 60_000, write: 1_000), b = turn(1, minute: 1, context: 61_000, write: 61_000)
+            a.harnessVersion = version
+            b.harnessVersion = version
+            return CacheRebuilds.detect(calls: [a, b], commands: style).first?.cause
+        }
+        XCTAssertEqual(cause(on: "2.1.200"), .command)
+        XCTAssertEqual(cause(on: "2.1.251"), .unknown, "sent as a message from 2.1.251, so not the cause")
+        XCTAssertEqual(cause(on: nil), .command, "an unknown version keeps the command")
+        XCTAssertEqual(CacheRebuilds.compareVersions("2.1.99", "2.1.251"), .orderedAscending)
+        XCTAssertEqual(CacheRebuilds.compareVersions("2.2", "2.1.251"), .orderedDescending)
+    }
+
     func testUnknownEffortIsNotAChange() {
         let calls = [turn(0, minute: 0, context: 60_000, write: 1_000, effort: nil),
                      turn(1, minute: 1, context: 61_000, write: 61_000, effort: "high")]
@@ -110,6 +152,21 @@ final class EfficiencyTests: XCTestCase {
             try store.upsert(call: call)
         }
         XCTAssertEqual(try store.contextHistory(sessionId: "s").rebuilds.map(\.cause), [.modelChanged])
+    }
+
+    func testStoreKeepsLifetimeAndVersion() throws {
+        let store = try Store.inMemory()
+        var call = turn(0, minute: 0, context: 60_000, write: 60_000)
+        call.cacheTTL = "5m"
+        call.harnessVersion = "2.1.280"
+        try store.upsert(call: call)
+        var replay = call
+        replay.cacheTTL = nil
+        replay.harnessVersion = nil
+        try store.upsert(call: replay)
+        let stored = try XCTUnwrap(store.call(dedupeKey: "m0"))
+        XCTAssertEqual(stored.cacheTTL, "5m", "a replay without the field doesn't erase it")
+        XCTAssertEqual(stored.harnessVersion, "2.1.280")
     }
 
     // MARK: - What each turn re-sends

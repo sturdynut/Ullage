@@ -72,8 +72,11 @@ public struct SaverPanel: Equatable {
         }
         // Two savers can only overlap if both are actually rewriting; a broken
         // one already has its own, more urgent item.
-        let bashSaversBroken = rows.contains { [.rtk, .tokenade].contains($0.saver) && $0.statusIsWarning }
-        if warning != nil, !bashSaversBroken { items.append(Readout("rtk + Tokenade overlap", warning: true)) }
+        let filtersBroken = rows.contains { $0.saver.kind == .outputFilter && $0.statusIsWarning }
+        if warning != nil, !filtersBroken {
+            let names = rows.filter { $0.saver.kind == .outputFilter && $0.switchState == .on }.map(\.saver.displayName)
+            items.append(Readout((names.count >= 2 ? names.joined(separator: " + ") : "filters") + " overlap", warning: true))
+        }
         let calm = rows.filter { !$0.statusIsWarning }
         let on = calm.filter { $0.switchState == .on }.count
         let off = calm.filter { $0.switchState == .off }.count
@@ -86,6 +89,8 @@ public struct SaverPanel: Equatable {
 
     public var isEmpty: Bool { rows.isEmpty && installable.isEmpty }
 
+    /// The one legend line: what `≈` means. Everything else is behind the ⓘ.
+    public static let claimsLegendLead = "≈ is the tool's own estimate"
     public static let nextSessionNote = "applies to sessions started from now"
     public static let offNextSession = "Off from the next session"
     public static let onNextSession = "On from the next session"
@@ -100,10 +105,12 @@ public struct SaverPanel: Equatable {
         }
     }
 
+    /// `comparisons`: with/without output for each reply-style tool that has
+    /// enough turns to compare (caveman, or any described as `replyStyle`).
     public static func build(
         report: SaverSessionReport?,
         states: [TokenSaver: SaverSwitchState],
-        comparison: OutputComparison?,
+        comparisons: [TokenSaver: OutputComparison] = [:],
         installed: Set<TokenSaver> = [],
         pending: [TokenSaver: String] = [:],
         undoable: Set<TokenSaver> = []
@@ -116,8 +123,8 @@ public struct SaverPanel: Equatable {
             let onMachine = installed.contains(saver) || state != .notInstalled
             if !onMachine { installable.append(saver) }
             guard onMachine || usage.ran || usage.idle else { continue }
-            var row = row(saver, state: state, usage: usage, bashCalls: report?.bashCalls ?? 0,
-                          comparison: saver == .caveman ? comparison : nil)
+            var row = row(saver, state: state, usage: usage, bashCalls: usage.bashCallsSeen,
+                          comparison: comparisons[saver])
             row.isInstalled = onMachine
             if onMachine, state == .notInstalled, !usage.broken, !usage.ran {
                 row.line = "Installed, not set up in Claude Code"
@@ -130,20 +137,18 @@ public struct SaverPanel: Equatable {
             row.statusIsWarning = usage.broken || usage.idle
             rows.append(row)
         }
+        // Two output filters on the same Bash call each claim the whole saving.
         var warning: String?
+        let filtersOn = TokenSaver.allCases.filter { $0.kind == .outputFilter && states[$0] == .on }
         if let doubled = report?.doubleHookedCalls, doubled > 0 {
-            warning = "rtk and Tokenade both rewrote \(doubled) Bash call\(doubled == 1 ? "" : "s"). Each claims the whole saving on those, so the two can't be added. Keep one on."
-        } else if states[.rtk] == .on, states[.tokenade] == .on {
-            warning = "rtk and Tokenade are both switched on and both rewrite Bash. Keep one on."
+            let names = report?.overlapping.map(\.displayName) ?? []
+            warning = "\(names.joined(separator: " and ")) both rewrote \(doubled) Bash call\(doubled == 1 ? "" : "s"). Each claims the whole saving on those, so the two can't be added. Keep one on."
+        } else if filtersOn.count >= 2 {
+            warning = "\(filtersOn.map(\.displayName).joined(separator: " and ")) are all switched on and all rewrite Bash. Keep one on."
         }
         var legend: [String] = []
-        let claims = rows.filter { $0.metric.hasPrefix("≈") }.map(\.saver)
-        if !claims.isEmpty {
-            let how = claims.map { $0 == .rtk ? "rtk counts bytes ÷ 4" : "Tokenade doesn't say how" }
-            legend.append("≈ saved is the tool's own count, which Ullage can't check (\(how.joined(separator: "; "))).")
-        }
-        if rows.contains(where: { $0.saver == .caveman && $0.metricCaption == "tokens/reply" }) {
-            legend.append("caveman's figure compares measured replies with it on and off. Different work, so not a saving.")
+        if rows.contains(where: { $0.metric.hasPrefix("≈") }) {
+            legend.append(claimsLegendLead + ".")
         }
         let pendingInstalls = TokenSaver.allCases
             .filter { saver in !rows.contains { $0.saver == saver } }
@@ -153,6 +158,7 @@ public struct SaverPanel: Equatable {
         return panel
     }
 
+    /// What a row says, decided by what kind of tool it is — never by which.
     static func row(
         _ saver: TokenSaver, state: SaverSwitchState, usage: SaverUsage, bashCalls: Int, comparison: OutputComparison?
     ) -> Row {
@@ -168,11 +174,18 @@ public struct SaverPanel: Equatable {
             return row
         }
 
-        switch saver {
-        case .rtk, .tokenade:
+        func idle() {
+            row.metric = "idle"
+            row.metricTone = .warning
+            row.line = "Loaded but never used this session"
+            row.note = "Its tool definitions still ride in every prompt"
+        }
+
+        switch saver.kind {
+        case .outputFilter:
             if let ledger = usage.ledger {
                 row.metric = "≈" + TokenFormat.compact(ledger.savedTokens)
-                row.metricCaption = "saved"
+                row.metricCaption = "claimed"
                 var facts: [String] = []
                 if usage.rewrites > 0, bashCalls > 0 {
                     facts.append("\(usage.rewrites) of \(bashCalls) Bash calls rewritten")
@@ -185,10 +198,12 @@ public struct SaverPanel: Equatable {
                 row.metric = "\(usage.rewrites)"
                 row.metricCaption = usage.rewrites == 1 ? "rewrite" : "rewrites"
                 row.line = "Hook ran \(usage.hookRuns)× · nothing in its log to count savings from"
+            } else if usage.idle {
+                idle()
             } else {
                 row.line = "\(offLine) · no runs this session"
             }
-        case .caveman:
+        case .replyStyle:
             if let comparison {
                 row.metric = "\(comparison.withMedian)"
                 row.metricCaption = "tokens/reply"
@@ -199,18 +214,47 @@ public struct SaverPanel: Equatable {
                     ? "Ran this session · \(OutputComparison.minimumTurns) turns each way to compare"
                     : "\(offLine) · not used this session"
             }
-        case .headroom:
-            if usage.mcpCalls > 0 {
+        case .onDemand:
+            if let ledger = usage.ledger {
+                row.metric = "≈" + TokenFormat.compact(ledger.savedTokens)
+                row.metricCaption = "claimed"
+                row.line = "\(ledger.entries) request\(ledger.entries == 1 ? "" : "s") compressed"
+                    + (usage.mcpCalls > 0 ? " · \(usage.mcpCalls) calls" : "")
+            } else if usage.mcpCalls > 0 {
                 row.metric = "\(usage.mcpCalls)"
                 row.metricCaption = usage.mcpCalls == 1 ? "call" : "calls"
                 row.line = "Used this session · it keeps no record of savings"
             } else if usage.idle {
-                row.metric = "idle"
-                row.metricTone = .warning
-                row.line = "Loaded but never used this session"
-                row.note = "Its tool definitions still ride in every prompt"
+                idle()
             } else {
                 row.line = "\(offLine) · not loaded in this session"
+            }
+        case .codeSearch:
+            let lookups = usage.mcpCalls + usage.bashRuns
+            if lookups > 0 {
+                row.metric = "\(lookups)"
+                row.metricCaption = lookups == 1 ? "lookup" : "lookups"
+                row.line = usage.mcpResultTokens > 0
+                    ? "Returned ≈\(TokenFormat.compact(usage.mcpResultTokens)) instead of whole files"
+                    : "Used this session"
+            } else if usage.idle {
+                idle()
+            } else {
+                row.line = "\(offLine) · not used this session"
+            }
+        case .memory:
+            if usage.injectedBytes > 0 {
+                row.metric = "≈" + TokenFormat.compact(usage.injectedBytes / 4)
+                row.metricCaption = "injected"
+                row.line = "Added at session start" + (usage.mcpCalls > 0 ? " · \(usage.mcpCalls) memory searches" : "")
+                row.note = "Past-session context, sent with every turn after"
+            } else if usage.ran {
+                row.metric = "on"
+                row.line = "Ran this session"
+            } else if usage.idle {
+                idle()
+            } else {
+                row.line = "\(offLine) · not used this session"
             }
         }
         return row

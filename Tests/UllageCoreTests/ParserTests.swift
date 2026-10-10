@@ -47,6 +47,21 @@ final class ParserTests: XCTestCase {
         XCTAssertEqual(call.parserVersion, ClaudeCodeParser.version)
     }
 
+    func testCacheLifetimeAndVersionAreRead() {
+        func call(_ usage: String) -> CallRow? {
+            let line = #"{"type":"assistant","uuid":"u","timestamp":"2026-09-01T10:00:00.000Z","sessionId":"s","version":"2.1.280","message":{"id":"m","model":"x","usage":\#(usage)}}"#
+            guard case .call(let parsed)? = parse(line) else { return nil }
+            return parsed.call
+        }
+        let oneHour = call(#"{"input_tokens":1,"cache_creation_input_tokens":900,"cache_creation":{"ephemeral_1h_input_tokens":900,"ephemeral_5m_input_tokens":0}}"#)
+        XCTAssertEqual(oneHour?.cacheTTL, "1h")
+        XCTAssertEqual(oneHour?.harnessVersion, "2.1.280")
+        XCTAssertEqual(call(#"{"input_tokens":1,"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":900}}"#)?.cacheTTL, "5m")
+        XCTAssertEqual(call(#"{"input_tokens":1,"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0}}"#)?.cacheTTL, nil,
+                       "a turn that wrote nothing says nothing about the lifetime")
+        XCTAssertNil(call(#"{"input_tokens":1,"cache_creation_input_tokens":900}"#)?.cacheTTL, "no split, never assumed")
+    }
+
     func testToolUseBlocksBecomeRows() throws {
         let lines = try Fixtures.lines("basic-session.jsonl")
         guard case .call(let parsed)? = parse(lines[5]) else { return XCTFail("expected a call") }

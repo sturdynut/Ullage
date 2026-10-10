@@ -23,6 +23,8 @@ public struct MenuBarState: Equatable {
     /// worktrees and same-named checkouts.
     public var cwd: String?
     public var model: String?
+    /// Which harness wrote the session (`call.vendor`).
+    public var vendor: String? = nil
     /// The effort on the latest turn, when the harness recorded one.
     public var effort: String? = nil
     public var modelWindowIsAssumed: Bool
@@ -97,6 +99,7 @@ public enum MenuBarFormatter {
             project: call.project,
             cwd: call.cwd,
             model: call.model,
+            vendor: call.vendor,
             effort: call.effort,
             modelWindowIsAssumed: !WindowLimits.isKnown(call.model),
             lastActivity: timestamp,

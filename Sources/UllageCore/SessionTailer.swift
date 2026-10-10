@@ -40,9 +40,7 @@ public final class SessionTailer: @unchecked Sendable {
         queue.sync {
             do {
                 var stats = IngestStats()
-                for root in roots where FileManager.default.fileExists(atPath: root.path) {
-                    stats = stats + (try ingestor.ingestDirectory(at: root))
-                }
+                for root in roots { stats = stats + (try ingest(root: root)) }
                 if stats.callsUpserted > 0 { onIngest?(stats) }
             } catch {
                 onError?(error)
@@ -51,6 +49,14 @@ public final class SessionTailer: @unchecked Sendable {
         try watcher.start(paths: roots) { [weak self] paths in
             self?.enqueue(paths: paths)
         }
+    }
+
+    /// A root is a folder to sweep, or one file (an Aider history, a Crush
+    /// database): hidden files are skipped when walking a folder.
+    private func ingest(root: URL) throws -> IngestStats {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory) else { return IngestStats() }
+        return isDirectory.boolValue ? try ingestor.ingestDirectory(at: root) : try ingestor.ingestFile(at: root)
     }
 
     public func stop() {
@@ -66,8 +72,8 @@ public final class SessionTailer: @unchecked Sendable {
     /// produce several writes, and re-ingesting on each one is wasted work.
     private func enqueue(paths: [String]) {
         queue.async {
-            for path in paths where path.hasSuffix(".jsonl") {
-                self.pendingPaths.insert(path)
+            for path in paths where Harness.owning(path) != nil {
+                self.pendingPaths.insert(Harness.databasePath(path))
             }
             guard !self.pendingPaths.isEmpty else { return }
             self.flushWorkItem?.cancel()
@@ -104,9 +110,9 @@ public final class SessionTailer: @unchecked Sendable {
     public func sweepNow() -> IngestStats {
         queue.sync {
             var stats = IngestStats()
-            for root in roots where FileManager.default.fileExists(atPath: root.path) {
+            for root in roots {
                 do {
-                    stats = stats + (try ingestor.ingestDirectory(at: root))
+                    stats = stats + (try ingest(root: root))
                 } catch {
                     onError?(error)
                 }

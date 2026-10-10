@@ -20,6 +20,8 @@ public struct StreamFigures: Equatable {
     public var agentStatus: String?
     /// Idle and the session's own (an agent is never called idle here).
     public var isIdle: Bool
+    /// Which harness wrote it, for what it can't report.
+    public var vendor: String? = nil
 
     public init(
         status: MenuBarState.Status, contextTokens: Int?, windowLimit: Int?, occupancy: Double?,
@@ -43,6 +45,12 @@ public struct StreamFigures: Equatable {
         self.init(status: state.status, contextTokens: state.contextTokens, windowLimit: state.windowLimit,
                   occupancy: state.occupancy, contextDelta: state.contextDelta, lastActivity: state.lastActivity,
                   sessionId: state.sessionId, isIdle: state.isIdle)
+        vendor = state.vendor
+    }
+
+    /// Where the gauge would be, when this harness can't have one.
+    public var gaugeNotice: String? {
+        status == .empty ? nil : HarnessSupport(vendor: vendor).gaugeNotice
     }
 
     /// The headline: room left in the window, the thing the app is named for.
@@ -55,6 +63,9 @@ public struct StreamFigures: Equatable {
     public var exactLine: String {
         guard status != .empty else { return "nothing ingested yet" }
         guard let contextTokens else { return "no turns recorded" }
+        if windowLimit == nil, gaugeNotice != nil {
+            return contextTokens > 0 ? "≈\(contextTokens.formatted()) tokens · no gauge" : "activity only"
+        }
         guard let windowLimit else { return "\(contextTokens.formatted()) tokens · no window reported" }
         return "\(contextTokens.formatted()) / \(windowLimit.formatted())"
     }

@@ -29,10 +29,15 @@ USAGE
   ullage limits [--fetch]    Plan limits left: Codex from disk; --fetch asks Anthropic for Claude's
   ullage rebuilds [session]  Turns that re-cached most of their context, and why
   ullage rebuilds --days N   Rebuilds across every session in the last N days, by cause
-  ullage savers --days N     Each token saver across every session in the last N days
-  ullage savers [session]    Token savers (rtk, Tokenade, caveman, Headroom): switched on, and what they did
+  ullage savers --days N     Each context tool across every session in the last N days
+  ullage savers [session]    Context tools (rtk, caveman, Serena, claude-mem…): switched on, and what they did
+  ullage harnesses [--csv]   Every coding agent Ullage reads, and what each records;
+                             --csv prints one test per agent and feature, with the expected state
+  ullage tools               Every context tool Ullage knows, built in or from ~/.config/ullage/tools
   ullage savers enable|disable <name> [--dry-run]
                              Switch one in Claude Code's user config (applies to new sessions)
+  ullage savers config <name>
+                             Print the hooks, MCP servers and plugins it adds (on or parked) and its version, as JSON
   ullage savers install|uninstall <name> [--dry-run] [--yes]
                              Run the saver's own install or uninstall commands, after asking
   ullage info                Resolved paths and row counts
@@ -81,6 +86,7 @@ struct Options {
     var everything = false
     var fetch = false
     var yes = false
+    var csv = false
     /// `--days` was given explicitly, so it wins over the export cursor.
     var daysWasSet = false
     var vendor = Vendor.claudeCode
@@ -113,6 +119,8 @@ func parseArguments(_ arguments: [String]) -> Options {
             options.watch = false
         case "--test":
             options.test = true
+        case "--csv":
+            options.csv = true
         case "--dry-run":
             options.dryRun = true
         case "--metrics-only":
@@ -191,9 +199,10 @@ func padLeft(_ text: String, _ width: Int) -> String {
 func transcriptPaths(under url: URL) -> [String] {
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return [] }
-    guard isDirectory.boolValue else { return url.pathExtension == "jsonl" ? [url.path] : [] }
+    guard isDirectory.boolValue else { return Harness.owning(url.path) != nil ? [url.path] : [] }
     guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil) else { return [] }
-    return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }.map(\.path)
+    return enumerator.compactMap { $0 as? URL }
+        .filter { Harness.owning($0.path) != nil && Harness.databasePath($0.path) == $0.path }.map(\.path)
 }
 
 func report(_ stats: IngestStats) {
@@ -524,27 +533,68 @@ func printRebuildRange(_ store: Store, days: Int) throws {
         guard let rows = byCause[cause] else { continue }
         let written = rows.reduce(0) { $0 + $1.cacheWrite }
         print("  " + pad(cause.rawValue, 16) + padLeft("\(rows.count)×", 6) + padLeft(thousands(written), 14) + " re-cached"
-              + (cause == .expired ? "   (expected after a break)" : cause == .unknown ? "   (nothing on disk explains these)" : ""))
+              + (cause == .expired ? "   (expected after a break)" : cause == .upgraded ? "   (expected after an update)"
+                 : cause == .unknown ? "   (nothing on disk explains these)" : ""))
     }
 }
 
 func printSaverRange(_ store: Store, days: Int) throws {
-    let range: SaverRange = days <= 7 ? .week : .month
-    let ledger = SaverLedgers.load(since: Date().addingTimeInterval(-Double(days + 1) * 86_400))
+    let range = SaverRange.covering(days: days)
+    let ledger = store.ledger(since: Date().addingTimeInterval(-Double(days + 1) * 86_400))
     let anchor = try store.latestCall()?.sessionId
+    let details = try store.saverDetails(range: range, sessionId: anchor, ledger: ledger)
+    printSavings(try store.savingsSummary(details, range: range))
+    print("")
     print("TOKEN SAVERS, last \(range.days ?? days) days (counts from transcripts; ≈ is the tool's own claim)")
-    for saver in TokenSaver.allCases {
-        let detail = try store.saverDetail(saver, range: range, sessionId: anchor, ledger: ledger)
+    for detail in details {
+        let saver = detail.saver
         var facts = ["ran in \(detail.sessionsUsed) of \(detail.sessions) sessions"]
         if detail.hookRuns > 0 { facts.append("hook ran \(detail.hookRuns)×") }
         if detail.rewrites > 0 { facts.append("rewrote \(detail.rewrites) of \(detail.bashCalls) Bash calls") }
         if detail.failedRuns > 0 { facts.append("\(detail.failedRuns) runs failed") }
         if detail.mcpCalls > 0 { facts.append("\(detail.mcpCalls) MCP calls") }
         if detail.sessionsIdle > 0 { facts.append("loaded but unused in \(detail.sessionsIdle)") }
-        print("  " + pad(saver.displayName, 10) + facts.joined(separator: " · "))
-        if let ledger = detail.ledger {
-            print("  " + pad("", 10) + "≈\(thousands(ledger.savedTokens)) saved by its own count over \(ledger.entries) commands")
+        print("  " + pad(saver.displayName, 16) + facts.joined(separator: " · "))
+        printCards(detail)
+    }
+}
+
+/// The total, each tool's share and the sessions that saved most.
+func printSavings(_ summary: SavingsSummary) {
+    guard !summary.isEmpty else { print("SAVED  nothing claimed in this range"); return }
+    let period = summary.range.days.map { $0 == 1 ? "last 24 hours" : "last \($0) days" } ?? "this session"
+    print("SAVED, \(period): ≈\(thousands(summary.saved)) tokens  (≈\(thousands(summary.before)) would have been sent, ≈\(thousands(summary.after)) was"
+          + (summary.cut.map { ", −\($0)%" } ?? "") + ")")
+    for tool in summary.tools {
+        print("  " + pad(tool.saver.displayName, 16) + padLeft("≈" + thousands(tool.counted), 16)
+              + (summary.share(tool).map { padLeft("\($0)%", 6) } ?? ""))
+    }
+    if summary.overlap > 0 { print("  ≈\(thousands(summary.overlap)) claimed by two tools for the same calls, counted once") }
+    if !summary.compared.isEmpty {
+        print("  not in the total (compared, not claimed): " + summary.compared.map(\.displayName).joined(separator: ", "))
+    }
+    if !summary.sessions.isEmpty {
+        print("  top sessions:")
+        for session in summary.sessions.prefix(5) {
+            print("    " + pad(String(session.sessionId.prefix(8)) + "  " + (session.project ?? ""), 34)
+                  + padLeft("≈" + thousands(session.total), 16) + padLeft("\(session.turns) turns", 12))
         }
+    }
+}
+
+/// Each card's before and after, per day or without vs with, then costs.
+func printCards(_ detail: SaverDetail) {
+    for chart in SaverChart.charts(for: detail) {
+        print("    " + pad(chart.title, 34) + chart.totalText + "  " + chart.changeText)
+        guard chart.kind == .daily else { continue }
+        for bar in chart.bars {
+            let mark = chart.approximate ? "≈" : ""
+            print("      " + pad(bar.label, 10) + padLeft(mark + thousands(bar.before), 14) + " → "
+                  + pad(mark + thousands(bar.after), 14) + SaverChart.changeText(bar.change))
+        }
+    }
+    for cost in detail.value.costs {
+        print("    ! " + cost.label + ": " + cost.value + (cost.detail.isEmpty ? "" : " (" + cost.detail + ")"))
     }
 }
 
@@ -567,7 +617,19 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
     let states = switchboard.states()
     print("SWITCHED ON IN CLAUDE CODE (user config)")
     for saver in TokenSaver.allCases {
-        print("  " + pad(saver.displayName, 10) + pad(states[saver]?.rawValue ?? "—", 15) + "shrinks " + saver.shrinks)
+        print("  " + pad(saver.displayName, 16) + pad(states[saver]?.rawValue ?? "—", 15) + "shrinks " + saver.shrinks)
+    }
+    let benchRows = BenchResults.load(from: BenchResults.url())
+    if !benchRows.isEmpty {
+        let installer = SaverInstaller(switchboard: switchboard)
+        var installed: [String: String] = [:]
+        for saver in TokenSaver.allCases { installed[saver.id] = installer.version(of: saver) }
+        print("")
+        print("MEASURED AGAINST PLAIN SESSIONS (scripts/bench-savers; whole-session cost, same tasks)")
+        for verdict in BenchResults.verdicts(rows: benchRows, installed: installed) {
+            let name = TokenSaver.allCases.first(where: { $0.id == verdict.tool })?.displayName ?? verdict.tool
+            print("  " + pad(name, 16) + BenchResults.line(verdict))
+        }
     }
 
     let sessionId: String?
@@ -578,11 +640,12 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
         sessionId = try store.latestCall()?.sessionId
     }
     guard let sessionId else { return }
-    let report = try store.saverReport(sessionId: sessionId, ledger: SaverLedgers.load())
+    let ledger = store.ledger()
+    let report = try store.saverReport(sessionId: sessionId, ledger: ledger)
     print("")
     print("SESSION \(sessionId.prefix(8))  \(report.cwd ?? "")  ·  \(report.bashCalls) Bash calls")
     if report.visible.isEmpty {
-        print("  no token saver left a trace in this session")
+        print("  no context tool left a trace in this session")
     }
     for usage in report.visible {
         var facts: [String] = []
@@ -592,7 +655,7 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
         if usage.mcpCalls > 0 { facts.append("\(usage.mcpCalls) MCP calls") }
         if usage.idle { facts.append("configured, never called") }
         if usage.invocations > 0 { facts.append("invoked \(usage.invocations)×") }
-        print("  " + pad(usage.saver.displayName, 10) + facts.joined(separator: " · "))
+        print("  " + pad(usage.saver.displayName, 16) + facts.joined(separator: " · "))
         if usage.broken, let message = usage.failureMessage {
             print("  " + pad("", 10) + "says: " + message.replacingOccurrences(of: "\n", with: " "))
         }
@@ -605,24 +668,34 @@ func printSavers(_ store: Store, switchboard: SaverSwitchboard, sessionPrefix: S
             }
         }
     }
+    let details = try store.saverDetails(report.visible.map(\.saver), range: .session, sessionId: sessionId, ledger: ledger)
+    if details.contains(where: { !$0.value.isEmpty }) {
+        print("")
+        print("BEFORE AND AFTER, this session (≈ is the tool's own figure; without vs with compares sessions)")
+        for detail in details where !detail.value.isEmpty {
+            print("  " + detail.saver.displayName)
+            printCards(detail)
+        }
+    }
     if report.doubleHookedCalls > 0 {
         print("")
-        print("  ! \(report.doubleHookedCalls) Bash calls went through both rtk and Tokenade; their savings overlap and cannot be added")
+        let names = report.overlapping.map(\.displayName).joined(separator: " and ")
+        print("  ! \(report.doubleHookedCalls) Bash calls went through both \(names); their savings overlap and cannot be added")
     }
-    if let cwd = report.cwd,
-       let since = Calendar.current.date(byAdding: .day, value: -30, to: Date()),
-       let comparison = try store.outputComparison(cwd: cwd, since: Timestamps.string(from: since)) {
+    if let cwd = report.cwd, let since = Calendar.current.date(byAdding: .day, value: -30, to: Date()) {
+      for (tool, comparison) in try store.outputComparisons(cwd: cwd, since: Timestamps.string(from: since)).sorted(by: { $0.key.id < $1.key.id }) {
         print("")
-        print("CAVEMAN, this directory, 30 days (measured output per main-thread turn; a comparison, not a saving)")
+        print("\(tool.displayName.uppercased()), this directory, 30 days (measured output per main-thread turn; a comparison, not a saving)")
         print("  with     median \(thousands(comparison.withMedian))  over \(comparison.withTurns) turns in \(comparison.withSessions) sessions")
         print("  without  median \(thousands(comparison.withoutMedian))  over \(comparison.withoutTurns) turns in \(comparison.withoutSessions) sessions")
+      }
     }
 }
 
 /// Prints the plan, asks, then runs each step in the user's shell with this
 /// terminal attached, so prompts and browser sign-ins work. Stops at the
 /// first step that fails.
-func runInstallPlan(_ plan: InstallPlan, dryRun: Bool, assumeYes: Bool) throws {
+func runInstallPlan(_ plan: InstallPlan, switchboard: SaverSwitchboard, dryRun: Bool, assumeYes: Bool) throws {
     let verb = plan.action == .install ? "install" : "uninstall"
     if !plan.missing.isEmpty {
         print("can't \(verb) \(plan.saver.displayName): needs \(plan.missing.joined(separator: " and "))")
@@ -653,7 +726,9 @@ func runInstallPlan(_ plan: InstallPlan, dryRun: Bool, assumeYes: Bool) throws {
             exit(process.terminationStatus)
         }
     }
-    print("\ndone · applies to Claude Code sessions started from now")
+    let after = switchboard.state(of: plan.saver)
+    print("\n" + SaverInstaller.outcome(of: plan, status: 0, after: after))
+    if !SaverInstaller.tookEffect(plan.action, after: after) { exit(1) }
 }
 
 func printLimits(_ store: Store, now: Date = Date(), fetched: Bool) throws {
@@ -969,6 +1044,38 @@ do {
             try printRebuilds(store, sessionPrefix: options.paths.first)
         }
 
+    case "harnesses" where options.csv:
+        print(harnessTestPlanCSV(), terminator: "")
+    case "harnesses":
+        print("HARNESSES  (what each records on disk; — = not recorded)")
+        print("  " + pad("", 20) + pad("gauge", 11) + pad("readings", 12) + pad("cache", 7) + pad("model", 7) + pad("agents", 8))
+        for harness in Harness.all {
+            let c = harness.capabilities
+            let readings: String = {
+                switch c.occupancy {
+                case .everyCall: return "every call"
+                case .perRequest: return "per request"
+                case .latestOnly: return "latest only"
+                case .approximate: return "rounded"
+                case .none: return "—"
+                }
+            }()
+            let gauge = c.hasGauge ? (c.window == .reported ? "reported" : "by model") : "—"
+            let roots = harness.roots(ProcessInfo.processInfo.environment)
+            let present = roots.contains { FileManager.default.fileExists(atPath: $0.path) }
+            print("  " + pad(harness.name, 20) + pad(gauge, 11) + pad(readings, 12) + pad(c.cacheSplit ? "yes" : "—", 7)
+                  + pad(c.model ? "yes" : "—", 7) + pad(c.subagents ? "yes" : "—", 8)
+                  + (present ? "found on this Mac" : ""))
+        }
+    case "tools":
+        let registry = ToolRegistry.shared
+        let builtin = Set(BuiltinTools.all.map(\.id))
+        print("CONTEXT TOOLS  (add your own: one JSON file each in \(ToolRegistry.toolsDirectory().path))")
+        for tool in registry.tools {
+            let origin = builtin.contains(tool.id) && BuiltinTools.all.contains(tool.descriptor) ? "built in" : "your file"
+            print("  " + pad(tool.id, 16) + pad(tool.kind.rawValue, 14) + pad(origin, 11) + tool.descriptor.about)
+        }
+        for problem in registry.problems { print("  ! skipped " + problem) }
     case "savers":
         let switchboard = SaverSwitchboard()
         if let verb = options.paths.first, let action = SaverAction(rawValue: verb) {
@@ -978,7 +1085,19 @@ do {
                 break
             }
             let plan = SaverInstaller(switchboard: switchboard).plan(saver, action)
-            try runInstallPlan(plan, dryRun: options.dryRun, assumeYes: options.yes)
+            try runInstallPlan(plan, switchboard: switchboard, dryRun: options.dryRun, assumeYes: options.yes)
+            break
+        }
+        if options.paths.first == "config" {
+            guard let name = options.paths.dropFirst().first,
+                  let saver = TokenSaver.allCases.first(where: { $0.rawValue == name.lowercased() }) else {
+                print("usage: ullage savers config <\(TokenSaver.allCases.map(\.rawValue).joined(separator: "|"))>")
+                break
+            }
+            var wiring = switchboard.wiring(of: saver)
+            wiring["version"] = SaverInstaller(switchboard: switchboard).version(of: saver)
+            let data = try JSONSerialization.data(withJSONObject: wiring, options: [.prettyPrinted, .sortedKeys])
+            print(String(decoding: data, as: UTF8.self))
             break
         }
         if let verb = options.paths.first, verb == "enable" || verb == "disable" {
@@ -1026,4 +1145,50 @@ do {
 } catch {
     FileHandle.standardError.write(Data("error: \(error)\n".utf8))
     exit(1)
+}
+
+
+/// One test per harness and feature, with the state the app should show,
+/// from the same capabilities the app uses: `docs/TESTING.csv` is built
+/// from this by `scripts/test-plan.py`.
+func harnessTestPlanCSV() -> String {
+    let how: [HarnessSupport.Feature: String] = [
+        .gauge: "Open one of its sessions in the popover",
+        .everyCall: "Session page: compare chart points with model calls",
+        .cacheSplit: "Session page: cache rows, and cache rebuild triangles after a model switch",
+        .model: "Look at the line under the session title",
+        .context: "Open the Context page for the session",
+        .agents: "Run a task that starts a subagent; open Agents",
+        .compaction: "Compact the session; look for the drop marked on the chart",
+        .effort: "Change reasoning effort; look at the model line",
+        .planLimits: "Open Plan limits",
+        .contextTools: "Use a context tool in the session; open Context tools",
+    ]
+    let shown: [HarnessSupport.Feature: String] = [
+        .gauge: "Room left, bar and percentage",
+        .everyCall: "A point for every model call",
+        .cacheSplit: "Cache reads and writes shown separately",
+        .model: "Model name shown",
+        .context: "Breakdown of what fills the window",
+        .agents: "Each subagent listed with its own window",
+        .compaction: "Compaction marked on the chart",
+        .effort: "Effort shown beside the model",
+        .planLimits: "This agent's limits as % left",
+        .contextTools: "Tool rows show what ran",
+    ]
+    func field(_ text: String) -> String {
+        text.contains(",") || text.contains("\"") ? "\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : text
+    }
+    var lines = ["Area,Item,How to test,Expected state,Expect,Status,Tested on,Notes"]
+    for harness in Harness.all.sorted(by: { ($0.id == Vendor.claudeCode ? 0 : 1, $0.name) < ($1.id == Vendor.claudeCode ? 0 : 1, $1.name) }) {
+        let support = HarnessSupport(harness: harness)
+        lines.append([harness.name, "Session appears", "Run one short session, then open the popover's session picker",
+                      "Supported", "Listed with its folder and time", "", "", ""].map(field).joined(separator: ","))
+        for row in support.rows {
+            let state = row.available ? "Supported" : (row.detail?.hasPrefix("One reading") == true || row.detail?.hasPrefix("Only the latest") == true ? "Partial" : "Not recorded")
+            let expect = row.available ? (shown[row.feature] ?? "") : "Listed under What \(harness.name) records: \(row.detail ?? "")"
+            lines.append([harness.name, row.label, how[row.feature] ?? "", state, expect, "", "", ""].map(field).joined(separator: ","))
+        }
+    }
+    return lines.joined(separator: "\n") + "\n"
 }

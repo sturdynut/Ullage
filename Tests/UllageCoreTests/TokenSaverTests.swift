@@ -174,7 +174,7 @@ final class TokenSaverTests: XCTestCase {
             EventRow(id: "c2", sessionId: "a", ts: "2026-09-01T10:52:30.000Z", kind: EventKind.command.rawValue,
                      detail: SlashCommand(name: "caveman", args: "off").detailJSON),
         ]
-        let comparison = OutputComparison.build(turns: turns, signals: OutputComparison.signals(events: events, toolCalls: []))
+        let comparison = OutputComparison.build(turns: turns, signals: OutputComparison.signals(for: .caveman, events: events, toolCalls: []))
         XCTAssertEqual(comparison?.withTurns, 23)
         XCTAssertEqual(comparison?.withMedian, 200)
         XCTAssertEqual(comparison?.withoutTurns, 32)
@@ -183,6 +183,30 @@ final class TokenSaverTests: XCTestCase {
     }
 
     // MARK: - Switches
+
+    /// The benchmark loads a tool's wiring alone: its own hooks (with their
+    /// matcher), servers and plugins, live or parked, and nobody else's.
+    func testWiringCollectsLiveAndParkedPieces() throws {
+        var settings: [String: Any] = [
+            "hooks": ["PreToolUse": [["matcher": "Bash", "hooks": [
+                ["type": "command", "command": "rtk hook claude"],
+                ["type": "command", "command": "~/hooks/audit.sh"],
+            ]]]],
+            "enabledPlugins": ["caveman@caveman": false, "other@x": true],
+        ]
+        var claudeJSON: [String: Any] = ["mcpServers": ["headroom": ["command": "headroom"], "Neon": ["url": "x"]]]
+        let live = SaverSwitchboard.wiring(of: .rtk, settings: settings, claudeJSON: claudeJSON, parked: nil)
+        let hooks = (live["hooks"] as? [String: [Any]])?["PreToolUse"]?.first as? [String: Any]
+        XCTAssertEqual(hooks?["matcher"] as? String, "Bash")
+        XCTAssertEqual((hooks?["hooks"] as? [Any])?.count, 1, "the audit hook is not rtk's")
+        XCTAssertEqual(SaverSwitchboard.wiring(of: .caveman, settings: settings, claudeJSON: claudeJSON, parked: nil)["plugins"] as? [String],
+                       ["caveman@caveman"], "a plugin switched off still has wiring")
+
+        var parked: [TokenSaver: ParkedSaver] = [:]
+        _ = try SaverSwitchboard.apply(.headroom, on: false, settings: &settings, claudeJSON: &claudeJSON, parked: &parked)
+        let off = SaverSwitchboard.wiring(of: .headroom, settings: settings, claudeJSON: claudeJSON, parked: parked[.headroom])
+        XCTAssertEqual((off["mcp"] as? [String: Any])?.keys.sorted(), ["headroom"])
+    }
 
     func testHookIsParkedAndRestoredExactly() throws {
         var settings: [String: Any] = [
@@ -268,7 +292,7 @@ final class TokenSaverTests: XCTestCase {
                                         doubleHookedCalls: 0)
         let panel = SaverPanel.build(report: report,
                                      states: [.rtk: .notInstalled, .tokenade: .notInstalled, .caveman: .off, .headroom: .on],
-                                     comparison: nil)
+                                     )
         XCTAssertEqual(panel.rows.map(\.saver), [.rtk, .caveman, .headroom])
         XCTAssertEqual(panel.rows[0].metric, "not running")
         XCTAssertEqual(panel.rows[0].note, "WARNING: rtk is not installed or not in PATH")
@@ -282,14 +306,15 @@ final class TokenSaverTests: XCTestCase {
         var rtk = SaverUsage(saver: .rtk)
         rtk.hookRuns = 5
         rtk.rewrites = 4
+        rtk.bashCallsSeen = 9
         rtk.ledger = LedgerMatch(entries: 4, savedTokens: 18_400, beforeTokens: 23_000, afterTokens: 4_600, groups: [])
         let report = SaverSessionReport(sessionId: "s1", cwd: "/repo", bashCalls: 9, usages: [rtk], doubleHookedCalls: 2)
-        let panel = SaverPanel.build(report: report, states: [.rtk: .on, .tokenade: .on], comparison: nil)
+        let panel = SaverPanel.build(report: report, states: [.rtk: .on, .tokenade: .on])
         XCTAssertEqual(panel.rows.first?.metric, "≈18k")
         XCTAssertEqual(panel.rows.first?.line, "4 of 9 Bash calls rewritten · ≈80% smaller")
         XCTAssertNil(panel.rows.first?.note, "the source is said once, in the legend")
-        XCTAssertEqual(panel.rows.first?.metricCaption, "saved")
-        XCTAssertEqual(panel.legend, ["≈ saved is the tool's own count, which Ullage can't check (rtk counts bytes ÷ 4)."])
+        XCTAssertEqual(panel.rows.first?.metricCaption, "claimed")
+        XCTAssertEqual(panel.legend, ["≈ is the tool's own estimate."])
         XCTAssertTrue(panel.warning?.contains("2 Bash calls") == true)
     }
 
@@ -365,12 +390,12 @@ final class TokenSaverTests: XCTestCase {
     }
 
     func testPanelOffersWhatIsNotInstalled() {
-        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], comparison: nil, installed: [.headroom, .rtk])
+        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], installed: [.headroom, .rtk])
         XCTAssertEqual(panel.rows.map(\.saver), [.rtk, .headroom])
         XCTAssertEqual(panel.rows.first?.line, "Installed, not set up in Claude Code")
         XCTAssertTrue(panel.rows.allSatisfy(\.isInstalled))
-        XCTAssertEqual(panel.installable, [.tokenade, .caveman])
-        XCTAssertFalse(SaverPanel.build(report: nil, states: [:], comparison: nil).isEmpty, "nothing installed still offers installs")
+        XCTAssertEqual(panel.installable, TokenSaver.allCases.filter { ![.headroom, .rtk].contains($0) })
+        XCTAssertFalse(SaverPanel.build(report: nil, states: [:]).isEmpty, "nothing installed still offers installs")
     }
 
     // MARK: - Collapsed line and pending state
@@ -386,7 +411,7 @@ final class TokenSaverTests: XCTestCase {
         let report = SaverSessionReport(sessionId: "s", cwd: "/r", bashCalls: 3,
                                         usages: [broken, SaverUsage(saver: .tokenade), ranThenOff, idle], doubleHookedCalls: 0)
         let panel = SaverPanel.build(report: report, states: [.tokenade: .on, .caveman: .off, .headroom: .on],
-                                     comparison: nil, installed: [.tokenade, .caveman, .headroom])
+                                     installed: [.tokenade, .caveman, .headroom])
         XCTAssertEqual(Readout.line(panel.summary), "rtk not running · Headroom idle · 1 on · 1 off")
         XCTAssertEqual(panel.summary.filter(\.isWarning).count, 2)
         XCTAssertEqual(panel.rows.first { $0.saver == .caveman }?.pending, SaverPanel.offNextSession,
@@ -395,7 +420,7 @@ final class TokenSaverTests: XCTestCase {
     }
 
     func testExplicitPendingAndPendingInstalls() {
-        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], comparison: nil, installed: [.headroom],
+        let panel = SaverPanel.build(report: nil, states: [.headroom: .on], installed: [.headroom],
                                      pending: [.headroom: SaverPanel.onNextSession, .rtk: "Installing rtk in Terminal…"])
         XCTAssertEqual(panel.rows.first?.pending, SaverPanel.onNextSession)
         XCTAssertEqual(panel.pendingInstalls, ["Installing rtk in Terminal…"])
@@ -441,8 +466,25 @@ final class TokenSaverTests: XCTestCase {
         XCTAssertEqual(SaverInstaller.outcome(of: plan, status: 1), "Install of caveman stopped (exit 1) · see Terminal")
     }
 
+    /// A tool's own command can exit 0 and change nothing: rtk's `init -g`
+    /// skips settings.json when nobody answers its prompt, and codegraph's
+    /// uninstall left its hook. The config re-read afterwards decides.
+    func testOutcomeTrustsTheConfigOverTheExitStatus() {
+        let install = InstallPlan(saver: .rtk, action: .install, steps: [], missing: [], notes: [])
+        let uninstall = InstallPlan(saver: .rtk, action: .uninstall, steps: [], missing: [], notes: [])
+        XCTAssertEqual(SaverInstaller.outcome(of: install, status: 0, after: .notInstalled),
+                       "rtk's installer finished, but nothing was added to Claude Code · see Terminal")
+        XCTAssertEqual(SaverInstaller.outcome(of: install, status: 0, after: .on), "rtk installed · on from the next session")
+        XCTAssertEqual(SaverInstaller.outcome(of: install, status: 0, after: .off), "rtk installed · switched off")
+        XCTAssertEqual(SaverInstaller.outcome(of: uninstall, status: 0, after: .on),
+                       "rtk's uninstaller finished, but it is still on in Claude Code")
+        XCTAssertEqual(SaverInstaller.outcome(of: uninstall, status: 0, after: .off), "rtk uninstalled · gone from the next session")
+        XCTAssertEqual(SaverInstaller.outcome(of: uninstall, status: 0, after: .notInstalled), "rtk uninstalled · gone from the next session")
+        XCTAssertEqual(SaverInstaller.outcome(of: install, status: 2, after: .notInstalled), "Install of rtk stopped (exit 2) · see Terminal")
+    }
+
     func testUndoOnlyForSwitchedRows() {
-        let panel = SaverPanel.build(report: nil, states: [.headroom: .off, .caveman: .on], comparison: nil,
+        let panel = SaverPanel.build(report: nil, states: [.headroom: .off, .caveman: .on],
                                      installed: [.headroom, .caveman],
                                      pending: [.headroom: SaverPanel.offNextSession, .caveman: "caveman installed · on from the next session"],
                                      undoable: [.headroom])
@@ -457,6 +499,7 @@ final class TokenSaverTests: XCTestCase {
             var rtk = SaverUsage(saver: .rtk)
             rtk.hookRuns = runs
             rtk.rewrites = rewrites
+            rtk.bashCallsSeen = runs > 0 ? 10 : 0
             if saved > 0 {
                 rtk.ledger = LedgerMatch(entries: 1, savedTokens: saved, beforeTokens: saved * 2, afterTokens: saved,
                                          groups: [.init(command: command, entries: 1, beforeTokens: saved * 2, afterTokens: saved, savedTokens: saved)])
@@ -473,7 +516,7 @@ final class TokenSaverTests: XCTestCase {
         XCTAssertEqual(rtk.sessionsUsed, 2)
         XCTAssertEqual(rtk.hookRuns, 4)
         XCTAssertEqual(rtk.rewrites, 3)
-        XCTAssertEqual(rtk.bashCalls, 30)
+        XCTAssertEqual(rtk.bashCalls, 20, "session c never ran its hook")
         XCTAssertEqual(rtk.ledger?.savedTokens, 150)
         XCTAssertEqual(rtk.ledger?.groups.map(\.entries), [2], "same command adds up")
         XCTAssertEqual(rtk.ledger?.beforeTokens, 300)
