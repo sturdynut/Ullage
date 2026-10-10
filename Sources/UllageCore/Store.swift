@@ -6,7 +6,7 @@ public final class Store {
     public let database: SQLiteDatabase
     public let path: String
 
-    public static let schemaVersion = 10
+    public static let schemaVersion = 11
 
     public init(path: String) throws {
         self.path = path
@@ -39,6 +39,8 @@ public final class Store {
         // Every read of `call` selects `effort`, including the repairs the
         // older steps below run, so the column exists before any of them.
         try addColumnIfMissing(table: "call", column: "effort", type: "TEXT")
+        try addColumnIfMissing(table: "call", column: "cache_ttl", type: "TEXT")
+        try addColumnIfMissing(table: "call", column: "harness_version", type: "TEXT")
         if current < 2 {
             // Column adds are checked rather than blind: `ALTER TABLE … ADD
             // COLUMN` fails on a column that already exists, and a migration
@@ -121,6 +123,17 @@ public final class Store {
                 }
             }
             try database.execute("PRAGMA user_version=10;")
+        }
+        if current < 11 {
+            // Parser v9 records each turn's cache lifetime and Claude Code's
+            // version, which name more cache rebuilds; rewind Claude files once.
+            if current > 0 {
+                let paths = try database.query("SELECT path FROM file_cursor;") { $0.text(0) }
+                for path in paths where TranscriptFormat.detect(path: path) == .claudeCode {
+                    try database.run("UPDATE file_cursor SET byte_offset = 0 WHERE path = ?1;", [.text(path)])
+                }
+            }
+            try database.execute("PRAGMA user_version=11;")
         }
     }
 
@@ -422,8 +435,9 @@ public final class Store {
           input, output, cache_read, cache_write, reasoning, web_search,
           context_tokens, window_limit, turn_index, context_delta,
           service_tier, stop_reason, duration_ms, is_sidechain,
-          uuid, parent_uuid, source_file, confidence, parser_version, effort
-        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29)
+          uuid, parent_uuid, source_file, confidence, parser_version, effort,
+          cache_ttl, harness_version
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)
         ON CONFLICT(dedupe_key) DO UPDATE SET
           ts = excluded.ts,
           vendor = excluded.vendor,
@@ -452,7 +466,9 @@ public final class Store {
           source_file = excluded.source_file,
           confidence = excluded.confidence,
           parser_version = excluded.parser_version,
-          effort = COALESCE(excluded.effort, call.effort);
+          effort = COALESCE(excluded.effort, call.effort),
+          cache_ttl = COALESCE(excluded.cache_ttl, call.cache_ttl),
+          harness_version = COALESCE(excluded.harness_version, call.harness_version);
         """
         try database.run(sql, [
             .text(call.dedupeKey),
@@ -484,6 +500,8 @@ public final class Store {
             .text(call.confidence),
             .integer(Int64(call.parserVersion)),
             .string(call.effort),
+            .string(call.cacheTTL),
+            .string(call.harnessVersion),
         ])
     }
 
@@ -1292,7 +1310,8 @@ public final class Store {
            input, output, cache_read, cache_write, reasoning, web_search,
            context_tokens, window_limit, turn_index, context_delta,
            service_tier, stop_reason, duration_ms, is_sidechain,
-           uuid, parent_uuid, source_file, confidence, parser_version, effort
+           uuid, parent_uuid, source_file, confidence, parser_version, effort,
+           cache_ttl, harness_version
     """
 
     static func callRow(from row: SQLiteStatement) -> CallRow {
@@ -1313,6 +1332,8 @@ public final class Store {
             reasoning: row.optionalInt(13),
             webSearch: row.optionalInt(14),
             effort: row.optionalText(28),
+            cacheTTL: row.optionalText(29),
+            harnessVersion: row.optionalText(30),
             contextTokens: row.int(15),
             windowLimit: row.optionalInt(16),
             turnIndex: row.optionalInt(17),

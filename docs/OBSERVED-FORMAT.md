@@ -37,7 +37,11 @@ Also observed, no change needed:
   upsert collapses them: 41,437 parsed lines became 15,068 `call` rows.
 - `usage` also carries `cache_creation.ephemeral_1h_input_tokens` /
   `ephemeral_5m_input_tokens`, `iterations[]`, `speed`, `inference_geo`, and
-  `server_tool_use.web_fetch_requests`. None are stored yet.
+  `server_tool_use.web_fetch_requests`. **Parser v9** stores the cache split
+  as `cache_ttl` (`1h` when any one-hour write, else `5m`, else NULL) and the
+  line's `version` as `harness_version`, so a rebuild after a short break on a
+  five-minute cache, or across an update, is named rather than unknown. The
+  rest are not stored.
 - Line types seen that the parser skips: `attachment`, `permission-mode`,
   `mode`, `bridge-session`, `atis-latch`, `last-prompt`, `ai-title`,
   `custom-title`, `agent-name`, `pr-link`, `frame-link`, `queue-operation`,
