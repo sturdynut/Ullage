@@ -66,7 +66,7 @@ public enum HelpText {
                       answer: "A cache rebuild you caused. Switching the model or effort, or a command like /model, meant that turn couldn't use the cache, so it stored the whole conversation again.",
                       why: "Reading from the cache costs a fraction of normal input. A rebuild pays full price or more for the entire conversation in one turn. Touch it to see how many tokens."),
             HelpEntry("What's a grey triangle?", glyph: .rebuildOther,
-                      answer: "A cache rebuild you didn't cause. Usually the cache expired during a break of more than an hour.",
+                      answer: "A cache rebuild you didn't cause. Usually the cache expired during a break: an hour on a Claude subscription, five minutes on an API key. Or Claude Code was updated between two turns.",
                       why: "It costs the same, but it's expected after a break. There's nothing to fix."),
             HelpEntry("What's the cache?",
                       answer: "Between turns, the conversation is cached. Each turn reads the cache and pays full price only for what's new, which is much cheaper."),

@@ -217,11 +217,13 @@ plausible and are wrong.
 - **A cache rebuild is measured, and named by its cause.** `CacheRebuilds`
   flags a turn whose `cache_write` is over half its context (context 50k+,
   not right after a compaction), then names the cause in order: expired (a
-  gap over an hour: 267 of 275 such turns rebuilt on real data), model
-  changed, effort changed, a slash command, unknown. The figure shown is that
+  gap over the cache's lifetime: an hour, where 267 of 275 such turns rebuilt
+  on real data, or five minutes when the turn's own write says so), model
+  changed, upgraded (Claude Code's version changed), effort changed, a slash
+  command, unknown. The figure shown is that
   turn's own `cache_write`; nothing is priced or called wasted. Only the three
-  causes the session produced (`isAvoidable`) reach the collapsed line; expired
-  and unknown are shown but not put on the user. The turn after a compaction
+  causes the session produced (`isAvoidable`) reach the collapsed line; expired,
+  upgraded and unknown are shown but not put on the user. The turn after a compaction
   boundary or a `/clear` command is skipped, not approximated by a ratio.
 - **Compaction is a first-class event.** Context falls off a cliff at a
   compaction boundary: `context_delta` is NULL across it, charts mark it, and

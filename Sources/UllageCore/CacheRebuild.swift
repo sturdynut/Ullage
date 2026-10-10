@@ -12,6 +12,9 @@ public struct CacheRebuild: Equatable, Identifiable {
         /// A long enough break that the cache had expired anyway.
         case expired
         case modelChanged = "model changed"
+        /// Claude Code's version changed between the two turns, as when a
+        /// session is resumed after an update.
+        case upgraded
         case effortChanged = "effort changed"
         /// A slash command between the two turns that changes how the next
         /// request is built (`/model`, `/effort`, `/fast`, `/config`, …).
@@ -24,7 +27,7 @@ public struct CacheRebuild: Equatable, Identifiable {
         public var isAvoidable: Bool {
             switch self {
             case .modelChanged, .effortChanged, .command: return true
-            case .expired, .unknown: return false
+            case .expired, .upgraded, .unknown: return false
             }
         }
     }
@@ -35,7 +38,7 @@ public struct CacheRebuild: Equatable, Identifiable {
     /// `cache_write` of the turn: what was cached again, measured.
     public var cacheWrite: Int
     public var contextTokens: Int
-    /// `opus → fable`, `high → max`, `/model opus`, `idle 1h 12m`.
+    /// `opus → fable`, `high → max`, `2.1.250 → 2.1.280`, `/model opus`, `idle 1h 12m`.
     public var detail: String?
 
     public var id: Int { turnIndex }
@@ -47,12 +50,19 @@ public enum CacheRebuilds {
     /// Share of the context written to cache that makes a turn a rebuild.
     /// Ordinary turns write only what is new (a few percent).
     public static let rebuildShare = 0.5
-    /// A break longer than this expires the cache on its own. Observed on
-    /// this data: 267 of 275 main-thread turns after 60+ idle minutes rebuilt,
-    /// against 104 of 23,000 after shorter gaps.
+    /// A break longer than this expires a cache written with the one-hour
+    /// lifetime, and any cache whose lifetime the line doesn't record.
+    /// Observed on subscription data: 267 of 275 main-thread turns after 60+
+    /// idle minutes rebuilt, against 104 of 23,000 after shorter gaps.
     public static let expiryGap: TimeInterval = 60 * 60
+    /// The lifetime of a cache written with the five-minute TTL: Claude Code's
+    /// on an API key, usage credits or a cloud provider, and every subagent's.
+    public static let shortExpiryGap: TimeInterval = 5 * 60
     /// Commands that change how the next request is built.
     public static let cacheCommands: Set<String> = ["model", "effort", "fast", "config", "output-style", "mcp", "reload-plugins", "plugin"]
+    /// Claude Code delivers a new output style as a message from this version
+    /// on, so `/output-style` no longer touches the cached prefix.
+    static let outputStyleKeepsCache = "2.1.251"
 
     /// `calls`: one stream (main thread or one agent), in turn order.
     /// `commands`: that session's slash-command events.
@@ -66,7 +76,11 @@ public enum CacheRebuilds {
             .compactMap { event in SlashCommand(detail: event.detail).map { (event.ts, $0) } }
         let commandsByTs = slashCommands.filter { cacheCommands.contains($0.1.name) }
         let clears = slashCommands.filter { $0.1.name == "clear" }.map(\.0)
+        // The lifetime of the cache as the previous turn left it: the latest
+        // write that recorded one, since a turn may write nothing new.
+        var lifetime: String?
         for (previous, call) in zip(calls, calls.dropFirst()) {
+            lifetime = previous.cacheTTL ?? lifetime
             guard let turn = call.turnIndex,
                   !boundaryTurns.contains(turn),
                   !clears.contains(where: { $0 > previous.ts && $0 <= call.ts }),
@@ -76,15 +90,20 @@ public enum CacheRebuilds {
             let gap = Timestamps.date(from: call.ts).flatMap { now in
                 Timestamps.date(from: previous.ts).map { now.timeIntervalSince($0) }
             }
-            let command = commandsByTs.last { $0.0 > previous.ts && $0.0 <= call.ts }?.1
+            let command = commandsByTs.last { $0.0 > previous.ts && $0.0 <= call.ts }
+                .flatMap { changesRequest($0.1, version: call.harnessVersion) ? $0.1 : nil }
+            let expiry = lifetime == "5m" ? shortExpiryGap : expiryGap
 
             let cause: CacheRebuild.Cause
             let detail: String?
-            if let gap, gap > expiryGap {
+            if let gap, gap > expiry {
                 cause = .expired
                 detail = "idle " + duration(gap)
             } else if let a = previous.model, let b = call.model, a != b {
                 cause = .modelChanged
+                detail = "\(a) → \(b)"
+            } else if let a = previous.harnessVersion, let b = call.harnessVersion, a != b {
+                cause = .upgraded
                 detail = "\(a) → \(b)"
             } else if let a = previous.effort, let b = call.effort, a != b {
                 cause = .effortChanged
@@ -100,6 +119,24 @@ public enum CacheRebuilds {
                                          cacheWrite: call.cacheWrite, contextTokens: call.contextTokens, detail: detail))
         }
         return rebuilds
+    }
+
+    /// Whether `command` still changes the request on the Claude Code version
+    /// that ran the turn after it. An unknown version keeps the command.
+    static func changesRequest(_ command: SlashCommand, version: String?) -> Bool {
+        guard command.name == "output-style", let version else { return true }
+        return compareVersions(version, outputStyleKeepsCache) == .orderedAscending
+    }
+
+    /// Compares dotted numeric versions (`2.1.99` < `2.1.251`); a part that
+    /// isn't a number compares as 0.
+    static func compareVersions(_ a: String, _ b: String) -> ComparisonResult {
+        let x = a.split(separator: ".").map { Int($0) ?? 0 }, y = b.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(x.count, y.count) {
+            let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
+            if p != q { return p < q ? .orderedAscending : .orderedDescending }
+        }
+        return .orderedSame
     }
 
     /// `rebuilt 2× · model changed ×1, expired ×1`, most common cause first.

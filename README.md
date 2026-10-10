@@ -511,10 +511,11 @@ the cause from what changed since the turn before:
 
 | Cause | What changed | Marker |
 |---|---|---|
-| expired | more than an hour since the previous turn: the cache timed out | grey |
+| expired | the break outlasted the cache: an hour, or five minutes when the turn's write says it was cached for five (an API key, usage credits, a cloud provider, every subagent) | grey |
 | model changed | a different model answered, e.g. `claude-opus-5-5 → claude-fable-5-1` | orange |
+| upgraded | Claude Code's version changed between the turns, e.g. `2.1.250 → 2.1.280` | grey |
 | effort changed | the recorded effort changed, e.g. `high → max` | orange |
-| command | `/model`, `/effort`, `/fast`, `/config` or similar was typed in between | orange |
+| command | `/model`, `/effort`, `/fast`, `/config` or similar was typed in between (`/output-style` only before Claude Code 2.1.251, which sends a new style as a message) | orange |
 | unknown | nothing on disk explains it | grey |
 
 The size shown is that turn's own measured cache write. Nothing is converted to

@@ -464,7 +464,8 @@ func printRebuildRange(_ store: Store, days: Int) throws {
         guard let rows = byCause[cause] else { continue }
         let written = rows.reduce(0) { $0 + $1.cacheWrite }
         print("  " + pad(cause.rawValue, 16) + padLeft("\(rows.count)×", 6) + padLeft(thousands(written), 14) + " re-cached"
-              + (cause == .expired ? "   (expected after a break)" : cause == .unknown ? "   (nothing on disk explains these)" : ""))
+              + (cause == .expired ? "   (expected after a break)" : cause == .upgraded ? "   (expected after an update)"
+                 : cause == .unknown ? "   (nothing on disk explains these)" : ""))
     }
 }
 

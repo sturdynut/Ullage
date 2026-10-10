@@ -147,9 +147,10 @@ public struct SaverInstaller {
     public func plan(_ saver: TokenSaver, _ action: SaverAction) -> InstallPlan {
         let current = installation(of: saver)
         let recipe = saver.descriptor.install
-        let wanted = Set(["brew", "npm", "npx", "uv", "pipx", "claude", "cargo", "curl"]
-            + (recipe?.packages.map { $0.needs ?? $0.manager } ?? [])
-            + ((recipe?.setup ?? []) + (recipe?.teardown ?? [])).compactMap(\.needs))
+        // Typed in pieces: as one expression it times out the Linux type checker.
+        let managers: [String] = recipe?.packages.map { $0.needs ?? $0.manager } ?? []
+        let stepNeeds: [String] = ((recipe?.setup ?? []) + (recipe?.teardown ?? [])).compactMap(\.needs)
+        let wanted = Set(["brew", "npm", "npx", "uv", "pipx", "claude", "cargo", "curl"] + managers + stepNeeds)
         let available = Set(wanted.filter { which($0) != nil })
         return action == .install
             ? Self.installPlan(saver, current: current, available: available)

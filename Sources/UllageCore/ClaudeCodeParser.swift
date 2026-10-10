@@ -100,7 +100,7 @@ public enum ParsedLine: Equatable {
 public enum ClaudeCodeParser {
     /// Bump on every parser change. Tells you which rows to distrust after an
     /// upstream format shift.
-    public static let version = 8
+    public static let version = 9
 
     public static func parse(line: Data, context: LineContext) -> ParsedLine? {
         guard !line.isEmpty else { return nil }
@@ -198,6 +198,8 @@ public enum ClaudeCodeParser {
             // Observed from 2.1.2xx (2026-07-26): `effort` is the session's
             // setting, `perTurnEffort` a per-turn override when not null.
             effort: JSONAccess.string(entry, "perTurnEffort") ?? JSONAccess.string(entry, "effort"),
+            cacheTTL: cacheTTL(usage),
+            harnessVersion: JSONAccess.string(entry, "version"),
             contextTokens: contextTokens,
             windowLimit: WindowLimits.limit(for: model),
             serviceTier: JSONAccess.string(usage, "service_tier"),
@@ -221,6 +223,19 @@ public enum ClaudeCodeParser {
             toolCalls: toolCalls,
             claudeVersion: JSONAccess.string(entry, "version")
         )
+    }
+
+    /// Which lifetime this turn's cache write was given, from the split the
+    /// API reports. Claude Code writes the main conversation with a one-hour
+    /// lifetime on a subscription and five minutes otherwise (API key, usage
+    /// credits, a cloud provider, every subagent), so the split is what says
+    /// how long a break the cache survives. Any one-hour write means the
+    /// conversation is held for the hour.
+    static func cacheTTL(_ usage: [String: Any]?) -> String? {
+        guard let split = JSONAccess.dict(usage, "cache_creation") else { return nil }
+        if JSONAccess.intOrZero(split, "ephemeral_1h_input_tokens") > 0 { return "1h" }
+        if JSONAccess.intOrZero(split, "ephemeral_5m_input_tokens") > 0 { return "5m" }
+        return nil
     }
 
     static func parseToolUses(
