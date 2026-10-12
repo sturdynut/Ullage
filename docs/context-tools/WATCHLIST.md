@@ -12,3 +12,7 @@ Tracked tools that reduce context/token use for AI coding agents. Updated weekly
 | codegraph | codeSearch | Claude Code | https://github.com/colbymchenry/codegraph | 1.6.2 | 2026-10-12 |
 | claude-context | codeSearch | Claude Code | https://www.npmjs.com/package/@zilliz/claude-context-mcp | 0.1.15 | 2026-10-12 |
 | claude-mem | memory | Claude Code | https://github.com/thedotmack/claude-mem | 13.35.0 | 2026-10-12 |
+| token-optimizer-mcp | onDemand | Claude Code, Cursor | https://github.com/ooples/token-optimizer-mcp | (unconfirmed) | 2026-10-12 |
+| mcp-compressor | onDemand | Claude Code, Cursor | https://github.com/atlassian-labs/mcp-compressor | (unconfirmed) | 2026-10-12 |
+| context-firewall | onDemand | Claude Code, Cursor | https://github.com/alepha188838884/context-firewall | (unconfirmed) | 2026-10-12 |
+| context-compress | outputFilter | Claude Code, Cursor, Windsurf, Gemini CLI | https://github.com/vidanov/context-compress | (unconfirmed) | 2026-10-12 |

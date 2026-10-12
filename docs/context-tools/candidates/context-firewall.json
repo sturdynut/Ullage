@@ -1,0 +1,37 @@
+{
+  "id": "context-firewall",
+  "name": "context-firewall",
+  "kind": "onDemand",
+  "shrinks": "MCP tool outputs and definitions",
+  "about": "Compresses MCP tool output by wrapping servers; reduces output by 60-95% and collapses 50+ tools into 4 meta-tools.",
+  "detect": {
+    "mcpServer": ["^context-firewall$"]
+  },
+  "install": {
+    "package": "context-firewall",
+    "packages": [
+      {
+        "manager": "npm",
+        "command": "npm install -g context-firewall"
+      }
+    ],
+    "setup": [
+      {
+        "command": "claude mcp add --scope user context-firewall -- context-firewall",
+        "purpose": "Register context-firewall with Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "claude mcp remove --scope user context-firewall",
+        "purpose": "Unregister context-firewall from Claude Code",
+        "needs": "claude"
+      }
+    ]
+  },
+  "harnesses": ["Claude Code", "Cursor"],
+  "sources": [
+    "https://github.com/alepha188838884/context-firewall"
+  ]
+}

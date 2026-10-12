@@ -1,0 +1,27 @@
+{
+  "id": "context-compress",
+  "name": "context-compress",
+  "kind": "outputFilter",
+  "shrinks": "instruction files and context",
+  "about": "Semantic-aware compression of context files and instructions; reduces context by 40-50% while preserving behavioral compliance.",
+  "detect": {
+    "bash": ["^context-compress$"]
+  },
+  "install": {
+    "packages": [
+      {
+        "manager": "pip",
+        "command": "pip install context-compress"
+      },
+      {
+        "manager": "script",
+        "command": "curl -fsSL https://raw.githubusercontent.com/vidanov/context-compress/main/install.sh | sh",
+        "needs": "curl"
+      }
+    ]
+  },
+  "harnesses": ["Claude Code", "Cursor", "Windsurf", "Gemini CLI"],
+  "sources": [
+    "https://github.com/vidanov/context-compress"
+  ]
+}

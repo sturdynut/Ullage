@@ -1,0 +1,38 @@
+{
+  "id": "mcp-compressor",
+  "name": "mcp-compressor",
+  "kind": "onDemand",
+  "shrinks": "MCP tool descriptions and schemas",
+  "about": "Compresses MCP tool definitions by deferring full schemas until needed, reducing tool-description overhead by 70-97%.",
+  "detect": {
+    "mcpServer": ["^mcp-compressor$"]
+  },
+  "install": {
+    "package": "mcp-compressor",
+    "packages": [
+      {
+        "manager": "npm",
+        "command": "npm install -g mcp-compressor"
+      }
+    ],
+    "setup": [
+      {
+        "command": "claude mcp add --scope user mcp-compressor -- mcp-compressor",
+        "purpose": "Register mcp-compressor with Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "claude mcp remove --scope user mcp-compressor",
+        "purpose": "Unregister mcp-compressor from Claude Code",
+        "needs": "claude"
+      }
+    ]
+  },
+  "harnesses": ["Claude Code", "Cursor"],
+  "sources": [
+    "https://github.com/atlassian-labs/mcp-compressor",
+    "https://www.atlassian.com/blog/developer/mcp-compression-preventing-tool-bloat-in-ai-agents/"
+  ]
+}
