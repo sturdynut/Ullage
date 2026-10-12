@@ -1,0 +1,41 @@
+{
+  "id": "token-optimizer-mcp",
+  "name": "token-optimizer-mcp",
+  "kind": "onDemand",
+  "shrinks": "token usage by optimizing API requests",
+  "about": "Reduces API costs by optimizing token usage with built-in benchmarking.",
+  "detect": {
+    "mcpServer": ["^token-optimizer-mcp$", "^token-optimizer$"]
+  },
+  "install": {
+    "package": "@ooples/token-optimizer-mcp",
+    "packages": [
+      {
+        "manager": "npm",
+        "command": "npm install -g @ooples/token-optimizer-mcp"
+      }
+    ],
+    "setup": [
+      {
+        "command": "claude mcp add --scope user token-optimizer-mcp -- token-optimizer-mcp",
+        "purpose": "Register token-optimizer-mcp with Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "claude mcp remove --scope user token-optimizer-mcp",
+        "purpose": "Unregister token-optimizer-mcp from Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "notes": [
+      "Requires Node.js 22 or later."
+    ]
+  },
+  "harnesses": ["Claude Code", "Cursor"],
+  "sources": [
+    "https://github.com/ooples/token-optimizer-mcp",
+    "https://www.npmjs.com/package/@ooples/token-optimizer-mcp"
+  ]
+}
