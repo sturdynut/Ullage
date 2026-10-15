@@ -61,12 +61,13 @@ struct ContextChart: View {
     @ViewBuilder
     private var readout: some View {
         if let hovered {
-            Text("Turn \(hovered.turnIndex)  ·  \(hovered.contextTokens.formatted()) tokens"
+            let caption: String = "Turn \(hovered.turnIndex)  ·  \(hovered.contextTokens.formatted()) tokens"
                  + (hovered.contextDelta.map { "  ·  \($0 >= 0 ? "+" : "")\($0.formatted())" } ?? "")
                  + (history.compactionTurns.contains(hovered.turnIndex) ? "  ·  compacted before this turn" : "")
                  + (history.rebuilds.first { $0.turnIndex == hovered.turnIndex }.map {
                      "  ·  re-cached \(Self.compact($0.cacheWrite)): \($0.cause.rawValue)" + ($0.detail.map { ", \($0)" } ?? "")
-                 } ?? ""))
+                 } ?? "")
+            Text(caption)
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
         } else if showsIdleCaption {
             Text("Context per turn")

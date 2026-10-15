@@ -167,7 +167,19 @@ commands, in Terminal, after showing them to you.
 
 ## Install
 
-Requires macOS 14 or later, and Swift 6 (Xcode 16) to build.
+Requires macOS 14 or later. Building from source also requires Swift 6 (Xcode 16).
+
+### Download the app
+
+From a [release](https://github.com/sturdynut/Ullage/releases), download
+`Ullage-X.Y.Z-universal.dmg`, open it, and drag **Ullage** onto **Applications**.
+Eject the disk image, then open Ullage from Applications. The same download runs
+on Apple Silicon and Intel Macs; no Homebrew, compiler, or Terminal linking step
+is needed. Signed releases are notarized by Apple.
+
+The DMG installs the menu bar app. For the standalone `ullage` command and
+`brew services`, use Homebrew below. To start the app at login, add Ullage under
+System Settings → General → Login Items.
 
 ### With Homebrew
 
@@ -623,8 +635,8 @@ there is no percentage to compute for those sessions.
 - **Window sizes are a lookup table** for agents that don't write theirs down.
   A Claude model Ullage doesn't recognize falls back to 200k and is flagged as
   assumed; any other unknown model gets no gauge until the table is updated.
-- **macOS 14+ only** for the app. It's ad-hoc signed, not notarized: Homebrew
-  builds it from source on your Mac, so there's no Gatekeeper warning.
+- **macOS 14+ only** for the app. The release workflow signs and notarizes DMGs;
+  local source builds use an ad-hoc signature unless a Developer ID is supplied.
 - **The menu bar item can be hidden.** On Macs with a notch and many menu bar
   apps, macOS may tuck Ullage's item out of sight; a menu bar manager can pin it.
 - Context figures other than the window total are **length-based estimates**,
@@ -642,6 +654,73 @@ swift build
 swift test        # runs on Linux or macOS
 ```
 
+Build a local universal disk image with:
+
+```bash
+scripts/package-app.sh          # dist/Ullage-0.0.0-universal.dmg + SHA-256 checksum
+```
+
+This reuses the app bundler, builds both architectures, and checks the mounted
+DMG's app signature, icon, version, and Applications shortcut. Local DMGs are
+not notarized; downloaded copies may be blocked by Gatekeeper.
+
+### Release automation
+
+[CI](.github/workflows/ci.yml) lints the automation and Swift, builds, runs the
+Swift test suite with coverage, and builds and verifies a universal DMG on every
+PR and push to `main`. It also copies the app from the DMG and verifies that it
+launches and initializes a disposable database on the macOS runner.
+Its downloadable app artifacts are local test builds. To make verification a
+merge gate, require the **verify** check in branch protection for `main`. Actions
+are pinned to commit SHAs; Dependabot proposes updates weekly.
+The Swift package currently has no third-party dependencies to audit.
+
+Coverage measures executable **UllageCore** code, excluding test code, the CLI,
+and the SwiftUI app. CI requires at least **85% line coverage** (the initial local
+measurement was 89.25%). Each run publishes overall line/function/region coverage
+and per-file line coverage in its summary. Download `Ullage-test-reports` for the
+HTML report (`html/index.html`), LLVM JSON, LCOV, and JUnit test results.
+Reports are retained for 14 days. No external coverage service or token is needed.
+
+Run the same checks locally:
+
+```bash
+brew install swiftlint
+swiftlint lint --strict
+python3 scripts/test_coverage.py
+mkdir -p coverage
+swift test --enable-code-coverage --parallel --num-workers 3 --xunit-output coverage/test-results.xml
+python3 scripts/coverage.py
+```
+
+SwiftLint checks source, tests, and the package manifest. Existing violations are
+recorded in `.swiftlint-baseline.json`; new violations fail CI. Do not regenerate
+the baseline to approve new warnings. Shrink it as existing warnings are fixed.
+
+For signed releases, configure these GitHub Actions repository secrets once:
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERTIFICATE_BASE64` | Base64-encoded `.p12` export of a **Developer ID Application** certificate and its private key |
+| `APPLE_CERTIFICATE_PASSWORD` | Password protecting the `.p12` export |
+| `APPLE_ID` | Apple Developer account email |
+| `APPLE_APP_PASSWORD` | App-specific password for notarization |
+| `APPLE_TEAM_ID` | Apple Developer team ID |
+
+An Apple Development certificate cannot sign public releases. See
+[Apple's notarization requirements](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+Credentials stay in Actions secrets and a temporary runner keychain.
+
+Push a stable `vX.Y.Z` tag to run verification, then sign with hardened runtime,
+notarize and staple both the app and DMG, and create a **draft GitHub release**
+containing the DMG and checksum. The version comes from the tag. Missing signing
+credentials or failed notarization stop the release. Review the draft before
+publishing it; this workflow does not publish automatically.
+
+Users update by quitting Ullage and replacing it in Applications. To roll back,
+install a previous release the same way; the installer leaves Application
+Support data alone. Data compatibility still depends on the selected version.
+
 Layout:
 
 ```
@@ -653,6 +732,8 @@ Sources/UllageApp/     the SwiftUI menu bar popover and main window (macOS)
 Tests/                 unit tests for the collector and every display rule
 scripts/recon.sh       inspect the on-disk transcript format
 scripts/install-app.sh build, bundle, and install the app
+scripts/package-app.sh build, sign, and package a universal DMG
+scripts/verify-dmg.sh  check the mounted release artifact
 scripts/model-windows.py  regenerate model windows from models.dev
 scripts/test-plan.py   rebuild the test checklist (docs/TESTING.csv)
 docs/                  transcript formats (harnesses/), context tools, OTLP, phone,

@@ -6,13 +6,13 @@
 # Shared by scripts/install-app.sh and the Homebrew formula, so both make the
 # same bundle. SwiftPM produces a bare executable; macOS needs a bundle for a
 # menu bar item (LSUIElement hides the Dock icon) and for the bundle identifier
-# the collector keys its Application Support directory on. The signature is ad
-# hoc: a local build of an unsandboxed tool, not a notarized download.
+# the collector keys its Application Support directory on.
 #
 # ULLAGE_VERSION overrides the version; otherwise `git describe`, else "dev"
 # (a release tarball has no .git, so Homebrew passes the version in).
 # SWIFT_BUILD_FLAGS is passed to `swift build`: Homebrew builds inside its own
 # sandbox, where SwiftPM's sandbox can't start, so it passes --disable-sandbox.
+# CODE_SIGN_IDENTITY selects a Developer ID certificate; defaults to ad hoc.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -20,12 +20,16 @@ OUT_DIR="${1:?usage: scripts/bundle-app.sh <out-dir>}"
 VERSION="${ULLAGE_VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}"
 LOGO="assets/branding/ullage-logo.png"
 
+# Word splitting is intentional: callers supply multiple SwiftPM arguments.
+# shellcheck disable=SC2086
 swift build ${SWIFT_BUILD_FLAGS:-} -c release --product UllageApp
+# shellcheck disable=SC2086
+BIN_DIR="$(swift build ${SWIFT_BUILD_FLAGS:-} -c release --show-bin-path)"
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/Ullage.app/Contents/MacOS" "$STAGE/Ullage.app/Contents/Resources"
-cp .build/release/UllageApp "$STAGE/Ullage.app/Contents/MacOS/UllageApp"
+cp "$BIN_DIR/UllageApp" "$STAGE/Ullage.app/Contents/MacOS/UllageApp"
 
 # App icon from the branding PNG. Build the standard .iconset (each size plus
 # its @2x) and let iconutil produce the multi-resolution .icns; Finder, the
@@ -60,7 +64,13 @@ ${ICON_KEY}
 </dict>
 </plist>
 PLIST
-codesign --force --sign - "$STAGE/Ullage.app" >/dev/null
+if [[ "${CODE_SIGN_IDENTITY:--}" == "-" ]]; then
+  codesign --force --sign - "$STAGE/Ullage.app" >/dev/null
+else
+  codesign --force --options runtime --timestamp --sign "$CODE_SIGN_IDENTITY" "$STAGE/Ullage.app"
+fi
+plutil -lint "$STAGE/Ullage.app/Contents/Info.plist" >/dev/null
+codesign --verify --deep --strict "$STAGE/Ullage.app"
 
 mkdir -p "$OUT_DIR"
 rm -rf "$OUT_DIR/Ullage.app"

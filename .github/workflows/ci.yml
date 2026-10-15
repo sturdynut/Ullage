@@ -1,0 +1,115 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Record toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Install linters
+        run: brew install actionlint shellcheck swiftlint
+      - name: Lint automation
+        run: |
+          actionlint
+          shellcheck scripts/bundle-app.sh scripts/install-app.sh scripts/package-app.sh scripts/verify-dmg.sh scripts/smoke-app.sh
+          python3 scripts/test_coverage.py
+      - name: Build and type check
+        run: swift build
+      - name: Lint Swift
+        run: swiftlint lint --strict
+      - name: Tests with coverage
+        run: |
+          mkdir -p coverage
+          swift test --enable-code-coverage --parallel --num-workers 3 --xunit-output coverage/test-results.xml
+      - name: Report coverage and enforce minimum
+        run: |
+          python3 scripts/coverage.py
+          python3 -c 'import xml.etree.ElementTree as ET; assert ET.parse("coverage/test-results.xml").findall(".//testcase"), "JUnit report contains no XCTest results"'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: Ullage-test-reports
+          path: coverage/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Package and verify universal app
+        run: scripts/package-app.sh
+      - name: Launch packaged app
+        run: scripts/smoke-app.sh dist/Ullage-0.0.0-universal.dmg
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: Ullage-local-build
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Import Developer ID and notarization credentials
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          : "${CERTIFICATE_BASE64:?Set APPLE_CERTIFICATE_BASE64}"
+          : "${CERTIFICATE_PASSWORD:?Set APPLE_CERTIFICATE_PASSWORD}"
+          : "${APPLE_ID:?Set APPLE_ID}"
+          : "${APPLE_APP_PASSWORD:?Set APPLE_APP_PASSWORD}"
+          : "${APPLE_TEAM_ID:?Set APPLE_TEAM_ID}"
+          KEYCHAIN="$RUNNER_TEMP/ullage-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
+          security default-keychain -d user -s "$KEYCHAIN"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n '/"Developer ID Application:/s/.*"\(.*\)"/\1/p')"
+          test -n "$IDENTITY"
+          echo "CODE_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          xcrun notarytool store-credentials ullage --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+      - name: Build, sign, notarize, and verify
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          NOTARY_PROFILE: ullage
+        run: ULLAGE_VERSION="$RELEASE_TAG" scripts/package-app.sh
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --draft --title "Ullage $RELEASE_TAG" --generate-notes
+      - name: Remove signing credentials
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/ullage-signing.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/ullage-signing.keychain-db"
+          fi
+          rm -f "$RUNNER_TEMP/certificate.p12"
