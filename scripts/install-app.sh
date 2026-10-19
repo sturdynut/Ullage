@@ -13,13 +13,22 @@ APP="$DEST_DIR/Ullage.app"
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
+echo "Building Ullage (${ULLAGE_BUILD_CONFIGURATION:-release})…"
 scripts/bundle-app.sh "$STAGE" >/dev/null
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$STAGE/Ullage.app/Contents/Info.plist")"
 
 # Quit a running copy so the new one is what launches next, and wait for it
 # to actually exit: `open` right after the quit request fails with -600.
-osascript -e 'tell application id "com.sturdynut.ullage" to quit' >/dev/null 2>&1 || true
-for _ in $(seq 1 30); do pgrep -x UllageApp >/dev/null || break; sleep 0.1; done
+if pgrep -x UllageApp >/dev/null; then
+  osascript -e 'with timeout of 30 seconds' \
+    -e 'tell application id "com.sturdynut.ullage" to quit' \
+    -e 'end timeout' >/dev/null 2>&1 || true
+  for _ in {1..300}; do pgrep -x UllageApp >/dev/null || break; sleep 0.1; done
+  if pgrep -x UllageApp >/dev/null; then
+    echo 'Ullage is still running. Quit it, then retry; the existing installation was kept.' >&2
+    exit 1
+  fi
+fi
 rm -rf "$APP"
 mkdir -p "$DEST_DIR"
 cp -R "$STAGE/Ullage.app" "$APP"

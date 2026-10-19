@@ -3,39 +3,43 @@ import AppKit
 import SwiftUI
 import UllageCore
 
-/// M4 put the number in the menu bar; M5 put a popover behind it.
-///
 /// Runs unsandboxed: reading ~/.claude from a sandboxed app needs entitlements,
 /// which is a packaging task and not this milestone's problem.
 @main
-struct UllageApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var model = MenuBarModel.shared
+@MainActor
+struct UllageApp {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.mainMenu = mainMenu()
+        // All windows belong to MenuBarController; a placeholder Settings scene
+        // otherwise gives SwiftUI an empty window to open on launch/reopen.
+        app.setActivationPolicy(.accessory)
+        withExtendedLifetime(delegate) { app.run() }
+    }
 
-    var body: some Scene {
-        MenuBarExtra {
-            PopoverContent(model: model)
-        } label: {
-            // Rendered as one NSImage: a MenuBarExtra label built from a SwiftUI
-            // Text with an inline SF Symbol drops the symbol in the menu bar, so
-            // the gauge and the number are drawn together into a template image
-            // instead. The gauge makes the number read as "context window"
-            // rather than yet another percentage next to CPU, RAM and battery.
-            Image(nsImage: MenuBarLabel.image(for: model.menuBarState))
+    static func mainMenu() -> NSMenu {
+        let menu = NSMenu()
+        let appMenu = NSMenu(title: "Ullage")
+        appMenu.addItem(withTitle: "Quit Ullage", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)),
+                           keyEquivalent: "m")
+        for submenu in [appMenu, editMenu, windowMenu] {
+            menu.addItem(withTitle: submenu.title, action: nil, keyEquivalent: "").submenu = submenu
         }
-        .menuBarExtraStyle(.window)
-
-        // One main window: the popover is the glance, this is everything at
-        // full size. Composition, History and Token savers are its pages.
-        Window("Ullage", id: MainWindow.id) {
-            MainWindow(model: model)
-        }
-        .defaultSize(width: 1180, height: 760)
-
-        Window("Ullage Dashboard", id: DashboardWindow.id) {
-            DashboardWindow()
-        }
-        .defaultSize(width: 1000, height: 760)
+        return menu
     }
 }
 
@@ -86,6 +90,9 @@ enum MenuBarLabel {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var menuBar: MenuBarController?
+    private var isTerminating = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // One copy only. A reinstall that relaunches the app while a login
         // item or launcher starts it too left two copies running, each
@@ -98,7 +105,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Menu bar only: no Dock icon, no main window.
         NSApp.setActivationPolicy(.accessory)
+        menuBar = MenuBarController(model: MenuBarModel.shared)
         MenuBarModel.shared.start()
+    }
+
+    // AppKit's terminateLater keeps the run loop alive while writers drain.
+    // https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationshouldterminate(_:)
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard menuBar != nil else { return .terminateNow }
+        if !isTerminating {
+            isTerminating = true
+            Task { @MainActor in
+                await MenuBarModel.shared.stop()
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        menuBar?.stop()
     }
 }
 #else

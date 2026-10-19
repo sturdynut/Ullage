@@ -75,7 +75,7 @@ final class SaverValueTests: XCTestCase {
     }
 
     private func decision(_ ts: String, _ session: String, _ call: String, _ rewritten: String) -> SaverLedgers.RtkDecision {
-        SaverLedgers.RtkDecision(ts: at(ts), sessionId: session, toolUseId: call, rewritten: rewritten)
+        SaverLedgers.RtkDecision(timestamp: at(ts), sessionId: session, toolUseId: call, rewritten: rewritten)
     }
 
     private func command(_ ts: String, _ original: String) -> LedgerEntry {
