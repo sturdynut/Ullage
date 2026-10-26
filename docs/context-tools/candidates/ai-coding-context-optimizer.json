@@ -1,0 +1,15 @@
+{
+  "id": "ai-coding-context-optimizer",
+  "name": "ai-coding-context-optimizer",
+  "kind": "outputFilter",
+  "shrinks": "context through smart compression, semantic retrieval, and routing",
+  "about": "ACCO: hook and MCP server with SDK middleware that provides smart compression, semantic retrieval of relevant context, recovery mechanisms, and multi-host agent routing.",
+  "detect": {
+    "hookCommand": ["acco", "context-optimizer"],
+    "mcpServer": ["^acco$", "^ai-coding-context-optimizer$"]
+  },
+  "harnesses": ["Claude Code"],
+  "sources": [
+    "https://github.com/elyeshkiri/ai-coding-context-optimizer"
+  ]
+}

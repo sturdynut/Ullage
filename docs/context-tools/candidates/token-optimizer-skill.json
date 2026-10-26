@@ -1,0 +1,14 @@
+{
+  "id": "token-optimizer-skill",
+  "name": "token-optimizer-skill",
+  "kind": "outputFilter",
+  "shrinks": "context through intelligent output compression",
+  "about": "Windows skill that claims 60-90% output compression for Claude Code on Windows platforms.",
+  "detect": {
+    "skill": ["^token-optimizer-skill($|[:-])"]
+  },
+  "harnesses": ["Claude Code"],
+  "sources": [
+    "https://github.com/PhoenixDistinguish/token-optimizer-skill"
+  ]
+}
