@@ -1,0 +1,50 @@
+{
+  "id": "mcptoon",
+  "name": "mcptoon",
+  "kind": "onDemand",
+  "shrinks": "MCP tool schemas and discovery overhead",
+  "about": "A Python CLI that keeps MCP tool definitions out of your context window, reducing discovery tokens by 99.2% while maintaining full tool access through shell commands.",
+  "detect": {
+    "bash": ["^mcptoon$"],
+    "skill": ["^mcptoon($|[:-])"]
+  },
+  "install": {
+    "package": "mcptoon",
+    "packages": [
+      {
+        "manager": "pip",
+        "command": "pip install mcptoon"
+      },
+      {
+        "manager": "uv",
+        "command": "uv tool install mcptoon"
+      }
+    ],
+    "setup": [
+      {
+        "command": "mcptoon install",
+        "purpose": "Register mcptoon with Claude Code as a skill",
+        "needs": "mcptoon"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "mcptoon uninstall",
+        "purpose": "Unregister mcptoon from Claude Code",
+        "needs": "mcptoon"
+      }
+    ],
+    "notes": [
+      "mcptoon is a zero-dependency CLI that works with any agent that can run shell commands.",
+      "MCP servers stay configured in your system, but their schemas never enter your agent's context.",
+      "Use `mcptoon manifest --compact` to see all tool names in approximately 117 tokens instead of 71k+.",
+      "Newer versions automatically inject the /mcptoon skill into detected Claude Code sessions."
+    ]
+  },
+  "harnesses": ["Claude Code", "Cursor", "Codex CLI", "Cline"],
+  "sources": [
+    "https://github.com/activeing123/mcptoon",
+    "https://pypi.org/project/mcptoon/",
+    "https://dev.to/gentic_news/cut-mcp-token-waste-99-the-50kb-cli-that-keeps-schemas-out-of-context-3pn5"
+  ]
+}

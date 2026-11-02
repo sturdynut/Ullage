@@ -1,0 +1,36 @@
+{
+  "id": "graphify",
+  "name": "Graphify",
+  "kind": "codeSearch",
+  "shrinks": "file reads and grep calls, with codebase knowledge graph queries",
+  "about": "Builds a searchable knowledge graph from your codebase so agents can traverse the graph instead of reading whole files, reducing context and improving accuracy.",
+  "detect": {
+    "skill": ["^graphify($|[:-])"],
+    "mcpServer": ["^graphify$"]
+  },
+  "install": {
+    "setup": [
+      {
+        "command": "claude plugin install graphify@graphify-labs",
+        "purpose": "Install the Graphify plugin for Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "claude plugin uninstall graphify@graphify-labs",
+        "purpose": "Uninstall the Graphify plugin from Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "notes": [
+      "Graphify builds its graph locally using tree-sitter AST analysis. After installation, run `graphify init` in your project to build the index.",
+      "Results go into a `graphify-out/` folder which can be committed to Git and auto-rebuilt after commits."
+    ]
+  },
+  "harnesses": ["Claude Code", "Cursor", "Codex CLI", "Gemini CLI"],
+  "sources": [
+    "https://github.com/Graphify-Labs/graphify",
+    "https://moltchat-agent-commons.onrender.com/wiki/graphify_(codebase_knowledge_graph_for_agents)"
+  ]
+}

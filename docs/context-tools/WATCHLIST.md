@@ -4,8 +4,8 @@ Weekly tracking of context-saving tools for AI coding agents.
 
 | Tool | Kind | Harnesses | Repo/home | Latest version | Checked |
 |---|---|---|---|---|---|
-| rtk | outputFilter | Claude Code, Copilot CLI, Cursor | https://github.com/rtk-ai/rtk | v1.0.1 | 2026-10-19 |
-| Tokenade | outputFilter | Claude Code, Copilot CLI, Cursor | https://github.com/pi-infected/tokenade | 2.0.1 | 2026-10-19 |
+| rtk | outputFilter | Claude Code, Copilot CLI, Cursor | https://github.com/rtk-ai/rtk | v1.0.1 | 2026-11-02 |
+| Tokenade | outputFilter | Claude Code, Copilot CLI, Cursor | https://github.com/pi-infected/tokenade | 2.0.1 | 2026-11-02 |
 | caveman | replyStyle | Claude Code (plugin) | https://github.com/JuliusBrussee/caveman | v4.0.1 | 2026-10-19 |
 | Headroom | onDemand | Claude Code, Cursor | https://github.com/headroomlabs-ai/headroom | 0.41.0 | 2026-10-19 |
 | Serena | codeSearch | Claude Code | https://github.com/oraios/serena | 2.0.0 | 2026-10-19 |
@@ -20,7 +20,9 @@ GitHub release on the date checked.
 
 | Tool | Kind | Harnesses | Repo/home | Latest | Status | Notes |
 |---|---|---|---|---|---|---|
-| token-optimizer-mcp | onDemand | Claude Code, multiple CLI clients | https://github.com/ooples/token-optimizer-mcp | v7.5.1 | candidate | MCP server, claims 60-90% reduction |
+| Graphify | codeSearch | Claude Code, Cursor, Codex, Gemini | https://github.com/Graphify-Labs/graphify | v0.9.34 | candidate | Knowledge graph, symbol lookups; benchmark claims 50%+ reduction |
+| mcptoon | onDemand | Claude Code, Cursor, Codex, Cline | https://github.com/activeing123/mcptoon | v0.8.34 | candidate | CLI tool, MCP schemas out of context; claims 99.2% discovery reduction |
+| token-optimizer-mcp | onDemand | Claude Code, multiple CLI clients | https://github.com/ooples/token-optimizer-mcp | v5.1.1 | candidate | MCP server, claims 60-90% reduction |
 | squeez | outputFilter | Claude Code, OpenCode, Copilot CLI, others | https://github.com/claudioemmanuel/squeez | v1.48.18 | candidate | Hook plus MCP server, claims up to 95% bash compression |
 | winnow | outputFilter | Claude Code, generic | https://github.com/jpoindexter/winnow | no release (pushed 2026-07-09) | candidate | Recoverable compression, claims 40-95% |
 | mcp-compressor | onDemand | Claude Code (MCP) | https://github.com/atlassian-labs/mcp-compressor | v0.38.0 | candidate | Schema compression proxy, claims 70-97% |
