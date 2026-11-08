@@ -26,8 +26,9 @@ jobs:
       - name: Lint automation
         run: |
           actionlint
-          shellcheck scripts/bundle-app.sh scripts/install-app.sh scripts/package-app.sh scripts/verify-dmg.sh scripts/smoke-app.sh
+          shellcheck scripts/bundle-app.sh scripts/install-app.sh scripts/dev.sh scripts/package-app.sh scripts/verify-dmg.sh scripts/smoke-app.sh
           python3 scripts/test_coverage.py
+          python3 scripts/test_install.py
       - name: Build and type check
         run: swift build
       - name: Lint Swift

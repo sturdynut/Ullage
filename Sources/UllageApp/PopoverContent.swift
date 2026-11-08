@@ -3,19 +3,16 @@ import AppKit
 import SwiftUI
 import UllageCore
 
-/// M5/M8 — the popover behind the menu bar title: which project and session,
-/// which of its agents, how full that one's window is, and how it got there.
 struct PopoverContent: View {
     @ObservedObject var model: MenuBarModel
-    @Environment(\.openWindow) private var openWindow
+    let openWindow: (String) -> Void
     /// Height of everything below the header, measured, so the scroll view is
     /// exactly as tall as its content until the screen runs out.
     @State private var sectionsHeight: CGFloat = 0
     @State private var headerHeight: CGFloat = 0
-    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
-        // A MenuBarExtra window taller than the screen is clipped at the top,
+        // A popover taller than the screen is clipped at the top,
         // which is where the session name and model live. The toolbar and
         // header stay pinned; the sections below scroll once they don't fit.
         VStack(alignment: .leading, spacing: 8) {
@@ -42,8 +39,6 @@ struct PopoverContent: View {
         .padding(14)
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
-        .background(WindowFitter(height: contentHeight))
         .onAppear { model.popoverDidOpen() }
         .onDisappear { model.popoverDidClose() }
     }
@@ -61,6 +56,11 @@ struct PopoverContent: View {
     @ViewBuilder
     private var sections: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if model.isRestarting {
+                Text("Restarting…").font(.caption).foregroundStyle(.secondary)
+            } else if !model.isWatching {
+                Text("Monitoring stopped").font(.caption).foregroundStyle(.orange)
+            }
             if let composition = model.composition {
                 SectionLink("Context", scope: scopeName,
                             shares: composition.segments.map {
@@ -98,10 +98,9 @@ struct PopoverContent: View {
     }
 
     /// The main window, on one page.
-    private func open(_ page: MainPage) {
+    func open(_ page: MainPage) {
         model.windowPage = page
-        openWindow(id: MainWindow.id)
-        NSApp.activate(ignoringOtherApps: true)
+        openWindow(MainWindow.id)
     }
 
     // MARK: Scope
@@ -138,7 +137,6 @@ struct PopoverContent: View {
         }
         .fixedSize()
     }
-
 
     /// The main-thread row's second line, in the same shape as an agent's:
     /// what is answering, then how much it has done.
@@ -315,14 +313,11 @@ struct PopoverContent: View {
         return state.modelLine
     }
 
+}
+
+extension PopoverContent {
     // MARK: Session picker
 
-    /// Most recent is the default and needs no control; switching sessions is
-    /// rare enough to live behind the title it already names, rather than a
-    /// full-width field competing with the answer.
-    ///
-    /// The chevron takes the accent colour while a session is pinned, so the
-    /// one state that is not the default announces itself.
     private var sessionMenu: some View {
         Menu {
             Picker("Session", selection: $model.selection) {
@@ -370,7 +365,6 @@ struct PopoverContent: View {
 
     // MARK: Stats
 
-
     /// What the stream the popover is looking at says about itself: the
     /// session's own figures, or a selected agent's. Every figure describes
     /// that one stream, so an agent's turns are never shown next to the
@@ -397,81 +391,5 @@ struct PopoverContent: View {
 
     private var statsReadouts: [Readout] { SessionInfo.summary(figures, history: model.history) }
 
-    // MARK: Plan limits
-
-    @ViewBuilder
-    private var planLimitsSection: some View {
-        let hasClaude = model.planLimits.contains { $0.vendor == Vendor.claudeCode }
-        if !model.planLimits.isEmpty || !model.checksClaudeLimits || model.claudeLimitsError != nil {
-            if model.planLimits.isEmpty {
-                SectionRule("Plan limits")
-            } else {
-                SectionLink("Plan limits", open: { open(.limits) }) {
-                    ReadoutLine(PlanLimitFormatter.summary(model.planLimits))
-                }
-            }
-            if let error = model.claudeLimitsError {
-                Text("Claude: " + error)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            } else if !model.checksClaudeLimits, !hasClaude {
-                Button("Show Claude's plan limits") { model.checksClaudeLimits = true }
-                    .buttonStyle(.link)
-                    .font(.caption)
-                    .help(Self.claudeLimitsExplanation)
-            }
-        }
-    }
-
-    static let claudeLimitsExplanation = """
-    Asks Anthropic every 5 minutes, the way Claude Code's /usage does, using \
-    Claude Code's own sign-in from the Keychain. Sends that token to \
-    api.anthropic.com and nothing else. Turn off from the ⋯ menu.
-    """
-
-    // MARK: Actions
-
-    /// One button for the thing you might actually want next; the app's own
-    /// housekeeping goes behind a menu instead of standing at the same weight
-    /// as the task.
-    private var actions: some View {
-        HStack(spacing: 8) {
-            Button("Open Ullage") { open(.overview) }
-                .buttonStyle(.borderedProminent)
-                .help("Everything here at full size: composition, session, agents, context tools, history and limits")
-            Button("Dashboard…") {
-                openWindow(id: DashboardWindow.id)
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            Spacer()
-            // One way in to every explanation, opposite the main action.
-            HelpButton()
-        }
-        .controlSize(.small)
-    }
-
-    private var overflowMenu: some View {
-        Menu {
-            Button(model.isWatching ? "Refresh now" : "Start watching") {
-                if model.isWatching { model.refreshNow() } else { model.start() }
-            }
-            Button("Show database in Finder") { model.openDatabaseFolder() }
-            Divider()
-            Toggle("Check Claude plan limits", isOn: $model.checksClaudeLimits)
-                .help(Self.claudeLimitsExplanation)
-            Divider()
-            Button("Quit Ullage") { NSApplication.shared.terminate(nil) }
-                .keyboardShortcut("q")
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 11, weight: .semibold))
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .foregroundStyle(.tertiary)
-        .help("Refresh, show the database, quit")
-    }
 }
 #endif
