@@ -1,0 +1,14 @@
+{
+  "id": "token-optimizer",
+  "name": "token-optimizer",
+  "kind": "outputFilter",
+  "shrinks": "context tokens through output filtering and context decay management",
+  "about": "Hook and desktop app that compresses tool output, handles context decay and compaction recovery.",
+  "detect": {
+    "hookCommand": ["token-optimizer"]
+  },
+  "harnesses": ["Claude Code"],
+  "sources": [
+    "https://github.com/alexgreensh/token-optimizer/releases"
+  ]
+}

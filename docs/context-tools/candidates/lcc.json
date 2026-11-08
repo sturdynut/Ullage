@@ -1,0 +1,15 @@
+{
+  "id": "lcc",
+  "name": "lcc",
+  "kind": "outputFilter",
+  "shrinks": "context through deduplication, compaction, and cleaning with audited block removal",
+  "about": "Local Context Compiler: hook and Claude Code plugin that deduplicates and compacts context, auditing every block dropped and reporting cache/pruning metrics.",
+  "detect": {
+    "hookCommand": ["lcc"],
+    "plugin": ["^lcc@"]
+  },
+  "harnesses": ["Claude Code"],
+  "sources": [
+    "https://github.com/lucasmartins-ai/lcc"
+  ]
+}
