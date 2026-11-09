@@ -1,0 +1,13 @@
+{
+  "id": "teyla",
+  "name": "teyla",
+  "kind": "onDemand",
+  "shrinks": "token spend through optimization and memory control",
+  "about": "Local-first toolkit for AI agents: token spend optimization, memory management for parallel agents, unified hooks and skills across harnesses.",
+  "harnesses": ["Claude Code", "OpenAI Codex CLI", "Cursor", "Grok", "Hermes"],
+  "detect": {
+    "hookCommand": ["teyla"],
+    "bash": ["^teyla$"]
+  },
+  "sources": ["https://github.com/zaitsew/teyla"]
+}
