@@ -1,0 +1,13 @@
+{
+  "id": "tokenmiser",
+  "name": "tokenmiser",
+  "kind": "outputFilter",
+  "shrinks": "redundant file reads through codebase indexing",
+  "about": "Codebase indexer that prevents unnecessary full-file reads, with optional Claude Code hooks for live updates, claims 50-80% reduction.",
+  "harnesses": ["Claude Code"],
+  "detect": {
+    "hookCommand": ["tokenmiser"],
+    "bash": ["^tokenmiser$"]
+  },
+  "sources": ["https://github.com/phlx0/tokenmiser"]
+}

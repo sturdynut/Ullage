@@ -1,0 +1,13 @@
+{
+  "id": "lean-ctx",
+  "name": "lean-ctx",
+  "kind": "onDemand",
+  "shrinks": "context through unified MCP and shell integration",
+  "about": "Unified MCP server and shell hook in Rust binary supporting 60+ MCP tools across 20+ AI coding agents with zero telemetry.",
+  "harnesses": ["Claude Code", "Cursor", "OpenAI Copilot", "Gemini CLI", "Hermes", "Antigravity"],
+  "detect": {
+    "mcpServer": ["^lean-ctx$"],
+    "bash": ["^lean-ctx$"]
+  },
+  "sources": ["https://github.com/yvgude/lean-ctx"]
+}

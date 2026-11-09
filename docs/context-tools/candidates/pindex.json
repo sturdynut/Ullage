@@ -1,0 +1,12 @@
+{
+  "id": "pindex",
+  "name": "PindeX",
+  "kind": "codeSearch",
+  "shrinks": "file reads, with SQLite-based code indexing",
+  "about": "SQLite (FTS5) based codebase indexer as MCP server, claims 70-80% reduction in code exploration tokens.",
+  "harnesses": ["Claude Code"],
+  "detect": {
+    "mcpServer": ["^pindex$"]
+  },
+  "sources": ["https://github.com/phash/PindeX"]
+}

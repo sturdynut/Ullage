@@ -1,0 +1,12 @@
+{
+  "id": "trimtok",
+  "name": "trimtok",
+  "kind": "onDemand",
+  "shrinks": "context via AST code skeletonization and lossless JSON tables",
+  "about": "Universal deterministic context compressor for AI coding agents: 88.3% reduction via TOON v2 JSON tables, AST skeletonization, with lossless recovery.",
+  "harnesses": ["Claude Code", "Cursor", "Antigravity", "OpenAI Codex CLI", "Gemini CLI", "Hermes"],
+  "detect": {
+    "mcpServer": ["^trimtok$"]
+  },
+  "sources": ["https://github.com/Stxyu-p/trimtok"]
+}

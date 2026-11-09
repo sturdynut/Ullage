@@ -1,0 +1,12 @@
+{
+  "id": "context-pruner-mcp",
+  "name": "context-pruner-mcp",
+  "kind": "onDemand",
+  "shrinks": "tool output through intelligent pruning",
+  "about": "MCP server that intercepts and compresses tool outputs before they reach the LLM, claims 50-80% reduction.",
+  "harnesses": ["Claude Code"],
+  "detect": {
+    "mcpServer": ["^context-pruner-mcp$"]
+  },
+  "sources": ["https://github.com/Zn0w/context-pruner-mcp"]
+}

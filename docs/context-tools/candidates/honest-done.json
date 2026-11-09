@@ -1,0 +1,12 @@
+{
+  "id": "honest-done",
+  "name": "honest-done",
+  "kind": "outputFilter",
+  "shrinks": "superfluous stop signals",
+  "about": "Claude Code Stop hook that blocks premature 'All done!' signals when diff or transcript shows unfinished work.",
+  "harnesses": ["Claude Code"],
+  "detect": {
+    "hookCommand": ["honest-done"]
+  },
+  "sources": ["https://github.com/moelsaka01/honest-done"]
+}
