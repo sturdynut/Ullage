@@ -31,10 +31,19 @@ final class DashboardLayoutTests: XCTestCase {
             window.setContentSize(NSSize(width: width, height: 760))
             try await Task.sleep(for: .milliseconds(100))
             hosting.view.layoutSubtreeIfNeeded()
-            // SwiftUI's total native control count varies between macOS versions.
+            // What the dashboard needs at this width, asked of SwiftUI itself:
+            // wider than the window means a control is pushed off an edge.
+            let needed = hosting.sizeThatFits(in: NSSize(width: width, height: 760))
+            XCTAssertLessThanOrEqual(needed.width, width + 1, "the dashboard needs \(needed.width)pt at \(width)")
+            // Whichever pickers are native AppKit controls must sit inside too.
+            // How many are depends on the macOS version: through macOS 15 each
+            // menu picker is an NSPopUpButton; on later versions SwiftUI draws
+            // them itself and none is found here.
             let pickers = descendants(of: hosting.view).compactMap { $0 as? NSControl }
                 .filter { $0 is NSSegmentedControl || $0 is NSPopUpButton }
-            XCTAssertGreaterThanOrEqual(pickers.count, 4)
+            if ProcessInfo.processInfo.operatingSystemVersion.majorVersion <= 15 {
+                XCTAssertGreaterThanOrEqual(pickers.count, 4)
+            }
             for control in pickers {
                 let frame = control.convert(control.bounds, to: hosting.view)
                 XCTAssertGreaterThanOrEqual(frame.minX, 0, "\(control) overflows left at \(width)")

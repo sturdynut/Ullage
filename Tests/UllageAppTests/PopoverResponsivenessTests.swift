@@ -27,15 +27,22 @@ final class PopoverResponsivenessTests: XCTestCase {
         model.readStore = try Store(path: databaseURL.path)
         let controller = MenuBarController(model: model)
         defer { controller.stop() }
-        try await Task.sleep(for: .milliseconds(100))
+        let placed = try await waitForStatusButton(controller)
 
         let start = Date()
         controller.statusItem.button?.performClick(nil)
         XCTAssertLessThan(Date().timeIntervalSince(start), 1, "A locked tool ledger must not delay opening the popover")
-        try await Task.sleep(for: .milliseconds(50))
-        XCTAssertTrue(controller.popover.isShown)
-        controller.statusItem.button?.performClick(nil)
-        XCTAssertFalse(controller.popover.isShown, "The popover must remain interactive while the ledger is busy")
+        if placed {
+            try await waitUntil { controller.popover.isShown }
+            XCTAssertTrue(controller.popover.isShown)
+            controller.statusItem.button?.performClick(nil)
+            XCTAssertFalse(controller.popover.isShown, "The popover must remain interactive while the ledger is busy")
+        }
         try ledger.execute("ROLLBACK;")
+        if !placed {
+            // The click still had to return at once; only whether the popover
+            // showed went unchecked.
+            throw XCTSkip("The menu bar had no room to place a status item, so the popover could not open")
+        }
     }
 }

@@ -212,16 +212,19 @@ final class ServiceControlsTests: XCTestCase {
         let (model, _) = try makeModel()
         let controller = MenuBarController(model: model)
         defer { controller.stop() }
-        // Give AppKit a run-loop turn to insert the status button before clicking.
-        try await Task.sleep(for: .milliseconds(100))
-        controller.statusItem.button?.performClick(nil)
-        try await Task.sleep(for: .milliseconds(50))
-        XCTAssertTrue(controller.popover.isShown)
-        XCTAssertGreaterThan(controller.popover.contentSize.height, 0)
-        XCTAssertEqual(controller.popover.contentSize.width, 360, accuracy: 1)
-        controller.statusItem.button?.performClick(nil)
-        try await Task.sleep(for: .milliseconds(50))
-        XCTAssertFalse(controller.popover.isShown)
+        let placed = try await waitForStatusButton(controller)
+        if placed {
+            controller.statusItem.button?.performClick(nil)
+            // How long the popover takes to show varies by macOS version and
+            // load; wait for the state rather than for a fixed time.
+            try await waitUntil { controller.popover.isShown && controller.popover.contentSize.height > 0 }
+            XCTAssertTrue(controller.popover.isShown)
+            XCTAssertGreaterThan(controller.popover.contentSize.height, 0)
+            XCTAssertEqual(controller.popover.contentSize.width, 360, accuracy: 1)
+            controller.statusItem.button?.performClick(nil)
+            try await waitUntil { !controller.popover.isShown }
+            XCTAssertFalse(controller.popover.isShown)
+        }
 
         controller.openWindow(id: MainWindow.id)
         let mainWindow = try XCTUnwrap(NSApp.windows.first { $0.title == "Ullage" && $0.isVisible })
@@ -231,6 +234,10 @@ final class ServiceControlsTests: XCTestCase {
         XCTAssertEqual(NSApp.windows.filter { $0.title == "Ullage" && $0.isVisible }.count, 1)
         controller.openWindow(id: DashboardWindow.id)
         XCTAssertTrue(NSApp.windows.contains { $0.title == "Ullage Dashboard" && $0.isVisible })
+        if !placed {
+            // The windows are checked; only the popover half went untested.
+            throw XCTSkip("The menu bar had no room to place a status item, so the popover was not clicked")
+        }
     }
 
     private func makeModel(
