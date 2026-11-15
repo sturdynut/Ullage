@@ -13,18 +13,24 @@
 # SWIFT_BUILD_FLAGS is passed to `swift build`: Homebrew builds inside its own
 # sandbox, where SwiftPM's sandbox can't start, so it passes --disable-sandbox.
 # CODE_SIGN_IDENTITY selects a Developer ID certificate; defaults to ad hoc.
+# ULLAGE_BUILD_CONFIGURATION selects debug or release (the default).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 OUT_DIR="${1:?usage: scripts/bundle-app.sh <out-dir>}"
+CONFIGURATION="${ULLAGE_BUILD_CONFIGURATION:-release}"
+case "$CONFIGURATION" in
+  debug|release) ;;
+  *) echo 'ULLAGE_BUILD_CONFIGURATION must be debug or release' >&2; exit 1 ;;
+esac
 VERSION="${ULLAGE_VERSION:-$(git describe --tags --always 2>/dev/null || echo dev)}"
 LOGO="assets/branding/ullage-logo.png"
 
 # Word splitting is intentional: callers supply multiple SwiftPM arguments.
 # shellcheck disable=SC2086
-swift build ${SWIFT_BUILD_FLAGS:-} -c release --product UllageApp
+swift build ${SWIFT_BUILD_FLAGS:-} -c "$CONFIGURATION" --product UllageApp
 # shellcheck disable=SC2086
-BIN_DIR="$(swift build ${SWIFT_BUILD_FLAGS:-} -c release --show-bin-path)"
+BIN_DIR="$(swift build ${SWIFT_BUILD_FLAGS:-} -c "$CONFIGURATION" --show-bin-path)"
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT

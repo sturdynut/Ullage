@@ -45,7 +45,7 @@ final class DashboardModel: ObservableObject {
 struct DashboardWindow: View {
     static let id = "dashboard"
 
-    @StateObject private var model = DashboardModel()
+    @StateObject var model: DashboardModel
     @AppStorage("dashboard.tab") private var tab = DashboardModel.Tab.weekly.rawValue
     @AppStorage("dashboard.showAll") private var showAll = false
 
@@ -88,29 +88,30 @@ struct DashboardWindow: View {
 
     private var controls: some View {
         HStack(spacing: 12) {
-            Picker("Harness", selection: $model.vendor) {
-                ForEach(UsageDashboard.Options.vendors, id: \.self) { Text(UsageDashboard.vendorLabel($0)).tag($0) }
+            // Reflow filters before their intrinsic widths push the dashboard offscreen.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 12)],
+                      alignment: .leading, spacing: 8) {
+                Picker("Harness", selection: $model.vendor) {
+                    ForEach(UsageDashboard.Options.vendors, id: \.self) { Text(UsageDashboard.vendorLabel($0)).tag($0) }
+                }
+                Picker("Counter", selection: $model.counter) {
+                    ForEach(UsageCounter.allCases) { Text($0.title).tag($0) }
+                }
+                .disabled(model.vendor == Vendor.cursor)
+                .help("Every figure uses this one counter. They are never added together.")
+                Picker("Range", selection: $model.days) {
+                    ForEach(UsageDashboard.Options.ranges, id: \.self) { Text(UsageDashboard.rangeLabel($0)).tag($0) }
+                }
+                Picker("Idle gap", selection: $model.idleGap) {
+                    ForEach(UsageDashboard.Options.idleGaps, id: \.self) {
+                        Text(UsageDashboard.idleGapLabel($0)).tag($0)
+                    }
+                }
+                .help("The longest pause between calls still counted as active time")
             }
-            .pickerStyle(.segmented).fixedSize()
-            Picker("Counter", selection: $model.counter) {
-                ForEach(UsageCounter.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented).fixedSize()
-            .disabled(model.vendor == Vendor.cursor)
-            .help("Every figure uses this one counter. They are never added together.")
-            Picker("Range", selection: $model.days) {
-                ForEach(UsageDashboard.Options.ranges, id: \.self) { Text(UsageDashboard.rangeLabel($0)).tag($0) }
-            }
-            .pickerStyle(.segmented).fixedSize()
-            Picker("Idle gap", selection: $model.idleGap) {
-                ForEach(UsageDashboard.Options.idleGaps, id: \.self) { Text(UsageDashboard.idleGapLabel($0)).tag($0) }
-            }
-            .pickerStyle(.menu).fixedSize()
-            .help("The longest pause between calls still counted as active time")
-            Spacer()
+            .pickerStyle(.menu)
             Button("Refresh") { model.reload() }
         }
-        .labelsHidden()
     }
 
     // MARK: Tiles
@@ -273,7 +274,6 @@ private struct SessionsSection: View {
                 }
                 .chartXAxisLabel("\(dashboard.options.counter.noun) per session")
                 .frame(height: 170)
-                .frame(maxWidth: 560)
             }
         }
     }

@@ -391,12 +391,15 @@ private struct CompositionPage: View {
 
 private struct SessionPage: View {
     @ObservedObject var model: MenuBarModel
-
     var body: some View {
         let figures = StreamFigures(state: model.state)
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 PageTitle(title: "Session", subtitle: model.state.sessionId.map { "Session \($0.prefix(8))" })
+                SessionPlaybackView(menu: model)
+                Text("Latest session figures").font(.headline)
+                Text("These figures follow the current session and selected agent, independently of playback.")
+                    .font(.caption).foregroundStyle(.secondary)
                 if let history = model.history {
                     PageCard {
                         VStack(alignment: .leading, spacing: 8) {
@@ -450,10 +453,8 @@ private struct SessionPage: View {
         }
     }
 }
-
 private struct AgentsPage: View {
     @ObservedObject var model: MenuBarModel
-
     var body: some View {
         if let tree = model.agents, !tree.isEmpty {
             ScrollView {
@@ -477,7 +478,6 @@ private struct AgentsPage: View {
         }
     }
 }
-
 private struct LimitsPage: View {
     @ObservedObject var model: MenuBarModel
 
