@@ -63,6 +63,17 @@ echo stop-service >> "$DEV_TEST_TRACE"
 touch "$DEV_TEST_SERVICE_STOPPED"
 ''')
         self.executable(self.commands / "curl", 'exit 0\n')
+        # Shadows the real Shire on PATH: these tests must never touch it.
+        self.executable(self.commands / "shire", '''
+if [[ "$1" == status ]]; then
+  if [[ "${DEV_TEST_SHIRE:-absent}" == managed ]]; then
+    printf 'ullage           running         no check\\nullage-serve     running         healthy\\n'
+  fi
+  exit 0
+fi
+printf 'shire:%s\\n' "$*" >> "$DEV_TEST_TRACE"
+''')
+        self.executable(self.commands / "open", 'printf "open:%s\\n" "$*" >> "$DEV_TEST_TRACE"\n')
         self.destination = self.root / "Apps with spaces"
         self.app = self.destination / "Ullage.app"
         self.app.mkdir(parents=True)
@@ -84,8 +95,8 @@ touch "$DEV_TEST_SERVICE_STOPPED"
         path.write_text("#!/usr/bin/env bash\nset -euo pipefail\n" + body)
         path.chmod(0o755)
 
-    def run_script(self, script="dev.sh"):
-        return subprocess.run([str(self.repo / "scripts" / script), str(self.destination)],
+    def run_script(self, script="dev.sh", *arguments):
+        return subprocess.run([str(self.repo / "scripts" / script), *arguments, str(self.destination)],
                               env=self.env, capture_output=True, text=True, timeout=60)
 
     def test_dev_replaces_shortcut_not_homebrew_and_launches_debug_with_database_override(self):
@@ -149,6 +160,60 @@ touch "$DEV_TEST_SERVICE_STOPPED"
         self.assertIn("still running", result.stderr)
         self.assertTrue((self.app / "previous").exists())
         self.assertNotIn("launch:", self.trace.read_text())
+
+    def test_dev_pauses_shire_after_the_build_and_before_replacing_the_app(self):
+        self.env["DEV_TEST_SHIRE"] = "managed"
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        trace = self.trace.read_text().splitlines()
+        self.assertLess(trace.index("swift:build -c debug --show-bin-path"), trace.index("shire:stop ullage"))
+        self.assertLess(trace.index("shire:stop ullage"), trace.index("shire:stop ullage-serve"))
+        self.assertLess(trace.index("shire:stop ullage-serve"), trace.index("quit"))
+        self.assertNotIn("shire:start ullage", trace)
+        self.assertIn("scripts/dev.sh ready", result.stdout)
+
+    def test_dev_build_failure_leaves_shire_running(self):
+        self.env.update(DEV_TEST_SHIRE="managed", DEV_TEST_FAIL_BUILD="1")
+        result = self.run_script()
+        self.assertEqual(result.returncode, 23)
+        self.assertNotIn("shire:", self.trace.read_text())
+
+    def test_dev_without_shire_does_not_call_it(self):
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("shire:", self.trace.read_text())
+
+    def test_shire_can_be_left_alone(self):
+        self.env.update(DEV_TEST_SHIRE="managed", ULLAGE_SHIRE="0")
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("shire:", self.trace.read_text())
+
+    def test_ready_installs_release_then_hands_back_to_shire(self):
+        self.env["DEV_TEST_SHIRE"] = "managed"
+        result = self.run_script("dev.sh", "ready")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        trace = self.trace.read_text().splitlines()
+        self.assertIn("swift:build -c release --product UllageApp", trace)
+        self.assertLess(trace.index("shire:stop ullage"), trace.index("quit"))
+        self.assertLess(trace.index("quit"), trace.index("shire:start ullage"))
+        self.assertLess(trace.index("shire:start ullage"), trace.index("shire:restart ullage-serve"))
+        self.assertNotIn("launch:", trace)
+        self.assertTrue((self.app / "Contents/MacOS/UllageApp").is_file())
+
+    def test_ready_failure_says_shire_is_still_paused(self):
+        self.env.update(DEV_TEST_SHIRE="managed", DEV_TEST_FAIL_BUILD="1")
+        result = self.run_script("dev.sh", "ready")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("shire:start", self.trace.read_text())
+        self.assertIn("Shire is still paused", result.stderr)
+
+    def test_ready_without_shire_opens_the_release_app(self):
+        result = self.run_script("dev.sh", "ready")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        trace = self.trace.read_text().splitlines()
+        self.assertIn(f"open:{self.app}", trace)
+        self.assertFalse(any(line.startswith("shire:") for line in trace))
 
     def test_regular_install_still_builds_release_and_does_not_launch(self):
         self.env["DEV_TEST_RUNNING"] = "idle"

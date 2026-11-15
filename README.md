@@ -238,47 +238,36 @@ Pass a directory to install elsewhere, e.g. `scripts/install-app.sh ~/Applicatio
 
 ### Develop and test the menu bar app
 
-Install [Task](https://taskfile.dev/docs/installation) (`brew install go-task`),
-then use the Taskfile as a shortcut to the existing scripts:
-
 ```bash
-task setup                           # install linters and resolve Swift packages
-task dev                             # Debug builds → restart app and local HTTP service
-task dev INSTALL_DIR="$HOME/Applications"  # use a different installation directory
-task clean dev                       # remove old build artifacts, then rebuild/install/run
+scripts/dev.sh          # Debug app + local HTTP service from this checkout
+scripts/dev.sh ready    # done: install the Release app and hand it back
 ```
 
-Rerun after code changes. Builds are incremental and use your Mac's architecture;
-there is no DMG or notarization step. The script builds successfully before
-quitting the old app, waits for shutdown, replaces only the app bundle, and starts
-the Debug app and local HTTP service from this checkout. The app collects
-transcripts; the service serves `http://127.0.0.1:7878` with `--no-watch`.
-Ctrl-C or **Quit Ullage** stops both. App logs appear in the terminal; service
-logs are in `.build/dev/service.log`. It keeps your existing history and
-preferences; replacing a Homebrew app shortcut leaves the Cellar installation
-intact. A running Homebrew service is unloaded for this session; use
-`brew services start ullage` to switch back to the installed service.
-To use a separate database, run `ULLAGE_DB=/tmp/ullage-dev.db task dev`.
-`task clean` removes Swift build artifacts, `dist/`, and `coverage/`; it keeps
-the installed app, history, and preferences. The scripts also work directly:
-`scripts/dev.sh [installation-directory]`.
+`scripts/dev.sh` builds first, and only if that works quits the installed app,
+replaces the app bundle (your history and preferences stay) and runs the Debug
+app and `ullage serve --no-watch` on `http://127.0.0.1:7878` from this checkout.
+App logs appear in the terminal; service logs are in `.build/dev/service.log`.
+Ctrl-C or **Quit Ullage** stops both. Rerun it after each change; builds are
+incremental. Pass a directory to install elsewhere
+(`scripts/dev.sh ~/Applications`), or set `ULLAGE_DB=/tmp/ullage-dev.db` to use
+a separate database. A running Homebrew service is unloaded for the session.
 
-Run `task` to list all commands:
+If Shire supervises Ullage (services
+`ullage` and `ullage-serve` in `~/.config/shire/config.yaml`), dev mode stops
+both first, so Shire neither reopens the app you quit nor competes for port
+7878. They stay stopped between dev runs. `scripts/dev.sh ready` installs the
+Release app, then `shire start ullage` and `shire restart ullage-serve` (which
+rebuilds the Release service). Without Shire, `ready` installs and opens the
+Release app. `ULLAGE_SHIRE=0` leaves Shire alone; `ULLAGE_SHIRE_APP` and
+`ULLAGE_SHIRE_SERVE` name differently named services. A `shire apply` during a
+dev session starts them again.
 
-| Task | Purpose |
-| --- | --- |
-| `task build` | Build the Debug package without installing |
-| `task install` | Build and install a Release app |
-| `task run` | Open the installed app without rebuilding |
-| `task test` | Run the script and Swift tests |
-| `task coverage` | Run tests, generate `coverage/html/index.html`, enforce 85% Core coverage |
-| `task lint` | Run automation and Swift linters |
-| `task check` | Build, lint, and test with coverage |
-| `task package` | Build and verify a universal DMG in `dist/` |
-
-For the new controls, check left-click, right-click, and Control-click; restart
-monitoring and confirm history stays; then Quit and confirm the terminal returns.
-Automated regression tests: `task test -- --filter ServiceControlsTests`.
+For the menu bar controls, check left-click, right-click and Control-click;
+restart monitoring and confirm history stays; then Quit and confirm the
+terminal returns. Automated tests: `swift test` (add
+`--filter ServiceControlsTests` for those) and `python3 scripts/test_install.py`
+for the scripts. CI also runs `actionlint`, `shellcheck` and
+`swiftlint lint --strict` (`brew install actionlint shellcheck swiftlint`).
 
 For breakpoints, [open the package in Xcode](https://developer.apple.com/documentation/xcode/creating-a-standalone-swift-package-with-xcode),
 select the `UllageApp` scheme and My Mac, then Run (⌘R). Quit any installed copy first. You can also attach Xcode's
