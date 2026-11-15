@@ -21,6 +21,9 @@ claude-mem.
   agent) aren't included.
 - **Some agents don't write token counts Ullage can read.** Cursor, Copilot CLI,
   Factory Droid and Zed show activity but no gauge.
+- **Playback currently reads Claude Code and Codex transcripts.** Other
+  harnesses keep their existing usage views. Exact request contents require
+  an existing, linked Claude recording; transcripts alone remain partial.
 - **macOS** for the menu bar app; the `ullage` command line also runs on Linux.
 
 > **Ullage** — the empty space left at the top of a barrel or tank. Here, the
@@ -98,10 +101,15 @@ claude-mem.
     status ×12`), and what is **along for the ride**: tool results from 50+
     turns ago still re-sent every turn, and files read more than once (all
     `≈`; 50 is a rule of thumb, not a measurement).
-  - **Session**: the chart at full size, every figure, and each cache rebuild
-    with its turn, size and cause. For an agent other than Claude Code, **What
-    it records** lists what that agent doesn't write down (no cache split, no
-    subagents, no gauge) so a missing figure never looks like a zero.
+  - **Session**: a playback workspace, the chart at full size, every figure,
+    and each cache rebuild with its turn, size and cause. In playback, select
+    an earlier step to inspect its usage and recorded calls and contents;
+    return to live explicitly when ready. Transcript contents are partial
+    evidence, not an exact model-request snapshot. A recording folder you
+    select can supply captured request contents where the source records
+    their linkage. For an agent other than Claude Code, **What it records**
+    lists what that agent doesn't write down (no cache split, no subagents,
+    no gauge) so a missing figure never looks like a zero.
   - **Agents**: the tree of **subagents the session spawned**, each named by
     the description the agent above it wrote and each with **its own window and
     occupancy**. Click one and the chart, Context and Session figures switch
@@ -165,6 +173,14 @@ switch that one tool on or off. It backs the file up first and never throws
 anything away. Installing or uninstalling a context tool runs that tool's own
 commands, in Terminal, after showing them to you.
 
+Playback reads source files on demand and does not archive request bodies in
+the database or expose them through the phone page or OTLP export. Recordings
+may contain sensitive prompts, code, and tool results. You control their
+retention: deleting a source file makes its contents unavailable in playback.
+Ullage does not enable request capture or change agent settings for playback.
+See the [playback design and acceptance checks](docs/designs/context-playback.md)
+for its evidence boundaries and deferred features.
+
 ## Install
 
 Requires macOS 14 or later. Building from source also requires Swift 6 (Xcode 16).
@@ -180,6 +196,14 @@ is needed. Signed releases are notarized by Apple.
 The DMG installs the menu bar app. For the standalone `ullage` command and
 `brew services`, use Homebrew below. To start the app at login, add Ullage under
 System Settings → General → Login Items.
+
+Left-click the menu bar item to open the dashboard. Right-click or Control-click
+it for **Restart Service** and **Quit Ullage**. Restart refreshes the app's
+monitoring and background polling without deleting history or closing its windows.
+While it runs, the menu shows **Restarting…**; if it fails, the dashboard shows
+**Monitoring stopped** and the error, and you can retry. Quit waits for app-owned
+background work to finish before exiting. Both actions run without a confirmation
+dialog and leave a separately started Homebrew/CLI phone service alone.
 
 ### With Homebrew
 
@@ -211,6 +235,57 @@ open /Applications/Ullage.app
 ```
 
 Pass a directory to install elsewhere, e.g. `scripts/install-app.sh ~/Applications`.
+
+### Develop and test the menu bar app
+
+Install [Task](https://taskfile.dev/docs/installation) (`brew install go-task`),
+then use the Taskfile as a shortcut to the existing scripts:
+
+```bash
+task setup                           # install linters and resolve Swift packages
+task dev                             # Debug builds → restart app and local HTTP service
+task dev INSTALL_DIR="$HOME/Applications"  # use a different installation directory
+task clean dev                       # remove old build artifacts, then rebuild/install/run
+```
+
+Rerun after code changes. Builds are incremental and use your Mac's architecture;
+there is no DMG or notarization step. The script builds successfully before
+quitting the old app, waits for shutdown, replaces only the app bundle, and starts
+the Debug app and local HTTP service from this checkout. The app collects
+transcripts; the service serves `http://127.0.0.1:7878` with `--no-watch`.
+Ctrl-C or **Quit Ullage** stops both. App logs appear in the terminal; service
+logs are in `.build/dev/service.log`. It keeps your existing history and
+preferences; replacing a Homebrew app shortcut leaves the Cellar installation
+intact. A running Homebrew service is unloaded for this session; use
+`brew services start ullage` to switch back to the installed service.
+To use a separate database, run `ULLAGE_DB=/tmp/ullage-dev.db task dev`.
+`task clean` removes Swift build artifacts, `dist/`, and `coverage/`; it keeps
+the installed app, history, and preferences. The scripts also work directly:
+`scripts/dev.sh [installation-directory]`.
+
+Run `task` to list all commands:
+
+| Task | Purpose |
+| --- | --- |
+| `task build` | Build the Debug package without installing |
+| `task install` | Build and install a Release app |
+| `task run` | Open the installed app without rebuilding |
+| `task test` | Run the script and Swift tests |
+| `task coverage` | Run tests, generate `coverage/html/index.html`, enforce 85% Core coverage |
+| `task lint` | Run automation and Swift linters |
+| `task check` | Build, lint, and test with coverage |
+| `task package` | Build and verify a universal DMG in `dist/` |
+
+For the new controls, check left-click, right-click, and Control-click; restart
+monitoring and confirm history stays; then Quit and confirm the terminal returns.
+Automated regression tests: `task test -- --filter ServiceControlsTests`.
+
+For breakpoints, [open the package in Xcode](https://developer.apple.com/documentation/xcode/creating-a-standalone-swift-package-with-xcode),
+select the `UllageApp` scheme and My Mac, then Run (⌘R). Quit any installed copy first. You can also attach Xcode's
+debugger to the Debug app started by `scripts/dev.sh`. This is a native compiled
+app: use Build & Run for the full process, and
+[SwiftUI Previews](https://developer.apple.com/documentation/xcode/adding-previews-to-your-interface-files)
+for view iteration. The native menu and Quit/Restart behavior need a full app run.
 
 Because the app is ad-hoc signed rather than notarized, a copy you didn't build
 yourself may draw
@@ -732,6 +807,7 @@ Sources/UllageApp/     the SwiftUI menu bar popover and main window (macOS)
 Tests/                 unit tests for the collector and every display rule
 scripts/recon.sh       inspect the on-disk transcript format
 scripts/install-app.sh build, bundle, and install the app
+scripts/dev.sh         rebuild, reinstall, and run a Debug app with terminal logs
 scripts/package-app.sh build, sign, and package a universal DMG
 scripts/verify-dmg.sh  check the mounted release artifact
 scripts/model-windows.py  regenerate model windows from models.dev

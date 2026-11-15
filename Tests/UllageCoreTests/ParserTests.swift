@@ -173,6 +173,13 @@ final class ParserTests: XCTestCase {
         )
         XCTAssertEqual(ClaudeCodeParser.estimateTokens(of: nil), 0)
     }
+
+    func testTokenEstimatePreservesUnicodeCharacterCountsForJSONStrings() throws {
+        let text = String(repeating: "ASCII café e\u{301} 👩🏽‍💻 🇺🇸\n", count: 100)
+        let data = try JSONSerialization.data(withJSONObject: ["text": text])
+        let payload = try JSONSerialization.jsonObject(with: data)
+        XCTAssertEqual(ClaudeCodeParser.estimateTokens(of: payload), (text.count + 3) / 4)
+    }
 }
 
 final class WindowLimitTests: XCTestCase {

@@ -1,0 +1,87 @@
+version: '3'
+
+vars:
+  INSTALL_DIR: /Applications
+
+env:
+  ULLAGE_INSTALL_DIR: '{{.INSTALL_DIR}}'
+
+tasks:
+  default:
+    desc: List available development tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Install linters and resolve Swift packages (requires Xcode and Homebrew)
+    platforms: [darwin]
+    cmds:
+      - swift --version
+      - brew install actionlint shellcheck swiftlint
+      - swift package resolve
+
+  dev:
+    desc: Rebuild and restart the app and local HTTP service with terminal logs
+    platforms: [darwin]
+    interactive: true
+    cmds:
+      - scripts/dev.sh "$ULLAGE_INSTALL_DIR"
+
+  build:
+    desc: Build the package for the current architecture (Debug)
+    cmds:
+      - swift build
+
+  install:
+    desc: Build and install a Release app without launching it
+    platforms: [darwin]
+    cmds:
+      - scripts/install-app.sh "$ULLAGE_INSTALL_DIR"
+
+  run:
+    desc: Open the installed app without rebuilding
+    platforms: [darwin]
+    cmds:
+      - open "$ULLAGE_INSTALL_DIR/Ullage.app"
+
+  clean:
+    desc: Remove build artifacts, dist, and coverage; preserve installed app and history
+    cmds:
+      - swift package clean
+      - rm -rf dist coverage
+
+  test:
+    desc: Run script tests and Swift tests (pass Swift arguments after --)
+    cmds:
+      - python3 scripts/test_coverage.py
+      - python3 scripts/test_install.py
+      - swift test {{.CLI_ARGS}}
+
+  coverage:
+    desc: Run tests and generate coverage reports, enforcing the 85% Core minimum
+    cmds:
+      - mkdir -p coverage
+      - task: test
+        vars:
+          CLI_ARGS: --enable-code-coverage --parallel --num-workers 3 --xunit-output coverage/test-results.xml
+      - python3 scripts/coverage.py
+
+  lint:
+    desc: Run the same automation and Swift linters as CI
+    cmds:
+      - actionlint
+      - shellcheck scripts/bundle-app.sh scripts/install-app.sh scripts/dev.sh scripts/package-app.sh scripts/verify-dmg.sh scripts/smoke-app.sh
+      - swiftlint lint --strict
+
+  check:
+    desc: Build, lint, and run tests with coverage
+    cmds:
+      - task: build
+      - task: lint
+      - task: coverage
+
+  package:
+    desc: Build and verify the universal DMG in dist
+    platforms: [darwin]
+    cmds:
+      - scripts/package-app.sh

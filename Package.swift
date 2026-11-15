@@ -24,3 +24,7 @@ let package = Package(
         .testTarget(name: "UllageCoreTests", dependencies: ["UllageCore"]),
     ]
 )
+
+#if os(macOS)
+package.targets.append(.testTarget(name: "UllageAppTests", dependencies: ["UllageApp"]))
+#endif
