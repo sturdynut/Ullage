@@ -1,0 +1,32 @@
+{
+  "id": "code-context-engine",
+  "name": "Code Context Engine",
+  "kind": "codeSearch",
+  "shrinks": "file reads through semantic code search and intelligent indexing",
+  "about": "MCP server that indexes the codebase locally and returns only relevant code functions and snippets instead of whole file reads.",
+  "detect": {
+    "mcpServer": ["^code-context-engine$"]
+  },
+  "install": {
+    "package": "code-context-engine",
+    "setup": [
+      {
+        "command": "claude mcp add --scope user code-context-engine -- code-context-engine",
+        "purpose": "Register Code Context Engine MCP server with Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "claude mcp remove --scope user code-context-engine",
+        "purpose": "Unregister Code Context Engine from Claude Code",
+        "needs": "claude"
+      }
+    ]
+  },
+  "harnesses": ["Claude Code"],
+  "sources": [
+    "https://github.com/elara-labs/code-context-engine",
+    "https://pypi.org/project/code-context-engine/"
+  ]
+}

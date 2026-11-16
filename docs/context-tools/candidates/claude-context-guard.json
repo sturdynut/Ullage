@@ -1,0 +1,31 @@
+{
+  "id": "claude-context-guard",
+  "name": "claude-context-guard",
+  "kind": "onDemand",
+  "shrinks": "context window consumption tracking and handoff notes",
+  "about": "Hook and skill that warns when your context gets expensive and carries a handoff briefing across /clear.",
+  "detect": {
+    "hookCommand": ["claude-context-guard"],
+    "skill": ["^claude-context-guard($|[:-])"]
+  },
+  "install": {
+    "setup": [
+      {
+        "command": "claude skill install AntonioBlago/claude-context-guard",
+        "purpose": "Install the claude-context-guard skill",
+        "needs": "claude"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "claude skill uninstall AntonioBlago/claude-context-guard",
+        "purpose": "Uninstall the claude-context-guard skill",
+        "needs": "claude"
+      }
+    ]
+  },
+  "harnesses": ["Claude Code"],
+  "sources": [
+    "https://github.com/AntonioBlago/claude-context-guard"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "claude-token-saver",
+  "name": "Claude Token Saver",
+  "kind": "codeSearch",
+  "shrinks": "file reads by selecting specific functions or classes",
+  "about": "Searches a codebase in plain words and hands Claude just the functions you need, not whole files. CLI for Windows, macOS and Linux, plus an optional Windows app.",
+  "detect": {
+    "bash": ["^claude-token-saver$"]
+  },
+  "install": {
+    "binary": "claude-token-saver",
+    "setup": [
+      {
+        "command": "curl -fsSL https://raw.githubusercontent.com/awesomo913/Claude-Token-Saver/main/install.sh | bash",
+        "purpose": "Install Claude Token Saver from the official installer script",
+        "needs": "curl"
+      }
+    ]
+  },
+  "harnesses": ["Claude Code", "Cursor", "OpenAI Copilot CLI"],
+  "sources": [
+    "https://github.com/awesomo913/Claude-Token-Saver"
+  ]
+}
