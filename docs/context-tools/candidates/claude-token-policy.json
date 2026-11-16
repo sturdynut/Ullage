@@ -1,0 +1,14 @@
+{
+  "id": "claude-token-policy",
+  "name": "claude-token-policy",
+  "kind": "outputFilter",
+  "shrinks": "context per call with policy enforcement",
+  "about": "Claude Code plugin that cuts your token bill by shrinking context per call, with a policy skill, enforcing hooks, and a census script that measures transcripts.",
+  "detect": {
+    "plugin": ["^claude-token-policy@"]
+  },
+  "harnesses": ["Claude Code"],
+  "sources": [
+    "https://github.com/aniteshdharam/claude-token-policy"
+  ]
+}
