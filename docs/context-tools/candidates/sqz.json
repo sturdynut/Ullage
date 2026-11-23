@@ -1,0 +1,48 @@
+{
+  "id": "sqz",
+  "name": "sqz",
+  "kind": "outputFilter",
+  "shrinks": "tool output by deduplicating repeated reads to short references and compressing via Rust layer",
+  "about": "Local-first compression layer that reduces tool output by deduplicating repeated file reads and replacing them with 13-token references, with zero LLM calls.",
+  "detect": {
+    "mcpServer": ["^sqz$"],
+    "bash": ["^sqz$"],
+    "hookCommand": ["sqz"]
+  },
+  "install": {
+    "binary": "sqz-cli",
+    "packages": [
+      {
+        "manager": "npm",
+        "command": "npm install -g sqz-cli"
+      },
+      {
+        "manager": "cargo",
+        "command": "cargo install sqz-cli sqz-mcp"
+      },
+      {
+        "manager": "brew",
+        "command": "brew install sqz"
+      }
+    ],
+    "setup": [
+      {
+        "command": "claude mcp add --scope user sqz -- sqz-mcp",
+        "purpose": "Register sqz MCP server with Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "claude mcp remove --scope user sqz",
+        "purpose": "Unregister sqz from Claude Code",
+        "needs": "claude"
+      }
+    ]
+  },
+  "harnesses": ["Claude Code", "Cursor", "OpenAI Codex CLI"],
+  "sources": [
+    "https://github.com/ojuschugh1/sqz",
+    "https://docs.rs/crate/sqz-cli/"
+  ]
+}
