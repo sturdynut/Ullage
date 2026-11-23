@@ -1,0 +1,38 @@
+{
+  "id": "context-mode",
+  "name": "context-mode",
+  "kind": "onDemand",
+  "shrinks": "MCP tool output and context using local SQLite FTS5 indexing and sandboxing",
+  "about": "MCP server that intercepts tool output, indexes it in SQLite FTS5, and returns concise summaries or specific matches, claiming up to 98% token reduction.",
+  "detect": {
+    "mcpServer": ["^context-mode$"]
+  },
+  "install": {
+    "package": "context-mode",
+    "packages": [
+      {
+        "manager": "npm",
+        "command": "npm install -g context-mode"
+      }
+    ],
+    "setup": [
+      {
+        "command": "claude mcp add --scope user context-mode -- context-mode",
+        "purpose": "Register context-mode MCP server with Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "claude mcp remove --scope user context-mode",
+        "purpose": "Unregister context-mode from Claude Code",
+        "needs": "claude"
+      }
+    ]
+  },
+  "harnesses": ["Claude Code"],
+  "sources": [
+    "https://github.com/mksglu/context-mode",
+    "https://newreleases.io/project/github/mksglu/context-mode/release/v1.0.169"
+  ]
+}

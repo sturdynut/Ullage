@@ -1,0 +1,42 @@
+{
+  "id": "tokensave",
+  "name": "tokensave",
+  "kind": "codeSearch",
+  "shrinks": "file reads through semantic knowledge graphs and 40+ language-aware tools",
+  "about": "Rust-based MCP server with 40+ tools and 30+ language support using semantic knowledge graphs for instant code understanding with fewer token calls.",
+  "detect": {
+    "mcpServer": ["^tokensave$"]
+  },
+  "install": {
+    "binary": "tokensave",
+    "packages": [
+      {
+        "manager": "brew",
+        "command": "brew install tokensave"
+      },
+      {
+        "manager": "cargo",
+        "command": "cargo install tokensave"
+      }
+    ],
+    "setup": [
+      {
+        "command": "claude mcp add --scope user tokensave -- tokensave",
+        "purpose": "Register tokensave MCP server with Claude Code",
+        "needs": "claude"
+      }
+    ],
+    "teardown": [
+      {
+        "command": "claude mcp remove --scope user tokensave",
+        "purpose": "Unregister tokensave from Claude Code",
+        "needs": "claude"
+      }
+    ]
+  },
+  "harnesses": ["Claude Code", "Cursor"],
+  "sources": [
+    "https://github.com/aovestdipaperino/tokensave",
+    "https://docs.rs/crate/tokensave/6.2.0/"
+  ]
+}
